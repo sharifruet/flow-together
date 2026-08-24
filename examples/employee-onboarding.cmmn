@@ -1,0 +1,32 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<definitions xmlns="http://www.omg.org/spec/CMMN/20151109/MODEL"
+             xmlns:flowable="http://flowable.org/cmmn"
+             xmlns:cmmndi="http://www.omg.org/spec/CMMN/20151109/CMMNDI"
+             xmlns:dc="http://www.omg.org/spec/CMMN/20151109/DC"
+             targetNamespace="http://flowable.org/cmmn">
+
+  <case id="employeeOnboarding" name="Employee Onboarding">
+    <documentation>Two onboarding tasks. The case completes when both are done.</documentation>
+    <casePlanModel id="onboardingPlan" name="Onboarding">
+      <planItem id="planItemPrepareLaptop" name="Prepare laptop" definitionRef="prepareLaptop"/>
+      <planItem id="planItemAssignBuddy" name="Assign buddy" definitionRef="assignBuddy"/>
+
+      <humanTask id="prepareLaptop" name="Prepare laptop" isBlocking="true" flowable:assignee="admin"/>
+      <humanTask id="assignBuddy" name="Assign buddy" isBlocking="true" flowable:assignee="admin"/>
+    </casePlanModel>
+  </case>
+
+  <cmmndi:CMMNDI>
+    <cmmndi:CMMNDiagram id="CMMNDiagram_employeeOnboarding">
+      <cmmndi:CMMNShape id="shape_onboardingPlan" cmmnElementRef="onboardingPlan">
+        <dc:Bounds x="80" y="60" width="520" height="240"/>
+      </cmmndi:CMMNShape>
+      <cmmndi:CMMNShape id="shape_planItemPrepareLaptop" cmmnElementRef="planItemPrepareLaptop">
+        <dc:Bounds x="140" y="130" width="140" height="80"/>
+      </cmmndi:CMMNShape>
+      <cmmndi:CMMNShape id="shape_planItemAssignBuddy" cmmnElementRef="planItemAssignBuddy">
+        <dc:Bounds x="360" y="130" width="140" height="80"/>
+      </cmmndi:CMMNShape>
+    </cmmndi:CMMNDiagram>
+  </cmmndi:CMMNDI>
+</definitions>

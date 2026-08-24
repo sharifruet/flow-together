@@ -1,0 +1,47 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<definitions xmlns="http://www.omg.org/spec/BPMN/20100524/MODEL"
+             xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+             xmlns:flowable="http://flowable.org/bpmn"
+             xmlns:bpmndi="http://www.omg.org/spec/BPMN/20100524/DI"
+             xmlns:omgdc="http://www.omg.org/spec/DD/20100524/DC"
+             xmlns:omgdi="http://www.omg.org/spec/DD/20100524/DI"
+             typeLanguage="http://www.w3.org/2001/XMLSchema"
+             expressionLanguage="http://www.w3.org/1999/XPath"
+             targetNamespace="http://www.flowable.org/processdef">
+
+  <process id="holidayRequest" name="Holiday Request" isExecutable="true">
+    <documentation>Employee submits a holiday request; a manager reviews it.</documentation>
+
+    <startEvent id="startEvent" name="Submit request"/>
+    <sequenceFlow id="flow1" sourceRef="startEvent" targetRef="reviewRequest"/>
+
+    <userTask id="reviewRequest" name="Review holiday request" flowable:assignee="admin">
+      <documentation>Approve or reject the holiday request, then complete this task.</documentation>
+    </userTask>
+    <sequenceFlow id="flow2" sourceRef="reviewRequest" targetRef="endEvent"/>
+
+    <endEvent id="endEvent" name="Done"/>
+  </process>
+
+  <bpmndi:BPMNDiagram id="BPMNDiagram_holidayRequest">
+    <bpmndi:BPMNPlane id="BPMNPlane_holidayRequest" bpmnElement="holidayRequest">
+      <bpmndi:BPMNShape id="shape_startEvent" bpmnElement="startEvent">
+        <omgdc:Bounds x="100" y="100" width="30" height="30"/>
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="shape_reviewRequest" bpmnElement="reviewRequest">
+        <omgdc:Bounds x="180" y="78" width="120" height="80"/>
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="shape_endEvent" bpmnElement="endEvent">
+        <omgdc:Bounds x="360" y="100" width="28" height="28"/>
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNEdge id="edge_flow1" bpmnElement="flow1">
+        <omgdi:waypoint x="130" y="115"/>
+        <omgdi:waypoint x="180" y="118"/>
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="edge_flow2" bpmnElement="flow2">
+        <omgdi:waypoint x="300" y="118"/>
+        <omgdi:waypoint x="360" y="114"/>
+      </bpmndi:BPMNEdge>
+    </bpmndi:BPMNPlane>
+  </bpmndi:BPMNDiagram>
+</definitions>
