@@ -2,7 +2,7 @@
   "name": "@togetherflow/work",
   "version": "8.1.0-SNAPSHOT",
   "private": true,
-  "description": "TogetherFlow Work — task and case inbox for business users.",
+  "description": "TogetherFlow Work \u2014 task and case inbox for business users.",
   "type": "module",
   "scripts": {
     "dev": "vite",
@@ -13,7 +13,9 @@
     "test:watch": "vitest",
     "e2e": "playwright test --grep-invert @visual e2e/golden-path.spec.ts",
     "lint": "eslint . --max-warnings 0",
-    "e2e:visual": "playwright test --config=playwright.visual.config.ts"
+    "e2e:visual": "playwright test --config=playwright.visual.config.ts",
+    "budget": "node node_modules/@togetherflow/common/scripts/bundle-budget.mjs",
+    "e2e:visual:docker": "docker run --rm --network host -v \"$PWD/../../../..:/repo\" -w /repo/togetherflow-work/src/main/frontend mcr.microsoft.com/playwright:v1.49.1-jammy npx playwright test --config=playwright.visual.config.ts"
   },
   "dependencies": {
     "@togetherflow/common": "file:../../../../togetherflow-common/src/main/frontend",
@@ -30,6 +32,7 @@
     "@types/react": "^18.3.18",
     "@types/react-dom": "^18.3.5",
     "@vitejs/plugin-react": "^6.1.0",
+    "axe-core": "^4.13.0",
     "eslint": "^10.9.0",
     "eslint-plugin-react-hooks": "^7.1.1",
     "globals": "^17.11.0",

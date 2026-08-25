@@ -19,11 +19,13 @@
     "allowImportingTsExtensions": true,
     "isolatedModules": true,
     "types": [
-      "vitest/globals"
+      "vitest/globals",
+      "node"
     ]
   },
   "include": [
-    "src"
+    "src",
+    "gallery"
   ],
   "exclude": [
     "src/api/generated"

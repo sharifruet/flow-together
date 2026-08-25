@@ -11,8 +11,9 @@
     "typecheck": "tsc --noEmit",
     "test": "vitest run",
     "test:watch": "vitest",
-    "e2e": "playwright test --grep-invert @visual e2e/golden-path.spec.ts",
-    "lint": "eslint . --max-warnings 0"
+    "e2e": "playwright test",
+    "lint": "eslint . --max-warnings 0",
+    "budget": "node node_modules/@togetherflow/common/scripts/bundle-budget.mjs"
   },
   "dependencies": {
     "@togetherflow/common": "file:../../../../togetherflow-common/src/main/frontend",
@@ -21,7 +22,7 @@
   },
   "devDependencies": {
     "@eslint/js": "^10.0.1",
-    "@playwright/test": "^1.49.1",
+    "@playwright/test": "^1.62.1",
     "@testing-library/jest-dom": "^6.6.3",
     "@testing-library/react": "^16.1.0",
     "@testing-library/user-event": "^14.5.2",
@@ -29,6 +30,7 @@
     "@types/react": "^18.3.18",
     "@types/react-dom": "^18.3.5",
     "@vitejs/plugin-react": "^6.1.0",
+    "axe-core": "^4.13.0",
     "eslint": "^10.9.0",
     "eslint-plugin-react-hooks": "^7.1.1",
     "globals": "^17.11.0",

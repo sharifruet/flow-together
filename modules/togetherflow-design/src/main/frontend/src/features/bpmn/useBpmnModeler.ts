@@ -10,6 +10,7 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import BpmnModeler from "bpmn-js/lib/Modeler";
 import { flowableModdleDescriptor } from "./flowableModdle";
+import type { ModdleFactory } from "./bpmnExtensions";
 
 export interface BpmnModelerState {
   containerRef: (node: HTMLDivElement | null) => void;
@@ -30,6 +31,14 @@ export interface BpmnModelerState {
   /** The currently selected element, for the properties panel. */
   selection: BpmnElement | null;
   updateProperties: (element: BpmnElement, properties: Record<string, unknown>) => void;
+  /**
+   * The moddle factory, for the properties the panel cannot set as plain attributes:
+   * listeners, multi-instance configuration and timer definitions are nested objects
+   * that have to be constructed through moddle, not assigned as strings.
+   *
+   * Null until the modeller has been created.
+   */
+  moddle: ModdleFactory | null;
 }
 
 export interface BpmnElement {
@@ -53,11 +62,18 @@ export function useBpmnModeler(xml: string | null): BpmnModelerState {
   const [canUndo, setCanUndo] = useState(false);
   const [canRedo, setCanRedo] = useState(false);
   const [selection, setSelection] = useState<BpmnElement | null>(null);
+  /*
+   * Held in state rather than read from the ref during render: a ref read while
+   * rendering is unsafe under concurrent rendering, and the properties panel needs this
+   * as a prop. Set once, in the callback ref, where the modeller is created.
+   */
+  const [moddle, setModdle] = useState<ModdleFactory | null>(null);
 
   const containerRef = useCallback((node: HTMLDivElement | null) => {
     if (!node) {
       modelerRef.current?.destroy();
       modelerRef.current = null;
+      setModdle(null);
       return;
     }
     if (modelerRef.current) return;
@@ -69,6 +85,7 @@ export function useBpmnModeler(xml: string | null): BpmnModelerState {
       moddleExtensions: { flowable: flowableModdleDescriptor },
     });
     modelerRef.current = modeler;
+    setModdle(modeler.get("moddle") as ModdleFactory);
 
     const syncStack = () => {
       const stack = modeler.get("commandStack") as CommandStack;
@@ -230,6 +247,7 @@ export function useBpmnModeler(xml: string | null): BpmnModelerState {
     getXml,
     selectElement,
     markSaved,
+    moddle,
     updateProperties,
   };
 }

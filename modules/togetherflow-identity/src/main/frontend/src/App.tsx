@@ -2,14 +2,14 @@ import { useCallback, useMemo, useState } from "react";
 import {
   ApiClient,
   IdmApi,
+  LoginScreen,
   UserProfileApi,
-  ToastProvider,
   useAuth,
+  useT,
   useTenant,
   type AppLinks,
 } from "@togetherflow/common";
 import { AppShell, type IdentityView } from "./features/shell/AppShell";
-import { LoginScreen } from "./features/shell/LoginScreen";
 import { Users } from "./features/users/Users";
 import { Groups } from "./features/groups/Groups";
 import { Privileges } from "./features/privileges/Privileges";
@@ -30,6 +30,7 @@ export interface AppProps {
 
 export function App({ apps,
   apiBase, idmBase, readOnly, fetchImpl }: AppProps) {
+  const t = useT();
   const { session, signOut, getAuthHeaders, isInitialising } = useAuth();
   const { tenantId } = useTenant();
   const [view, setView] = useState<IdentityView>("users");
@@ -42,8 +43,9 @@ export function App({ apps,
         getAuthHeaders,
         getTenantId: () => tenantId,
         onUnauthorized: signOut,
+        translate: t,
       }),
-    [fetchImpl, getAuthHeaders, tenantId, signOut],
+    [fetchImpl, getAuthHeaders, tenantId, signOut, t],
   );
 
   const idm = useMemo(() => new IdmApi(makeClient(idmBase)), [makeClient, idmBase]);
@@ -68,20 +70,19 @@ export function App({ apps,
     return (
       <main className="tf-login">
         <div className="tf-login__card">
-          <p className="tf-login__subtitle">Signing you in…</p>
+          <p className="tf-login__subtitle">{t("app.starting")}</p>
         </div>
       </main>
     );
   }
 
-  if (!session) return <LoginScreen />;
+  if (!session) return <LoginScreen app="identity" />;
 
   return (
     <AppShell view={view} onViewChange={setView} apps={apps} onChangePassword={changePassword}>
       {readOnly ? (
         <p className="tf-banner" role="status">
-          Identities are provided by a directory and are read-only here. Create, edit and
-          delete are disabled.
+          {t("readOnly.banner")}
         </p>
       ) : null}
       {view === "users" ? (
@@ -95,10 +96,7 @@ export function App({ apps,
   );
 }
 
+/** Public entry point; the provider stack lives in `AppRoot` (`main.tsx`). */
 export function IdentityApp(props: AppProps) {
-  return (
-    <ToastProvider>
-      <App {...props} />
-    </ToastProvider>
-  );
+  return <App {...props} />;
 }

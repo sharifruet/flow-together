@@ -8,16 +8,18 @@ import {
   ExternalWorkerApi,
   InstanceApi,
   JobApi,
+  LoginScreen,
   RepositoryApi,
   SystemApi,
-  ToastProvider,
   UserProfileApi,
   useAuth,
+  useRegisterShortcuts,
+  useT,
   useTenant,
   type AppLinks,
+  type Shortcut,
 } from "@togetherflow/common";
-import { AppShell, type ControlView } from "./features/shell/AppShell";
-import { LoginScreen } from "./features/shell/LoginScreen";
+import { AppShell, CONTROL_VIEWS, type ControlView } from "./features/shell/AppShell";
 import { Instances } from "./features/instances/Instances";
 import { CaseInstances } from "./features/cases/CaseInstances";
 import { Definitions } from "./features/definitions/Definitions";
@@ -46,9 +48,27 @@ export function App({
   externalJobBase,
   fetchImpl,
 }: AppProps) {
+  const t = useT();
   const { session, signOut, getAuthHeaders, isInitialising } = useAuth();
   const { tenantId } = useTenant();
   const [view, setView] = useState<ControlView>("instances");
+
+  /*
+   * §14.4 argues hardest for keyboard support in exactly this app — admins triaging at
+   * volume. Section jumping is the app-level half; the screens register their own
+   * actions. Digits rather than letters because Control has seven sections and mnemonic
+   * letters would collide (Deployments/Definitions, Cases/Control).
+   */
+  const shortcuts = useMemo<Shortcut[]>(
+    () =>
+      CONTROL_VIEWS.map((id, index) => ({
+        key: String(index + 1),
+        description: t("shortcuts.goTo", { section: t(`nav.${id}`) }),
+        run: () => setView(id),
+      })),
+    [t],
+  );
+  useRegisterShortcuts(shortcuts);
 
   // Each engine is a separate servlet, so each gets its own client over the same
   // auth and tenant wiring.
@@ -60,6 +80,8 @@ export function App({
         getAuthHeaders,
         getTenantId: () => tenantId,
         onUnauthorized: signOut,
+        // Error copy the user sees comes from the active catalogue, not English (§8).
+        translate: t,
       });
     return {
       process: make(apiBase),
@@ -78,6 +100,7 @@ export function App({
     getAuthHeaders,
     tenantId,
     signOut,
+    t,
   ]);
 
   const apis = useMemo(
@@ -111,13 +134,13 @@ export function App({
     return (
       <main className="tf-login">
         <div className="tf-login__card">
-          <p className="tf-login__subtitle">Signing you in…</p>
+          <p className="tf-login__subtitle">{t("app.starting")}</p>
         </div>
       </main>
     );
   }
 
-  if (!session) return <LoginScreen />;
+  if (!session) return <LoginScreen app="control" />;
 
   return (
     <AppShell view={view} onViewChange={setView} apps={apps} onChangePassword={changePassword}>
@@ -145,10 +168,7 @@ export function App({
   );
 }
 
+/** Public entry point; the provider stack lives in `AppRoot` (`main.tsx`). */
 export function ControlApp(props: AppProps) {
-  return (
-    <ToastProvider>
-      <App {...props} />
-    </ToastProvider>
-  );
+  return <App {...props} />;
 }

@@ -22,6 +22,8 @@ replacement.
 | [0010](0010-form-and-event-authoring.md) | Client-side authoring for forms and events, drafts in the generic model repository | Accepted |
 | [0011](0011-case-runtime-and-audience-scoped-actions.md) | Case runtime on the shared task table; the same engine action scoped by audience | Accepted |
 | [0012](0012-conditional-field-visibility.md) | Conditional field visibility as a `params` convention, not an engine change | Accepted |
+| [0013](0013-in-house-i18n.md) | An in-house i18n layer rather than react-i18next | Accepted |
+| [0014](0014-resilience-and-error-reporting.md) | Retry only safe requests; report crashes through a transport-agnostic sink | Accepted |
 
 **ADRs 0001–0007 were made by default during Phase 1 and ratified retroactively in Phase 0.**
 That ordering was a process mistake — they should have been settled before code was written

@@ -15,8 +15,11 @@ cd src/main/frontend && npm install && npm run dev   # http://localhost:5276
 
 - **Model library** — drafts across every model type, search, create, duplicate, delete.
 - **BPMN modeler** — bpmn-js canvas with palette, context pad, undo/redo, zoom, and a
-  **Flowable-native properties panel** (assignee, candidate users/groups, form key, due
-  date, service-task class/expression/delegate, sequence-flow condition, async).
+  **Flowable-native properties panel**: assignee, candidate users/groups, form key, due
+  date, service-task class/expression/delegate, sequence-flow condition, async, plus the
+  nested extension properties — **execution and task listeners**, **multi-instance**
+  (parallel/sequential, collection, element variable, cardinality, completion condition)
+  and **boundary-event** configuration (interrupting, and timer duration/date/cycle).
 - **DMN modeler** — dmn-js, giving both the DRD view and the decision-table editor.
 - **Deploy** — saves the draft, then uploads the XML to the engine. BPMN goes to
   `/repository/deployments`, DMN to `/dmn-repository/deployments`.
@@ -63,9 +66,40 @@ the engine will accept the model.
 - **Client-side validation only** — see above; there is no endpoint to delegate to.
 - **The moddle descriptor is not exhaustive.** It covers what the panel edits plus common
   attributes; anything outside it survives the round trip but isn't typed or editable.
-  Listeners, form properties, multi-instance and boundary-event config aren't exposed yet.
-- **No model versioning UI.** The engine's model table has a `version` column; Design
-  writes 1 and does not yet increment or show history.
+  Form properties are the notable remaining case — a model carrying them keeps them, but
+  this editor cannot author one. (Forms are authored in the form builder and bound by form
+  key, which is why this has not been a priority.)
+- **Boundary events other than timers** get the interrupting toggle but no expression
+  editor. Error, signal and message boundary events reference a definition declared at the
+  process level, which is separate scope; an empty box would imply otherwise.
+(Model versioning is built — see below.)
+
+## Version history
+
+The engine's model table is versioned natively — the query resource exposes `version` and
+`latestVersion`, and rows sharing a `key` form a series. Design uses that rather than a
+side table (§7.4.1):
+
+- The **highest version is the working draft**; the library lists only those.
+- A version is cut **when a model is deployed** — §7.4.1's "deployed models are immutable,
+  superseded by a new version instead" — and **whenever you save one**, either from the
+  History panel or with **Save version** in the BPMN, CMMN and DMN editors, which is where
+  a checkpoint before a risky edit is actually wanted.
+- **Restore** writes an old version's contents back into the draft, after cutting a version
+  from what was there. Rolling back is itself an edit; a history that loses the state you
+  rolled back *from* would be worse than none.
+
+Cutting a version archives *backward*: the draft keeps its id and moves to `version + 1`,
+and the content it had is written to a new row at the version just left behind. Copying
+forward reads more naturally but changes the draft's id, which makes the editor re-import
+and **discards the user's undo stack on every deploy**. The one oddity this trades for is
+that an archive row's `createTime` is when the version was cut, not when its content was
+written; `version` carries the ordering and is correct.
+
+Not built: **diffing two versions**. A real BPMN diff is a graph comparison, not a text
+one, and a line diff of serialised XML would mostly report attribute reordering — better
+absent than misleading. Individual versions also cannot be deleted; history that can be
+edited is not history.
 
 ## Bundle
 
@@ -84,6 +118,12 @@ The editors are lazily loaded, so the library screen stays light:
 `chunkSizeWarningLimit` is raised to 900 kB in this module for dmn-js specifically; the
 entry chunk stays well inside the normal budget.
 
+These are **enforced**, not just reported: `npm run budget` compares the built output
+against `bundle-budget.json` and CI fails on a regression (§13.5). dmn-js gets its own
+allowance rather than inflating the shared budget. Raising a budget is fine when the
+growth is deliberate — do it in the same commit, so the increase is reviewed alongside
+whatever caused it.
+
 ## Container
 
 ```bash
@@ -98,8 +138,9 @@ A hand-built SVG canvas — no maintained CMMN canvas library exists ([ADR 0009]
 
 Working: palette, selection, drag with grid snapping, resize, nesting with reparent-on-drop
 (stages carry their children), cascading delete that also prunes sentries pointing at
-removed elements, undo/redo, entry criteria, properties incl. `flowable:` attributes,
-autosave, unsaved-changes guard, save and deploy to `/cmmn-repository/deployments`.
+removed elements, undo/redo, **entry and exit criteria** (with the lifecycle event each
+sentry watches), properties incl. `flowable:` attributes, autosave, unsaved-changes guard,
+save and deploy to `/cmmn-repository/deployments`.
 
 Also working: **zoom and pan** (wheel, Ctrl/Cmd+wheel, Alt-drag or middle-drag, and toolbar
 controls), **multi-select** (shift-click to extend, marquee-drag on the background) with
@@ -108,9 +149,9 @@ element's connector handle to another adds an entry criterion. Worth knowing wha
 means: CMMN has no sequence flow, so a line on the diagram is really a sentry with a
 `planItemOnPart` on the *target*.
 
-Not yet built: draggable sentry placement, exit criteria in the panel, align and
-copy-paste, and auto-layout for models that arrive without diagram information — a `.cmmn`
-file with no CMMNDI currently opens with its shapes stacked.
+Not yet built: draggable sentry placement, align and copy-paste, and auto-layout for models
+that arrive without diagram information — a `.cmmn` file with no CMMNDI currently opens with
+its shapes stacked.
 
 The model layer (`cmmnModel.ts`) is unit-tested against the engine's own
 `examples/employee-onboarding.cmmn`, so producing deployable XML is pinned down

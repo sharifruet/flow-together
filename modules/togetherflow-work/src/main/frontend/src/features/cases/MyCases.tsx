@@ -10,7 +10,7 @@
  * two tabs hit different endpoints rather than passing a `finished` flag to one.
  */
 
-import { useEffect, useMemo, useState } from "react";
+import { useMemo, useState } from "react";
 import {
   AsyncBoundary,
   DataTable,
@@ -19,9 +19,12 @@ import {
   Pagination,
   formatDateTime,
   useAsync,
+  useDebouncedValue,
+  useI18n,
   type CaseApi,
   type CaseInstanceResponse,
   type Column,
+  type TFunction,
 } from "@togetherflow/common";
 
 const PAGE_SIZE = 25;
@@ -43,15 +46,11 @@ export function MyCases({
   onSelectCase,
   refreshToken,
 }: MyCasesProps) {
+  const { t, locale } = useI18n();
   const [tab, setTab] = useState<CaseTab>("open");
   const [start, setStart] = useState(0);
   const [search, setSearch] = useState("");
-  const [debounced, setDebounced] = useState("");
-
-  useEffect(() => {
-    const timer = setTimeout(() => setDebounced(search.trim()), 250);
-    return () => clearTimeout(timer);
-  }, [search]);
+  const debounced = useDebouncedValue(search.trim(), 250);
 
   const request = useMemo(
     () => ({
@@ -75,41 +74,46 @@ export function MyCases({
     () => [
       {
         key: "name",
-        header: "Case",
+        header: t("cases.column.case"),
         render: (instance) => (
           <div className="tf-task-cell">
             <span className="tf-task-cell__name">
-              {instance.name || instance.caseDefinitionName || "(untitled case)"}
+              {instance.name || instance.caseDefinitionName || t("cases.untitled")}
             </span>
             <span className="tf-task-cell__description">
-              {instance.businessKey ? `Ref ${instance.businessKey}` : instance.id.slice(0, 8)}
+              {instance.businessKey
+                ? t("cases.ref", { businessKey: instance.businessKey })
+                : instance.id.slice(0, 8)}
             </span>
           </div>
         ),
       },
       {
         key: "state",
-        header: "State",
+        header: t("cases.column.state"),
         width: "120px",
         render: (instance) => (
-          <span className={stateBadgeClass(instance)}>{stateLabel(instance)}</span>
+          <span className={stateBadgeClass(instance)}>{stateLabel(instance, t)}</span>
         ),
       },
       {
         key: "started",
-        header: tab === "open" ? "Started" : "Ended",
+        header: tab === "open" ? t("cases.column.started") : t("cases.column.ended"),
         width: "180px",
         secondary: true,
         render: (instance) =>
-          formatDateTime((tab === "open" ? instance.startTime : instance.endTime) ?? undefined),
+          formatDateTime(
+            (tab === "open" ? instance.startTime : instance.endTime) ?? undefined,
+            locale,
+          ),
       },
     ],
-    [tab],
+    [tab, t, locale],
   );
 
   return (
-    <section className="tf-inbox" aria-label="My cases">
-      <div className="tf-inbox__filters" role="tablist" aria-label="Case state">
+    <section className="tf-inbox" aria-label={t("cases.label")}>
+      <div className="tf-inbox__filters" role="tablist" aria-label={t("cases.stateLabel")}>
         <button
           type="button"
           role="tab"
@@ -120,7 +124,7 @@ export function MyCases({
             setStart(0);
           }}
         >
-          Open
+          {t("cases.tab.open")}
         </button>
         <button
           type="button"
@@ -132,18 +136,18 @@ export function MyCases({
             setStart(0);
           }}
         >
-          Completed
+          {t("cases.tab.completed")}
         </button>
 
         <div className="tf-inbox__search">
           <label className="tf-visually-hidden" htmlFor="tf-case-search">
-            Search cases by reference
+            {t("cases.search.label")}
           </label>
           <input
             id="tf-case-search"
             className="tf-input"
             type="search"
-            placeholder="Search by reference…"
+            placeholder={t("cases.search.placeholder")}
             value={search}
             onChange={(event) => {
               setSearch(event.target.value);
@@ -169,13 +173,13 @@ export function MyCases({
             />
           ) : tab === "open" ? (
             <EmptyState
-              title="No open cases"
-              description="Cases you're involved in will appear here once one is started."
+              title={t("cases.empty.open.title")}
+              description={t("cases.empty.open.description")}
             />
           ) : (
             <EmptyState
-              title="No completed cases"
-              description="Cases you've been part of will be listed here when they finish."
+              title={t("cases.empty.completed.title")}
+              description={t("cases.empty.completed.description")}
             />
           )
         }
@@ -183,7 +187,7 @@ export function MyCases({
         {(page) => (
           <>
             <DataTable
-              caption={tab === "open" ? "Open cases" : "Completed cases"}
+              caption={tab === "open" ? t("cases.caption.open") : t("cases.caption.completed")}
               columns={columns}
               rows={page.data}
               rowKey={(instance) => instance.id}
@@ -203,9 +207,15 @@ export function MyCases({
   );
 }
 
-function stateLabel(instance: CaseInstanceResponse): string {
-  if (instance.endTime) return instance.state === "terminated" ? "Terminated" : "Completed";
-  return instance.state ? instance.state[0].toUpperCase() + instance.state.slice(1) : "Active";
+function stateLabel(instance: CaseInstanceResponse, t: TFunction): string {
+  if (instance.endTime) {
+    return instance.state === "terminated"
+      ? t("cases.state.terminated")
+      : t("cases.state.completed");
+  }
+  // An unrecognised runtime state is shown as the engine reported it rather than
+  // guessed at — inventing a translation for a state we don't model would be worse.
+  return instance.state ? instance.state[0].toUpperCase() + instance.state.slice(1) : t("cases.state.active");
 }
 
 function stateBadgeClass(instance: CaseInstanceResponse): string {

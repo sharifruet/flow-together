@@ -22,6 +22,7 @@ import {
   EmptyState,
   TextInput,
   useAsync,
+  useI18n,
   useToast,
   type CaseApi,
   type CaseDefinitionAccessApi,
@@ -48,25 +49,26 @@ export function Definitions({
   caseAccessApi,
   systemApi,
 }: DefinitionsProps) {
+  const { t } = useI18n();
   const [tab, setTab] = useState<DefinitionTab>("processes");
 
   return (
-    <section className="tf-panel" aria-label="Definitions">
+    <section className="tf-panel" aria-label={t("definitions.label")}>
       <header className="tf-panel__header">
         <div>
-          <h1 className="tf-panel__title">Definitions</h1>
+          <h1 className="tf-panel__title">{t("definitions.title")}</h1>
           <p className="tf-panel__meta">
             Control what can be started, and by whom.
           </p>
         </div>
       </header>
 
-      <div className="tf-chips" role="tablist" aria-label="Definition type">
+      <div className="tf-chips" role="tablist" aria-label={t("definitions.typeLabel")}>
         {(
           [
-            ["processes", "Processes"],
-            ["cases", "Cases"],
-            ["signals", "Signals"],
+            ["processes", t("definitions.type.processes")],
+            ["cases", t("definitions.type.cases")],
+            ["signals", t("definitions.type.signals")],
           ] as const
         ).map(([value, label]) => (
           <button
@@ -98,6 +100,7 @@ export function Definitions({
 /* ── Process definitions ─────────────────────────────────────────────────── */
 
 function ProcessDefinitions({ repositoryApi }: { repositoryApi: RepositoryApi }) {
+  const { t } = useI18n();
   const { push } = useToast();
   const [refresh, setRefresh] = useState(0);
   const [busy, setBusy] = useState<string | null>(null);
@@ -121,14 +124,19 @@ function ProcessDefinitions({ repositoryApi }: { repositoryApi: RepositoryApi })
       );
       push({
         tone: "success",
-        message: `${definition.suspended ? "Activated" : "Suspended"} "${definition.name ?? definition.key}".`,
+        message: t("definitions.changed", {
+          state: definition.suspended
+            ? t("definitions.state.activatedPast")
+            : t("definitions.state.suspendedPast"),
+          name: definition.name ?? definition.key,
+        }),
       });
       setRefresh((n) => n + 1);
     } catch (cause) {
       const apiError = cause instanceof ApiError ? cause : undefined;
       push({
         tone: "error",
-        message: apiError?.message ?? "Could not change that definition.",
+        message: apiError?.message ?? t("definitions.changeFailed"),
         reference: apiError?.correlationId,
       });
     } finally {
@@ -142,7 +150,7 @@ function ProcessDefinitions({ repositoryApi }: { repositoryApi: RepositoryApi })
     () => [
       {
         key: "name",
-        header: "Process",
+        header: t("definitions.column.process"),
         render: (definition) => (
           <div className="tf-task-cell">
             <span className="tf-task-cell__name">{definition.name ?? definition.key}</span>
@@ -154,13 +162,13 @@ function ProcessDefinitions({ repositoryApi }: { repositoryApi: RepositoryApi })
       },
       {
         key: "state",
-        header: "State",
+        header: t("definitions.column.state"),
         width: "120px",
         render: (definition) =>
           definition.suspended ? (
-            <span className="tf-badge tf-badge--danger">Suspended</span>
+            <span className="tf-badge tf-badge--danger">{t("definitions.state.suspended")}</span>
           ) : (
-            <span className="tf-badge tf-badge--running">Active</span>
+            <span className="tf-badge tf-badge--running">{t("definitions.state.active")}</span>
           ),
       },
       {
@@ -176,10 +184,12 @@ function ProcessDefinitions({ repositoryApi }: { repositoryApi: RepositoryApi })
                 definition.suspended ? void toggle(definition, false) : setPendingSuspend(definition)
               }
             >
-              {definition.suspended ? "Activate" : "Suspend"}
+              {definition.suspended
+                ? t("definitions.action.activate")
+                : t("definitions.action.suspend")}
             </Button>
             <Button variant="ghost" onClick={() => setStarterFor(definition)}>
-              Who can start
+              {t("definitions.starters.action")}
             </Button>
           </div>
         ),
@@ -199,14 +209,14 @@ function ProcessDefinitions({ repositoryApi }: { repositoryApi: RepositoryApi })
         isEmpty={(page) => page.data.length === 0}
         empty={
           <EmptyState
-            title="No process definitions"
-            description="Deploy a process to manage it here."
+            title={t("definitions.empty.process.title")}
+            description={t("definitions.empty.process.description")}
           />
         }
       >
         {(page) => (
           <DataTable
-            caption="Process definitions"
+            caption={t("definitions.caption.process")}
             columns={columns}
             rows={page.data}
             rowKey={(definition) => definition.id}
@@ -216,7 +226,7 @@ function ProcessDefinitions({ repositoryApi }: { repositoryApi: RepositoryApi })
 
       {starterFor ? (
         <StarterDialog
-          title={`Who can start "${starterFor.name ?? starterFor.key}"`}
+          title={t("definitions.starters.title", { name: starterFor.name ?? starterFor.key })}
           list={(signal) => repositoryApi.listStarters(starterFor.id, signal)}
           add={(identity) => repositoryApi.addStarter(starterFor.id, identity)}
           remove={(family, id) => repositoryApi.removeStarter(starterFor.id, family, id)}
@@ -236,10 +246,10 @@ function ProcessDefinitions({ repositoryApi }: { repositoryApi: RepositoryApi })
             className="tf-dialog"
             role="alertdialog"
             aria-modal="true"
-            aria-label="Suspend process definition"
+            aria-label={t("definitions.suspend.label")}
             onMouseDown={(event) => event.stopPropagation()}
           >
-            <h2 className="tf-dialog__title">Suspend this process definition?</h2>
+            <h2 className="tf-dialog__title">{t("definitions.suspend.title")}</h2>
             <p className="tf-dialog__description">
               No new instances of "{pendingSuspend.name ?? pendingSuspend.key}" can be
               started while it is suspended.
@@ -250,12 +260,12 @@ function ProcessDefinitions({ repositoryApi }: { repositoryApi: RepositoryApi })
                 checked={cascade}
                 onChange={(event) => setCascade(event.target.checked)}
               />
-              Also suspend instances that are already running
+              {t("definitions.suspend.cascadeLabel")}
             </label>
             <p className="tf-dialog__warning" role="note">
               {cascade
-                ? "Running instances stop progressing until the definition is activated again."
-                : "Instances already running keep going; only new ones are blocked."}
+                ? t("definitions.suspend.cascade")
+                : t("definitions.suspend.noCascade")}
             </p>
             <div className="tf-dialog__actions">
               <Button
@@ -266,14 +276,14 @@ function ProcessDefinitions({ repositoryApi }: { repositoryApi: RepositoryApi })
                   setCascade(false);
                 }}
               >
-                Cancel
+                {t("dialog.cancel")}
               </Button>
               <Button
                 variant="danger"
                 loading={busy !== null}
                 onClick={() => void toggle(pendingSuspend, cascade)}
               >
-                Suspend
+                {t("action.suspend")}
               </Button>
             </div>
           </div>
@@ -292,6 +302,7 @@ function CaseDefinitions({
   caseApi: CaseApi;
   caseAccessApi: CaseDefinitionAccessApi;
 }) {
+  const { t } = useI18n();
   const [starterFor, setStarterFor] = useState<CaseDefinitionResponse | null>(null);
 
   const { data, error, loading, refetch } = useAsync(
@@ -303,7 +314,7 @@ function CaseDefinitions({
     () => [
       {
         key: "name",
-        header: "Case",
+        header: t("definitions.column.case"),
         render: (definition) => (
           <div className="tf-task-cell">
             <span className="tf-task-cell__name">{definition.name ?? definition.key}</span>
@@ -320,13 +331,13 @@ function CaseDefinitions({
         render: (definition) => (
           <div className="tf-row-actions">
             <Button variant="ghost" onClick={() => setStarterFor(definition)}>
-              Who can start
+              {t("definitions.starters.action")}
             </Button>
           </div>
         ),
       },
     ],
-    [],
+    [t],
   );
 
   return (
@@ -343,12 +354,15 @@ function CaseDefinitions({
         onRetry={refetch}
         isEmpty={(page) => page.data.length === 0}
         empty={
-          <EmptyState title="No case definitions" description="Deploy a case to manage it here." />
+          <EmptyState
+            title={t("definitions.empty.case.title")}
+            description={t("definitions.empty.case.description")}
+          />
         }
       >
         {(page) => (
           <DataTable
-            caption="Case definitions"
+            caption={t("definitions.caption.case")}
             columns={columns}
             rows={page.data}
             rowKey={(definition) => definition.id}
@@ -358,7 +372,7 @@ function CaseDefinitions({
 
       {starterFor ? (
         <StarterDialog
-          title={`Who can start "${starterFor.name ?? starterFor.key}"`}
+          title={t("definitions.starters.title", { name: starterFor.name ?? starterFor.key })}
           list={(signal) => caseAccessApi.listStarters(starterFor.id, signal)}
           add={(identity) => caseAccessApi.addStarter(starterFor.id, identity)}
           remove={(family, id) => caseAccessApi.removeStarter(starterFor.id, family, id)}
@@ -384,6 +398,7 @@ function StarterDialog({
   remove: (family: "users" | "groups", id: string) => Promise<void>;
   onClose: () => void;
 }) {
+  const { t } = useI18n();
   const { push } = useToast();
   const [refresh, setRefresh] = useState(0);
   const [kind, setKind] = useState<"user" | "group">("user");
@@ -398,14 +413,14 @@ function StarterDialog({
     setBusy(true);
     try {
       await add(kind === "user" ? { user: value } : { group: value });
-      push({ tone: "success", message: `${value} can now start it.` });
+      push({ tone: "success", message: t("definitions.starters.granted", { who: value }) });
       setIdentity("");
       setRefresh((n) => n + 1);
     } catch (cause) {
       const apiError = cause instanceof ApiError ? cause : undefined;
       push({
         tone: "error",
-        message: apiError?.message ?? "Could not grant that.",
+        message: apiError?.message ?? t("definitions.starters.grantFailed"),
         reference: apiError?.correlationId,
       });
     } finally {
@@ -417,13 +432,13 @@ function StarterDialog({
     setBusy(true);
     try {
       await remove(link.user ? "users" : "groups", (link.user ?? link.group)!);
-      push({ tone: "success", message: "Access revoked." });
+      push({ tone: "success", message: t("definitions.starters.revoked") });
       setRefresh((n) => n + 1);
     } catch (cause) {
       const apiError = cause instanceof ApiError ? cause : undefined;
       push({
         tone: "error",
-        message: apiError?.message ?? "Could not revoke that.",
+        message: apiError?.message ?? t("definitions.starters.revokeFailed"),
         reference: apiError?.correlationId,
       });
     } finally {
@@ -452,18 +467,20 @@ function StarterDialog({
           data={starters.data}
           onRetry={starters.refetch}
           isEmpty={(rows) => rows.length === 0}
-          empty={<p className="tf-muted">Unrestricted — no starters are listed.</p>}
+          empty={<p className="tf-muted">{t("definitions.starters.unrestricted")}</p>}
         >
           {(rows) => (
             <ul className="tf-starters">
               {rows.map((link) => (
                 <li className="tf-starters__item" key={`${link.user ?? ""}:${link.group ?? ""}`}>
                   <span className="tf-badge tf-badge--running">
-                    {link.user ? "User" : "Group"}
+                    {link.user
+                      ? t("definitions.starters.user")
+                      : t("definitions.starters.group")}
                   </span>
                   <span className="tf-starters__name">{link.user ?? link.group}</span>
                   <Button variant="ghost" disabled={busy} onClick={() => void revoke(link)}>
-                    Revoke
+                    {t("action.revoke")}
                   </Button>
                 </li>
               ))}
@@ -473,31 +490,35 @@ function StarterDialog({
 
         <div className="tf-starters__add">
           <label className="tf-field">
-            <span className="tf-field__label">Grant to</span>
+            <span className="tf-field__label">{t("definitions.starters.grantTo")}</span>
             <select
               className="tf-input tf-select"
               value={kind}
               disabled={busy}
               onChange={(event) => setKind(event.target.value as "user" | "group")}
             >
-              <option value="user">User</option>
-              <option value="group">Group</option>
+              <option value="user">{t("definitions.starters.user")}</option>
+              <option value="group">{t("definitions.starters.group")}</option>
             </select>
           </label>
           <TextInput
-            label={kind === "user" ? "User id" : "Group id"}
+            label={
+              kind === "user"
+                ? t("definitions.starters.userId")
+                : t("definitions.starters.groupId")
+            }
             value={identity}
             disabled={busy}
             onChange={(event) => setIdentity(event.target.value)}
           />
           <Button loading={busy} disabled={!identity.trim()} onClick={() => void grant()}>
-            Grant
+            {t("action.grant")}
           </Button>
         </div>
 
         <div className="tf-dialog__actions">
           <Button variant="secondary" onClick={onClose}>
-            Done
+            {t("action.done")}
           </Button>
         </div>
       </div>
@@ -508,6 +529,7 @@ function StarterDialog({
 /* ── Signal broadcast ────────────────────────────────────────────────────── */
 
 function SignalBroadcast({ systemApi }: { systemApi: SystemApi }) {
+  const { t } = useI18n();
   const { push } = useToast();
   const [name, setName] = useState("");
   const [async, setAsync] = useState(false);
@@ -518,13 +540,13 @@ function SignalBroadcast({ systemApi }: { systemApi: SystemApi }) {
     setBusy(true);
     try {
       await systemApi.broadcastSignal(name.trim(), { async });
-      push({ tone: "success", message: `Broadcast "${name.trim()}".` });
+      push({ tone: "success", message: t("definitions.signal.sent", { name: name.trim() }) });
       setName("");
     } catch (cause) {
       const apiError = cause instanceof ApiError ? cause : undefined;
       push({
         tone: "error",
-        message: apiError?.message ?? "Could not broadcast that signal.",
+        message: apiError?.message ?? t("definitions.signal.failed"),
         reference: apiError?.correlationId,
       });
     } finally {
@@ -535,17 +557,13 @@ function SignalBroadcast({ systemApi }: { systemApi: SystemApi }) {
 
   return (
     <div className="tf-signal">
-      <p className="tf-note">
-        Broadcasting reaches <strong>every</strong> instance waiting on this signal, across
-        the whole engine. Use it to unblock instances waiting on an event that never
-        arrived from outside.
-      </p>
+      <p className="tf-note">{t("definitions.signal.warning")}</p>
 
       <TextInput
-        label="Signal name"
+        label={t("definitions.signal.name")}
         value={name}
         disabled={busy}
-        hint="Must match the signal name in the model exactly."
+        hint={t("definitions.signal.hint")}
         onChange={(event) => setName(event.target.value)}
       />
       <label className="tf-checkbox tf-checkbox--block">
@@ -559,14 +577,14 @@ function SignalBroadcast({ systemApi }: { systemApi: SystemApi }) {
       </label>
 
       <Button loading={busy} disabled={!name.trim()} onClick={() => setConfirm(true)}>
-        Broadcast signal
+        {t("definitions.signal.action")}
       </Button>
 
       <ConfirmDialog
         open={confirm}
-        title="Broadcast this signal?"
-        description={`Every instance in the engine waiting on "${name.trim()}" will receive it. This cannot be undone.`}
-        confirmLabel="Broadcast"
+        title={t("definitions.signal.confirmTitle")}
+        description={t("definitions.signal.confirmDescription", { name: name.trim() })}
+        confirmLabel={t("definitions.signal.confirm")}
         destructive
         busy={busy}
         onCancel={() => setConfirm(false)}

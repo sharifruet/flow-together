@@ -1,0 +1,136 @@
+# TogetherFlow Control — Runtime operations and administration.
+#
+# Follows the shape of flowable-rest.yaml in this directory rather than inventing a new
+# one (REQUIREMENTS.md §13.2). What it adds is what that section asks for and a
+# static-SPA container needs:
+#
+#   - liveness and readiness probes against /healthz, which the image's nginx serves;
+#   - a read-only root filesystem — the image writes its runtime configuration to
+#     /tmp/togetherflow rather than into the docroot, so nothing under / is written to;
+#   - the non-root uid the nginx-unprivileged base image runs as.
+#
+# The apps are separately deployed origins, so each carries the sibling URLs it should
+# offer in its switcher (§7.5). Anything left empty is simply not listed.
+#
+# Replace the example hostnames below before applying this anywhere real.
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: togetherflow-control
+  labels:
+    app: togetherflow-control
+spec:
+  # Stateless by construction — no in-memory session state (§13.4), so replicas scale
+  # freely behind the existing load-balancer pattern.
+  replicas: 2
+  selector:
+    matchLabels:
+      app: togetherflow-control
+  template:
+    metadata:
+      labels:
+        app: togetherflow-control
+    spec:
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 101
+        fsGroup: 101
+      containers:
+        - name: togetherflow-control
+          image: flowable/togetherflow-control:latest
+          ports:
+            - name: http
+              containerPort: 8080
+          envFrom:
+            - configMapRef:
+                name: togetherflow-control-config
+          # Serving static files needs very little; kept small so a UI pod never
+          # competes with an engine pod for a node's memory.
+          resources:
+            requests:
+              memory: 32Mi
+              cpu: 10m
+            limits:
+              memory: 128Mi
+              cpu: 200m
+          livenessProbe:
+            httpGet:
+              path: /healthz
+              port: http
+            initialDelaySeconds: 5
+            periodSeconds: 20
+          readinessProbe:
+            httpGet:
+              path: /healthz
+              port: http
+            initialDelaySeconds: 2
+            periodSeconds: 10
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            capabilities:
+              drop: ["ALL"]
+          volumeMounts:
+            # The three paths written at runtime: nginx's own temp and pid files, and
+            # the generated config.js. The docroot itself is never written to.
+            - name: nginx-cache
+              mountPath: /var/cache/nginx
+            - name: nginx-run
+              mountPath: /var/run
+            - name: runtime-config
+              mountPath: /tmp
+      volumes:
+        - name: nginx-cache
+          emptyDir: {}
+        - name: nginx-run
+          emptyDir: {}
+        - name: runtime-config
+          emptyDir: {}
+      restartPolicy: Always
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: togetherflow-control
+spec:
+  type: ClusterIP
+  selector:
+    app: togetherflow-control
+  ports:
+    - name: http
+      protocol: TCP
+      port: 8080
+      targetPort: http
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: togetherflow-control-config
+data:
+  TF_API_BASE: "/process-api"
+  TF_IDM_BASE: "/idm-api"
+  TF_DMN_BASE: "/dmn-api"
+  TF_CMMN_BASE: "/cmmn-api"
+  TF_EVENT_BASE: "/event-registry-api"
+  TF_EXTERNAL_JOB_BASE: "/external-job-api"
+  # Production authenticates with OIDC; Basic is fenced to local development
+  # (ADR 0006, §13.1). The client is public, so there is no secret here — a client
+  # secret would belong in a Secret, never in a ConfigMap (§13.1 Secrets).
+  TF_AUTH_MODE: "oidc"
+  TF_OIDC_AUTHORITY: "https://keycloak.example.com/realms/Flowable"
+  TF_OIDC_CLIENT_ID: "togetherflow-ui"
+  # Where the sibling apps live, for the shell's switcher (§7.5). This app's own entry
+  # is ignored; leaving one empty hides it rather than offering a dead link.
+  TF_APP_WORK: "https://work.example.com"
+  TF_APP_CONTROL: "https://control.example.com"
+  TF_APP_IDENTITY: "https://identity.example.com"
+  TF_APP_DESIGN: "https://design.example.com"
+  # Where unhandled errors are POSTed (§13.2). Empty means console-only, which is a
+  # supported configuration — a fresh install needs no collector to work.
+  TF_ERROR_ENDPOINT: ""
+  # Ties a report to the bundle that produced it.
+  TF_RELEASE: "8.1.0-SNAPSHOT"
+  # Forces a UI language deployment-wide (§8). Empty lets the browser, and each user's
+  # own choice in the shell menu, decide.
+  TF_LOCALE: ""

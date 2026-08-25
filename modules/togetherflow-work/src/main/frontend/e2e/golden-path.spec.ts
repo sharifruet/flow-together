@@ -123,4 +123,37 @@ test.describe("TogetherFlow Work golden path", () => {
     await page.keyboard.press("g");
     await expect(page.getByRole("heading", { name: "My history" })).toBeVisible();
   });
+
+  test("moves through the inbox and claims a task from the keyboard", async ({ page }) => {
+    await startWork(page);
+    await page.getByRole("button", { name: "Tasks" }).click();
+    await page.getByRole("tab", { name: /available to claim/i }).click();
+
+    const firstRow = page.locator("table tbody tr").first();
+    const hasClaimable = await firstRow.isVisible().catch(() => false);
+    test.skip(!hasClaimable, "Nothing claimable on this engine.");
+
+    await page.locator("body").click({ position: { x: 5, y: 5 } });
+    // `j` opens the first row when nothing is selected yet (§14.4).
+    await page.keyboard.press("j");
+    const detail = page.getByRole("complementary", { name: /task detail/i });
+    await expect(detail).toBeVisible();
+
+    await page.keyboard.press("c");
+    await expect(page.getByText(/task claimed/i)).toBeVisible();
+  });
+
+  test("lists its own shortcuts, so they are discoverable", async ({ page }) => {
+    await page.locator("body").click({ position: { x: 5, y: 5 } });
+    await page.keyboard.press("?");
+
+    const dialog = page.getByRole("dialog", { name: /keyboard shortcuts/i });
+    await expect(dialog).toBeVisible();
+    // Generated from the bindings themselves, so this also proves they are registered.
+    await expect(dialog).toContainText(/next task in the list/i);
+    await expect(dialog).toContainText(/search tasks/i);
+
+    await page.keyboard.press("Escape");
+    await expect(dialog).not.toBeVisible();
+  });
 });

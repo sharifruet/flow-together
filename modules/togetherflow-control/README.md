@@ -47,6 +47,31 @@ and assignee. This app offers it — that is what an operator needs when a case 
 a task nobody can action — behind a confirmation that names exactly what is skipped. Work
 does not offer it at all ([ADR 0011](../../docs/ui/adr/0011-case-runtime-and-audience-scoped-actions.md)).
 
+## Keyboard shortcuts
+
+Press `?` for the list. `1`–`7` jump to a section — digits rather than mnemonic letters
+because seven sections collide badly (Deployments/Definitions, Cases/Control). On the job
+queue, `a` selects or clears the page, `f` toggles failed-only and `r` refreshes.
+
+Bulk selection plus `a` is the loop §14.4 exists for: Control's reason to exist is acting
+at a volume nobody handles one row at a time.
+
+## Saved filters
+
+Instance and job queries can be **saved and reapplied** (§14.4) — including the queue, so
+"failed dead-letter jobs" comes back as one view rather than two settings to re-pick.
+Saved views live in the browser's own storage, not on the server: this repo's REST layer
+has no per-user preference store, and the UI says so rather than implying they follow you
+to another machine.
+
+## Data retention
+
+**System → Data retention** surfaces the engine's history and cleanup properties, because
+task variables, comments and attachments can all carry personal data and this is what
+governs how long it survives (§13.7). It is **read-only**: retention is engine
+configuration and this repo's REST layer exposes no endpoint to change it. Cleanup itself
+runs as jobs on the **History** queue.
+
 ## Not built
 
 - **Process and case instance migration.** The endpoints exist (including

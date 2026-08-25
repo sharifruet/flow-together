@@ -20,6 +20,7 @@ import {
   ConfirmDialog,
   ErrorState,
   Skeleton,
+  useI18n,
   useToast,
   type ModelApi,
   type ModelResponse,
@@ -33,7 +34,8 @@ export interface DmnEditorProps {
   initialXml: string | null;
   loadError?: string | null;
   onBack: () => void;
-  onSaved: () => void;
+  /** Called after a save or deploy; carries the updated draft where one exists. */
+  onSaved: (draft?: ModelResponse) => void;
 }
 
 export function DmnEditor({
@@ -44,6 +46,7 @@ export function DmnEditor({
   onBack,
   onSaved,
 }: DmnEditorProps) {
+  const { t, locale } = useI18n();
   const { push } = useToast();
   const modelerRef = useRef<DmnModeler | null>(null);
   const [ready, setReady] = useState(false);
@@ -91,13 +94,13 @@ export function DmnEditor({
       .catch((cause: Error) => {
         if (cancelled) return;
         setReady(false);
-        setError(cause.message || "This decision model could not be opened.");
+        setError(cause.message || t("dmn.openFailed"));
       });
 
     return () => {
       cancelled = true;
     };
-  }, [initialXml]);
+  }, [initialXml, t]);
 
   // Teardown is handled by the callback ref (invoked with null on unmount). A separate
   // unmount effect would be double-invoked under StrictMode and destroy the modeler the
@@ -105,11 +108,37 @@ export function DmnEditor({
 
   const getXml = useCallback(async () => {
     const modeler = modelerRef.current;
-    if (!modeler) throw new Error("The editor is not ready yet.");
+    if (!modeler) throw new Error(t("dmn.notReady"));
     const { xml } = await modeler.saveXML({ format: true });
-    if (!xml) throw new Error("The decision model could not be serialised.");
+    if (!xml) throw new Error(t("dmn.serialiseFailed"));
     return xml;
-  }, []);
+  }, [t]);
+
+  /**
+   * Cuts a version from what is in the editor (§7.4.1) — the checkpoint before a risky
+   * edit. Saves first, so the version records what the user is looking at.
+   */
+  const saveVersion = useCallback(async () => {
+    setSaving(true);
+    try {
+      const xml = await getXml();
+      await modelApi.saveSource(model.id, xml);
+      const draft = await modelApi.cutVersion(model, xml);
+      setDirty(false);
+      setLastSavedAt(new Date());
+      push({ tone: "success", message: t("editor.versionSaved", { version: draft.version ?? 1 }) });
+      onSaved(draft);
+    } catch (cause) {
+      const apiError = cause instanceof ApiError ? cause : undefined;
+      push({
+        tone: "error",
+        message: apiError?.message ?? (cause as Error).message ?? t("editor.versionFailed"),
+        reference: apiError?.correlationId,
+      });
+    } finally {
+      setSaving(false);
+    }
+  }, [getXml, modelApi, model, push, onSaved, t]);
 
   const save = useCallback(
     async (options: { silent?: boolean } = {}) => {
@@ -119,20 +148,20 @@ export function DmnEditor({
         await modelApi.saveSource(model.id, xml);
         setDirty(false);
         setLastSavedAt(new Date());
-        if (!options.silent) push({ tone: "success", message: "Saved." });
+        if (!options.silent) push({ tone: "success", message: t("editor.saved.toast") });
         onSaved();
       } catch (cause) {
         const apiError = cause instanceof ApiError ? cause : undefined;
         push({
           tone: "error",
-          message: apiError?.message ?? (cause as Error).message ?? "Could not save this model.",
+          message: apiError?.message ?? (cause as Error).message ?? t("editor.saveFailed"),
           reference: apiError?.correlationId,
         });
       } finally {
         setSaving(false);
       }
     },
-    [getXml, modelApi, model.id, push, onSaved],
+    [getXml, modelApi, model.id, push, onSaved, t],
   );
 
   // Synced in an effect, not during render: writing a ref mid-render is unsafe under
@@ -166,13 +195,15 @@ export function DmnEditor({
       setDirty(false);
       setLastSavedAt(new Date());
       const deployment = await modelApi.deploy(model, xml);
-      push({ tone: "success", message: `Deployed as ${deployment.id}.` });
-      onSaved();
+      push({ tone: "success", message: t("editor.deployed", { id: deployment.id }) });
+      // Deploying cuts a version (§7.4.1), so the draft's version number has moved on.
+      // The row itself is unchanged, which is why nothing has to re-import.
+      onSaved(deployment.draft);
     } catch (cause) {
       const apiError = cause instanceof ApiError ? cause : undefined;
       push({
         tone: "error",
-        message: apiError?.message ?? (cause as Error).message ?? "Deployment failed.",
+        message: apiError?.message ?? (cause as Error).message ?? t("editor.deployFailed"),
         reference: apiError?.correlationId,
       });
     } finally {
@@ -181,7 +212,7 @@ export function DmnEditor({
   };
 
   return (
-    <section className="tf-editor" aria-label={`Editing ${model.name || model.id}`}>
+    <section className="tf-editor" aria-label={t("editor.editing", { name: model.name || model.id })}>
       <header className="tf-editor__header">
         <div className="tf-editor__identity">
           <button
@@ -194,18 +225,26 @@ export function DmnEditor({
           <h1 className="tf-editor__title">{model.name || model.key || model.id}</h1>
           <p className="tf-editor__meta" aria-live="polite">
             {dirty
-              ? "Unsaved changes"
+              ? t("editor.unsaved")
               : lastSavedAt
-                ? `Saved ${lastSavedAt.toLocaleTimeString()}`
-                : "No changes"}
+                ? t("editor.saved", { time: lastSavedAt.toLocaleTimeString(locale) })
+                : t("editor.noChanges")}
           </p>
         </div>
         <div className="tf-editor__actions">
           <Button variant="secondary" loading={saving} disabled={!ready} onClick={() => void save()}>
-            Save
+            {t("action.save")}
+          </Button>
+          <Button
+            variant="secondary"
+            loading={saving}
+            disabled={!ready}
+            onClick={() => void saveVersion()}
+          >
+            {t("editor.saveVersion")}
           </Button>
           <Button loading={deploying} disabled={!ready} onClick={() => setConfirmDeploy(true)}>
-            Deploy
+            {t("action.deploy")}
           </Button>
         </div>
       </header>
@@ -217,7 +256,7 @@ export function DmnEditor({
         <div className="tf-editor__canvas-wrap">
           {!ready && !error ? (
             <div className="tf-editor__loading">
-              <Skeleton rows={6} label="Loading decision model" />
+              <Skeleton rows={6} label={t("dmn.loading")} />
             </div>
           ) : null}
           <div className="tf-editor__canvas tf-editor__canvas--dmn" ref={containerRef} data-testid="dmn-canvas" />
@@ -226,10 +265,10 @@ export function DmnEditor({
 
       <ConfirmDialog
         open={confirmLeave}
-        title="Leave without saving?"
-        description={`"${model.name || model.id}" has unsaved changes. Leaving now discards them.`}
-        confirmLabel="Discard changes"
-        cancelLabel="Keep editing"
+        title={t("editor.leave.title")}
+        description={t("editor.leave.description", { name: model.name || model.id })}
+        confirmLabel={t("editor.leave.confirm")}
+        cancelLabel={t("editor.leave.cancel")}
         destructive
         onCancel={() => setConfirmLeave(false)}
         onConfirm={() => {
@@ -240,9 +279,9 @@ export function DmnEditor({
 
       <ConfirmDialog
         open={confirmDeploy}
-        title="Deploy this decision?"
-        description={`"${model.name || model.id}" will be saved and deployed to the decision engine. Evaluations from now on use this version.`}
-        confirmLabel="Save and deploy"
+        title={t("dmn.deploy.title")}
+        description={t("dmn.deploy.description", { name: model.name || model.id })}
+        confirmLabel={t("dmn.deploy.confirm")}
         busy={deploying}
         onCancel={() => setConfirmDeploy(false)}
         onConfirm={() => {

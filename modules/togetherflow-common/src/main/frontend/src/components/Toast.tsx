@@ -12,6 +12,7 @@ import {
   useState,
   type ReactNode,
 } from "react";
+import { useT } from "../i18n/I18nContext";
 
 export type ToastTone = "success" | "error" | "info" | "warning";
 
@@ -34,6 +35,7 @@ const ToastContext = createContext<ToastContextValue | null>(null);
 const AUTO_DISMISS_MS = 6000;
 
 export function ToastProvider({ children }: { children: ReactNode }) {
+  const t = useT();
   const [toasts, setToasts] = useState<Toast[]>([]);
   const nextId = useRef(1);
 
@@ -66,7 +68,7 @@ export function ToastProvider({ children }: { children: ReactNode }) {
               <p className="tf-toast__message">{toast.message}</p>
               {toast.reference ? (
                 <p className="tf-toast__reference">
-                  Reference: <code>{toast.reference}</code>
+                  {t("toast.reference")} <code>{toast.reference}</code>
                 </p>
               ) : null}
             </div>
@@ -74,7 +76,7 @@ export function ToastProvider({ children }: { children: ReactNode }) {
               type="button"
               className="tf-toast__close"
               onClick={() => dismiss(toast.id)}
-              aria-label="Dismiss notification"
+              aria-label={t("toast.dismiss")}
             >
               ×
             </button>

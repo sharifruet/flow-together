@@ -114,7 +114,7 @@ describe("Jobs", () => {
     expect(dialog).toHaveTextContent(/executed immediately/i);
     expect(api.execute).not.toHaveBeenCalled();
 
-    await userEvent.click(within(dialog).getByRole("button", { name: /confirm/i }));
+    await userEvent.click(within(dialog).getByRole("button", { name: /run now/i }));
     await waitFor(() => expect(api.execute).toHaveBeenCalledWith("async", "job-1"));
   });
 
@@ -128,7 +128,7 @@ describe("Jobs", () => {
     await userEvent.click(screen.getByRole("checkbox", { name: /select job job-1/i }));
     await userEvent.click(screen.getByRole("button", { name: /move back/i }));
     await userEvent.click(
-      within(await screen.findByRole("alertdialog")).getByRole("button", { name: /confirm/i }),
+      within(await screen.findByRole("alertdialog")).getByRole("button", { name: /move back/i }),
     );
 
     await waitFor(() => expect(api.moveDeadLetters).toHaveBeenCalledWith(["job-1"]));
@@ -160,7 +160,7 @@ describe("Jobs", () => {
     await userEvent.click(screen.getByRole("checkbox", { name: /select all jobs on this page/i }));
     await userEvent.click(screen.getByRole("button", { name: /run now/i }));
     await userEvent.click(
-      within(await screen.findByRole("alertdialog")).getByRole("button", { name: /confirm/i }),
+      within(await screen.findByRole("alertdialog")).getByRole("button", { name: /run now/i }),
     );
 
     expect(await screen.findByText(/1 of 2 jobs executed; 1 failed/i)).toBeInTheDocument();

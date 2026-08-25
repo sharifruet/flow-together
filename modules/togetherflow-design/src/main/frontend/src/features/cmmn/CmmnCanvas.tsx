@@ -13,6 +13,7 @@
  */
 
 import { useCallback, useEffect, useRef, useState } from "react";
+import { useT } from "@togetherflow/common";
 import {
   CONTAINER_TYPES,
   containerAt,
@@ -83,6 +84,7 @@ export function CmmnCanvas({
   onCommit,
   onPreview,
 }: CmmnCanvasProps) {
+  const t = useT();
   const svgRef = useRef<SVGSVGElement>(null);
   const [gesture, setGesture] = useState<Gesture | null>(null);
   const selection = selectedIds ?? (selectedId ? [selectedId] : []);
@@ -260,7 +262,7 @@ export function CmmnCanvas({
       height={height}
       viewBox={`${viewport.x} ${viewport.y} ${width / viewport.scale} ${height / viewport.scale}`}
       role="application"
-      aria-label="Case diagram"
+      aria-label={t("cmmn.canvasLabel")}
       onWheel={(event) => {
         if (!onViewportChange) return;
         // Ctrl/Cmd+wheel is the platform gesture for zoom; a plain wheel scrolls.
@@ -422,6 +424,7 @@ function ElementShape({
   onPointerDown: (event: React.PointerEvent) => void;
   onResize: (event: React.PointerEvent) => void;
 }) {
+  const t = useT();
   const { bounds: b, type } = element;
   const isContainer = CONTAINER_TYPES.has(type);
   const isListener = type.endsWith("EventListener");
@@ -431,7 +434,7 @@ function ElementShape({
       className={["tf-cmmn__shape", selected ? "is-selected" : ""].filter(Boolean).join(" ")}
       onPointerDown={onPointerDown}
       role="button"
-      aria-label={`${element.name || type} (${type})`}
+      aria-label={t("cmmn.elementLabel", { name: element.name || type, type })}
       tabIndex={0}
     >
       {isContainer ? (

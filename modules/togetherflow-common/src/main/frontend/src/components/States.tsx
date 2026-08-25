@@ -9,15 +9,17 @@
 
 import type { ReactNode } from "react";
 import { ApiError } from "../api/client";
+import { useT } from "../i18n/I18nContext";
 import { Button } from "./Button";
 
-export function Skeleton({ rows = 5, label = "Loading" }: { rows?: number; label?: string }) {
+export function Skeleton({ rows = 5, label }: { rows?: number; label?: string }) {
+  const t = useT();
   // role="status" does not take its accessible name from content, so label explicitly.
   return (
     <div
       className="tf-skeleton"
       role="status"
-      aria-label={label}
+      aria-label={label ?? t("states.loading")}
       aria-busy="true"
       aria-live="polite"
     >
@@ -48,14 +50,15 @@ export function EmptyState({ title, description, action, icon }: EmptyStateProps
 
 /** Distinct from EmptyState: the user filtered to nothing, so offer to undo the filter. */
 export function NoResultsState({ onClear }: { onClear?: () => void }) {
+  const t = useT();
   return (
     <EmptyState
-      title="No matches"
-      description="No items match the filters you've applied."
+      title={t("states.noResults.title")}
+      description={t("states.noResults.description")}
       action={
         onClear ? (
           <Button variant="secondary" onClick={onClear}>
-            Clear filters
+            {t("states.noResults.clear")}
           </Button>
         ) : undefined
       }
@@ -64,13 +67,11 @@ export function NoResultsState({ onClear }: { onClear?: () => void }) {
 }
 
 export function PermissionDeniedState({ description }: { description?: string }) {
+  const t = useT();
   return (
     <EmptyState
-      title="You don't have access to this"
-      description={
-        description ??
-        "Your account doesn't have the privilege needed to view this. Ask an administrator if you think this is wrong."
-      }
+      title={t("states.permissionDenied.title")}
+      description={description ?? t("states.permissionDenied.description")}
     />
   );
 }
@@ -81,22 +82,24 @@ export interface ErrorStateProps {
 }
 
 export function ErrorState({ error, onRetry }: ErrorStateProps) {
+  const t = useT();
   const apiError = error instanceof ApiError ? error : undefined;
   const message =
-    apiError?.message ?? (error instanceof Error ? error.message : "Something went wrong.");
+    apiError?.message ??
+    (error instanceof Error ? error.message : t("states.error.fallback"));
 
   return (
     <div className="tf-state tf-state--error" role="alert">
-      <h2 className="tf-state__title">Couldn't load this</h2>
+      <h2 className="tf-state__title">{t("states.error.title")}</h2>
       <p className="tf-state__description">{message}</p>
       {apiError ? (
         <p className="tf-state__meta">
-          Reference: <code>{apiError.correlationId}</code>
+          {t("states.error.reference")} <code>{apiError.correlationId}</code>
         </p>
       ) : null}
       {onRetry ? (
         <div className="tf-state__action">
-          <Button onClick={onRetry}>Try again</Button>
+          <Button onClick={onRetry}>{t("states.error.retry")}</Button>
         </div>
       ) : null}
     </div>

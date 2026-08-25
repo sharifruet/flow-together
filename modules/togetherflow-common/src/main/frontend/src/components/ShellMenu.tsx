@@ -13,20 +13,26 @@ import { TextInput } from "./Field";
 import { useToast } from "./Toast";
 import { ApiError } from "../api/client";
 import { useTheme, type ThemePreference } from "../theme/useTheme";
+import { useI18n } from "../i18n/I18nContext";
 import type { AppLinks } from "../config";
 
-const THEME_OPTIONS: { value: ThemePreference; label: string }[] = [
-  { value: "system", label: "Match system" },
-  { value: "light", label: "Light" },
-  { value: "dark", label: "Dark" },
-];
+const THEME_OPTIONS: ThemePreference[] = ["system", "light", "dark"];
 
-const APP_LABELS: Record<keyof AppLinks, string> = {
-  work: "Work",
-  control: "Control",
-  identity: "Identity",
-  design: "Design",
-};
+const APP_KEYS: (keyof AppLinks)[] = ["work", "control", "identity", "design"];
+
+/**
+ * A language's own name, not its name in the current UI language: someone who has landed
+ * in a language they don't read needs to recognise their own in the list.
+ */
+function nativeLanguageName(locale: string): string {
+  try {
+    return (
+      new Intl.DisplayNames([locale], { type: "language" }).of(locale) ?? locale
+    );
+  } catch {
+    return locale;
+  }
+}
 
 export interface ShellMenuProps {
   userId: string;
@@ -55,6 +61,7 @@ export function ShellMenu({
   const [changing, setChanging] = useState(false);
   const menuRef = useRef<HTMLDivElement>(null);
   const { theme, setTheme } = useTheme();
+  const { t, locale, setLocale, locales } = useI18n();
 
   useEffect(() => {
     if (!open) return;
@@ -72,9 +79,8 @@ export function ShellMenu({
     };
   }, [open]);
 
-  const others = (Object.keys(APP_LABELS) as (keyof AppLinks)[])
-    .filter((key) => key !== currentApp)
-    .map((key) => ({ key, label: APP_LABELS[key], href: apps?.[key] }))
+  const others = APP_KEYS.filter((key) => key !== currentApp)
+    .map((key) => ({ key, label: t(`shell.app.${key}`), href: apps?.[key] }))
     .filter((entry): entry is { key: keyof AppLinks; label: string; href: string } =>
       Boolean(entry.href),
     );
@@ -89,14 +95,16 @@ export function ShellMenu({
         onClick={() => setOpen((value) => !value)}
       >
         <span aria-hidden="true">{(userId || "?").slice(0, 2).toUpperCase()}</span>
-        <span className="tf-visually-hidden">Account menu for {userId}</span>
+        <span className="tf-visually-hidden">{t("shell.menu.accountFor", { userId })}</span>
       </button>
 
       {open ? (
         <div className="tf-menu" role="menu">
           <p className="tf-menu__user">
-            Signed in as <strong>{userId}</strong>
-            {tenantId ? <span className="tf-menu__tenant">Tenant: {tenantId}</span> : null}
+            {t("shell.menu.signedInAs")} <strong>{userId}</strong>
+            {tenantId ? (
+              <span className="tf-menu__tenant">{t("shell.menu.tenant", { tenantId })}</span>
+            ) : null}
           </p>
 
           {/*
@@ -106,10 +114,10 @@ export function ShellMenu({
           */}
           {others.length > 0 ? (
             <div className="tf-menu__section">
-              <p className="tf-menu__label">Other apps</p>
+              <p className="tf-menu__label">{t("shell.menu.otherApps")}</p>
               {others.map((app) => (
                 <a key={app.key} className="tf-menu__item" role="menuitem" href={app.href}>
-                  TogetherFlow {app.label}
+                  {t("shell.menu.appName", { app: app.label })}
                 </a>
               ))}
             </div>
@@ -117,28 +125,49 @@ export function ShellMenu({
 
           <div className="tf-menu__section">
             <p className="tf-menu__label" id="tf-theme-label">
-              Appearance
+              {t("shell.menu.appearance")}
             </p>
             <div className="tf-theme-choice" role="radiogroup" aria-labelledby="tf-theme-label">
               {THEME_OPTIONS.map((option) => (
                 <button
-                  key={option.value}
+                  key={option}
                   type="button"
                   role="radio"
-                  aria-checked={theme === option.value}
-                  className={[
-                    "tf-theme-choice__item",
-                    theme === option.value ? "is-selected" : "",
-                  ]
+                  aria-checked={theme === option}
+                  className={["tf-theme-choice__item", theme === option ? "is-selected" : ""]
                     .filter(Boolean)
                     .join(" ")}
-                  onClick={() => setTheme(option.value)}
+                  onClick={() => setTheme(option)}
                 >
-                  {option.label}
+                  {t(`shell.menu.theme.${option}`)}
                 </button>
               ))}
             </div>
           </div>
+
+          {/*
+            Only offered where the deployment actually ships more than one catalogue —
+            a picker with a single entry is noise.
+          */}
+          {locales.length > 1 ? (
+            <div className="tf-menu__section">
+              <p className="tf-menu__label" id="tf-locale-label">
+                {t("shell.menu.language")}
+              </p>
+              <select
+                className="tf-input tf-select"
+                aria-labelledby="tf-locale-label"
+                value={locale}
+                onChange={(event) => setLocale(event.target.value)}
+              >
+                {locales.map((option) => (
+                  <option key={option} value={option}>
+                    {nativeLanguageName(option)}
+                  </option>
+                ))}
+              </select>
+            </div>
+          ) : null}
 
           {onChangePassword ? (
             <button
@@ -150,12 +179,12 @@ export function ShellMenu({
                 setChanging(true);
               }}
             >
-              Change password
+              {t("shell.menu.changePassword")}
             </button>
           ) : null}
 
           <button type="button" className="tf-menu__item" role="menuitem" onClick={onSignOut}>
-            Sign out
+            {t("shell.menu.signOut")}
           </button>
         </div>
       ) : null}
@@ -183,6 +212,7 @@ function ChangePasswordDialog({
   onChangePassword: (newPassword: string) => Promise<void>;
   onClose: () => void;
 }) {
+  const { t } = useI18n();
   const { push } = useToast();
   const [password, setPassword] = useState("");
   const [confirmation, setConfirmation] = useState("");
@@ -196,13 +226,13 @@ function ChangePasswordDialog({
     setBusy(true);
     try {
       await onChangePassword(password);
-      push({ tone: "success", message: "Password changed." });
+      push({ tone: "success", message: t("password.changed") });
       onClose();
     } catch (cause) {
       const apiError = cause instanceof ApiError ? cause : undefined;
       push({
         tone: "error",
-        message: apiError?.message ?? "Could not change your password.",
+        message: apiError?.message ?? t("password.failed"),
         reference: apiError?.correlationId,
       });
     } finally {
@@ -216,40 +246,37 @@ function ChangePasswordDialog({
         className="tf-dialog"
         role="dialog"
         aria-modal="true"
-        aria-label="Change password"
+        aria-label={t("password.title")}
         onMouseDown={(event) => event.stopPropagation()}
       >
-        <h2 className="tf-dialog__title">Change password</h2>
-        <p className="tf-dialog__description">
-          Sets a new password for <strong>{userId}</strong>. You'll use it the next time you
-          sign in — this session stays signed in.
-        </p>
+        <h2 className="tf-dialog__title">{t("password.title")}</h2>
+        <p className="tf-dialog__description">{t("password.description", { userId })}</p>
 
         <TextInput
-          label="New password"
+          label={t("password.new")}
           type="password"
           autoComplete="new-password"
           value={password}
           disabled={busy}
-          error={tooShort ? `Use at least ${MIN_PASSWORD_LENGTH} characters.` : undefined}
+          error={tooShort ? t("password.tooShort", { min: MIN_PASSWORD_LENGTH }) : undefined}
           onChange={(event) => setPassword(event.target.value)}
         />
         <TextInput
-          label="Confirm new password"
+          label={t("password.confirm")}
           type="password"
           autoComplete="new-password"
           value={confirmation}
           disabled={busy}
-          error={mismatch ? "The two passwords don't match." : undefined}
+          error={mismatch ? t("password.mismatch") : undefined}
           onChange={(event) => setConfirmation(event.target.value)}
         />
 
         <div className="tf-dialog__actions">
           <Button variant="secondary" disabled={busy} onClick={onClose}>
-            Cancel
+            {t("dialog.cancel")}
           </Button>
           <Button loading={busy} disabled={!canSubmit} onClick={() => void submit()}>
-            Change password
+            {t("password.title")}
           </Button>
         </div>
       </div>

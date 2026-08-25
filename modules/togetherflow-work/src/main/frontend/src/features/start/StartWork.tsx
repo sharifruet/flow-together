@@ -20,6 +20,7 @@ import {
   initialValues,
   toRestVariables,
   useAsync,
+  useT,
   useToast,
   validateForm,
   validateVariables,
@@ -49,6 +50,7 @@ export interface StartWorkProps {
 }
 
 export function StartWork({ processApi, caseApi, onStarted }: StartWorkProps) {
+  const t = useT();
   const { push } = useToast();
   const [kind, setKind] = useState<StartKind>("process");
   const [search, setSearch] = useState("");
@@ -132,7 +134,7 @@ export function StartWork({ processApi, caseApi, onStarted }: StartWorkProps) {
           : await caseApi.start({ ...request, caseDefinitionId: selected.id });
       push({
         tone: "success",
-        message: `Started "${selected.name ?? selected.key}".`,
+        message: t("start.started", { name: selected.name ?? selected.key }),
       });
       setSelected(null);
       setBusinessKey("");
@@ -145,7 +147,7 @@ export function StartWork({ processApi, caseApi, onStarted }: StartWorkProps) {
       const apiError = cause instanceof ApiError ? cause : undefined;
       push({
         tone: "error",
-        message: apiError?.message ?? `Could not start that ${kind}.`,
+        message: apiError?.message ?? t(`start.failed.${kind}`),
         reference: apiError?.correlationId,
       });
     } finally {
@@ -155,29 +157,34 @@ export function StartWork({ processApi, caseApi, onStarted }: StartWorkProps) {
 
   if (selected) {
     return (
-      <section className="tf-start" aria-label={`Start ${selected.name ?? selected.key}`}>
+      <section
+        className="tf-start"
+        aria-label={t("start.label.for", { name: selected.name ?? selected.key })}
+      >
         <button type="button" className="tf-back" onClick={() => setSelected(null)}>
-          ← Back to all {kind === "process" ? "processes" : "cases"}
+          {t(`start.back.${kind}`)}
         </button>
         <h1 className="tf-start__title">{selected.name ?? selected.key}</h1>
         <p className="tf-start__meta">
-          Version {selected.version}
+          {t("start.version", { version: selected.version })}
           {selected.description ? ` · ${selected.description}` : ""}
         </p>
 
         <div className="tf-start__form">
           <TextInput
-            label="Business key"
-            hint="Optional reference you can use to find this instance later."
+            label={t("start.businessKey")}
+            hint={t("start.businessKey.hint")}
             value={businessKey}
             onChange={(event) => setBusinessKey(event.target.value)}
           />
 
           {selected.startFormDefined && startForm.loading ? (
-            <p className="tf-muted">Loading form…</p>
+            <p className="tf-muted">{t("start.form.loading")}</p>
           ) : usingForm && form ? (
             <>
-              <h2 className="tf-detail__section-title">{form.name || "Start form"}</h2>
+              <h2 className="tf-detail__section-title">
+                {form.name || t("start.form.title")}
+              </h2>
               <FormRenderer
                 model={form}
                 values={formValues}
@@ -186,39 +193,34 @@ export function StartWork({ processApi, caseApi, onStarted }: StartWorkProps) {
                 onChange={(fieldId, value) =>
                   setFormValues((previous) => ({ ...previous, [fieldId]: value }))
                 }
-                onBlur={(fieldId) => setTouched((t) => ({ ...t, [fieldId]: true }))}
+                onBlur={(fieldId) => setTouched((previous) => ({ ...previous, [fieldId]: true }))}
               />
             </>
           ) : (
             <>
               {selected.startFormDefined ? (
-                <p className="tf-detail__note">
-                  This {kind} declares a start form, but its definition could not be loaded.
-                  Set the underlying variables instead.
-                </p>
+                <p className="tf-detail__note">{t(`start.form.unloadable.${kind}`)}</p>
               ) : null}
-              <h2 className="tf-detail__section-title">Starting variables</h2>
+              <h2 className="tf-detail__section-title">{t("start.variables")}</h2>
               <VariableEditor variables={variables} onChange={setVariables} disabled={busy} />
             </>
           )}
 
           <div className="tf-start__actions">
             <Button variant="secondary" onClick={() => setSelected(null)} disabled={busy}>
-              Cancel
+              {t("dialog.cancel")}
             </Button>
             <Button
               loading={busy}
               disabled={validationErrors.length > 0}
               onClick={() => void start()}
             >
-              Start
+              {t("start.submit")}
             </Button>
           </div>
           {validationErrors.length > 0 ? (
             <p className="tf-detail__note tf-detail__note--error" role="alert">
-              {usingForm
-                ? "Fill in the required fields before starting."
-                : "Fix the highlighted variables before starting."}
+              {usingForm ? t("start.validation.form") : t("start.validation.variables")}
             </p>
           ) : null}
         </div>
@@ -227,13 +229,11 @@ export function StartWork({ processApi, caseApi, onStarted }: StartWorkProps) {
   }
 
   return (
-    <section className="tf-start" aria-label="Start new work">
-      <h1 className="tf-start__title">Start work</h1>
-      <p className="tf-start__meta">
-        Choose a {kind === "process" ? "process" : "case"} to start a new instance.
-      </p>
+    <section className="tf-start" aria-label={t("start.label")}>
+      <h1 className="tf-start__title">{t("start.title")}</h1>
+      <p className="tf-start__meta">{t(`start.choose.${kind}`)}</p>
 
-      <div className="tf-inbox__filters" role="tablist" aria-label="What to start">
+      <div className="tf-inbox__filters" role="tablist" aria-label={t("start.kindLabel")}>
         <button
           type="button"
           role="tab"
@@ -244,7 +244,7 @@ export function StartWork({ processApi, caseApi, onStarted }: StartWorkProps) {
             setSearch("");
           }}
         >
-          Processes
+          {t("start.kind.process")}
         </button>
         <button
           type="button"
@@ -256,19 +256,19 @@ export function StartWork({ processApi, caseApi, onStarted }: StartWorkProps) {
             setSearch("");
           }}
         >
-          Cases
+          {t("start.kind.case")}
         </button>
       </div>
 
       <div className="tf-start__search">
         <label className="tf-visually-hidden" htmlFor="tf-definition-search">
-          Search {kind === "process" ? "processes" : "cases"}
+          {t(`start.search.${kind}`)}
         </label>
         <input
           id="tf-definition-search"
           className="tf-input"
           type="search"
-          placeholder={kind === "process" ? "Search processes…" : "Search cases…"}
+          placeholder={t(`start.search.placeholder.${kind}`)}
           value={search}
           onChange={(event) => setSearch(event.target.value)}
         />
@@ -282,8 +282,8 @@ export function StartWork({ processApi, caseApi, onStarted }: StartWorkProps) {
         isEmpty={(page) => page.data.length === 0}
         empty={
           <EmptyState
-            title={kind === "process" ? "No processes deployed" : "No cases deployed"}
-            description={`Once a ${kind} is deployed to the engine, it'll be startable from here.`}
+            title={t(`start.empty.${kind}.title`)}
+            description={t(`start.empty.${kind}.description`)}
           />
         }
       >

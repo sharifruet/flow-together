@@ -16,6 +16,7 @@ import {
   DataTable,
   EmptyState,
   Pagination,
+  SavedViews,
   formatDateTime,
   useAsync,
   useToast,
@@ -24,37 +25,52 @@ import {
   type JobQueue,
   type JobResponse,
 } from "@togetherflow/common";
+import { useI18n, useRegisterShortcuts, useSavedViews, type Shortcut } from "@togetherflow/common";
 
 const PAGE_SIZE = 25;
 
-const QUEUES: { id: JobQueue; label: string; blurb: string }[] = [
-  { id: "async", label: "Async", blurb: "Work the engine is executing in the background." },
-  { id: "timer", label: "Timers", blurb: "Jobs waiting for their due date." },
-  { id: "suspended", label: "Suspended", blurb: "Jobs held because their instance is suspended." },
-  {
-    id: "deadletter",
-    label: "Dead letter",
-    blurb: "Jobs that exhausted their retries. Move them back once the cause is fixed.",
-  },
-  { id: "history", label: "History", blurb: "Async history processing, including cleanup." },
-];
+/** Order only; the label and blurb for each come from the catalogue. */
+const QUEUES: JobQueue[] = ["async", "timer", "suspended", "deadletter", "history"];
 
 export interface JobsProps {
   jobApi: JobApi;
 }
 
+/**
+ * What a saved view captures (§14.4). The queue is part of it: "failed dead-letter jobs"
+ * is one saved view an operator wants back, not two settings to re-pick.
+ */
+export interface JobsView {
+  queue: JobQueue;
+  failedOnly: boolean;
+}
+
+const DEFAULT_VIEW: JobsView = { queue: "async", failedOnly: false };
+
 export function Jobs({ jobApi }: JobsProps) {
+  const { t, locale } = useI18n();
   const { push } = useToast();
-  const [queue, setQueue] = useState<JobQueue>("async");
+  const [{ queue, failedOnly }, setView] = useState<JobsView>(DEFAULT_VIEW);
   const [start, setStart] = useState(0);
-  const [failedOnly, setFailedOnly] = useState(false);
+  const savedViews = useSavedViews<JobsView>("control.jobs");
   const [selected, setSelected] = useState<Set<string>>(new Set());
   const [busy, setBusy] = useState(false);
   const [reloadToken, setReloadToken] = useState(0);
   const [stacktraceFor, setStacktraceFor] = useState<string | null>(null);
-  const [confirm, setConfirm] = useState<{ title: string; description: string; run: () => void } | null>(
-    null,
-  );
+
+  const applyView = useCallback((next: JobsView) => {
+    setView(next);
+    setStart(0);
+    setSelected(new Set());
+  }, []);
+  const [confirm, setConfirm] = useState<{
+    title: string;
+    description: string;
+    /** Set explicitly rather than sniffed from the title, which no longer survives translation. */
+    destructive?: boolean;
+    confirmLabel: string;
+    run: () => void;
+  } | null>(null);
 
   const query = useMemo(
     () => ({ start, size: PAGE_SIZE, ...(failedOnly ? { withException: true } : {}) }),
@@ -82,14 +98,14 @@ export function Jobs({ jobApi }: JobsProps) {
         const apiError = cause instanceof ApiError ? cause : undefined;
         push({
           tone: "error",
-          message: apiError?.message ?? "That action could not be completed.",
+          message: apiError?.message ?? t("action.failed"),
           reference: apiError?.correlationId,
         });
       } finally {
         setBusy(false);
       }
     },
-    [push, reload],
+    [push, reload, t],
   );
 
   /**
@@ -103,20 +119,21 @@ export function Jobs({ jobApi }: JobsProps) {
       const failed = results.filter((r) => r.status === "rejected").length;
       const ok = results.length - failed;
       if (failed === 0) {
-        push({ tone: "success", message: `${ok} job${ok === 1 ? "" : "s"} ${verb}.` });
+        push({ tone: "success", message: t("jobs.done", { count: ok, verb }) });
       } else {
         push({
           tone: failed === results.length ? "error" : "warning",
-          message: `${ok} of ${results.length} jobs ${verb}; ${failed} failed.`,
+          message: t("jobs.partial", { ok, total: results.length, verb, failed }),
         });
       }
       setBusy(false);
       reload();
     },
-    [push, reload],
+    [push, reload, t],
   );
 
-  const rows = (data?.data ?? []) as JobResponse[];
+  // Memoised so the shortcut bindings' identity is stable across unrelated renders.
+  const rows = useMemo(() => (data?.data ?? []) as JobResponse[], [data]);
   const allSelected = rows.length > 0 && rows.every((job) => selected.has(job.id));
 
   const toggle = (id: string) =>
@@ -137,7 +154,7 @@ export function Jobs({ jobApi }: JobsProps) {
           <input
             type="checkbox"
             checked={selected.has(job.id)}
-            aria-label={`Select job ${job.id}`}
+            aria-label={t("jobs.select", { id: job.id })}
             onClick={(event) => event.stopPropagation()}
             onChange={() => toggle(job.id)}
           />
@@ -145,7 +162,7 @@ export function Jobs({ jobApi }: JobsProps) {
       },
       {
         key: "id",
-        header: "Job",
+        header: t("jobs.column.job"),
         render: (job) => (
           <div className="tf-task-cell">
             <span className="tf-task-cell__name">{job.elementName || job.elementId || job.id}</span>
@@ -158,7 +175,7 @@ export function Jobs({ jobApi }: JobsProps) {
       },
       {
         key: "retries",
-        header: "Retries",
+        header: t("jobs.column.retries"),
         width: "90px",
         render: (job) =>
           job.retries === 0 ? (
@@ -169,14 +186,15 @@ export function Jobs({ jobApi }: JobsProps) {
       },
       {
         key: "due",
-        header: queue === "timer" ? "Due" : "Created",
+        header: queue === "timer" ? t("jobs.column.due") : t("jobs.column.created"),
         width: "180px",
         secondary: true,
-        render: (job) => formatDateTime((queue === "timer" ? job.dueDate : job.createTime) ?? undefined),
+        render: (job) =>
+          formatDateTime((queue === "timer" ? job.dueDate : job.createTime) ?? undefined, locale),
       },
       {
         key: "error",
-        header: "Error",
+        header: t("jobs.column.error"),
         render: (job) =>
           job.exceptionMessage ? (
             <button
@@ -195,35 +213,59 @@ export function Jobs({ jobApi }: JobsProps) {
       },
     ];
     return base;
-  }, [selected, queue]);
+  }, [selected, queue, t, locale]);
 
-  const active = QUEUES.find((q) => q.id === queue)!;
+  const activeLabel = t(`jobs.queue.${queue}`);
+
+  /*
+   * Job triage is the highest-volume thing anyone does in Control (§14.4), and selecting
+   * a page then acting on it is the loop worth taking off the mouse. Registered here so
+   * they exist only while the job queue is on screen.
+   */
+  const shortcuts = useMemo<Shortcut[]>(
+    () => [
+      {
+        key: "a",
+        description: t("shortcuts.selectAll"),
+        when: rows.length > 0,
+        run: () => setSelected(allSelected ? new Set() : new Set(rows.map((job) => job.id))),
+      },
+      {
+        key: "f",
+        description: t("shortcuts.failedOnly"),
+        run: () => applyView({ queue, failedOnly: !failedOnly }),
+      },
+      {
+        key: "r",
+        description: t("shortcuts.refresh"),
+        run: () => setReloadToken((token) => token + 1),
+      },
+    ],
+    [t, rows, allSelected, applyView, queue, failedOnly],
+  );
+  useRegisterShortcuts(shortcuts);
   const selectedIds = [...selected];
 
   return (
-    <section className="tf-panel" aria-label="Jobs">
+    <section className="tf-panel" aria-label={t("jobs.label")}>
       <header className="tf-panel__header">
         <div>
-          <h1 className="tf-panel__title">Jobs</h1>
-          <p className="tf-panel__meta">{active.blurb}</p>
+          <h1 className="tf-panel__title">{t("jobs.title")}</h1>
+          <p className="tf-panel__meta">{t(`jobs.queue.${queue}.blurb`)}</p>
         </div>
       </header>
 
-      <div className="tf-inbox__filters" role="tablist" aria-label="Job queue">
-        {QUEUES.map((q) => (
+      <div className="tf-inbox__filters" role="tablist" aria-label={t("jobs.queueLabel")}>
+        {QUEUES.map((id) => (
           <button
-            key={q.id}
+            key={id}
             type="button"
             role="tab"
-            aria-selected={queue === q.id}
-            className={["tf-chip", queue === q.id ? "tf-chip--active" : ""].filter(Boolean).join(" ")}
-            onClick={() => {
-              setQueue(q.id);
-              setStart(0);
-              setSelected(new Set());
-            }}
+            aria-selected={queue === id}
+            className={["tf-chip", queue === id ? "tf-chip--active" : ""].filter(Boolean).join(" ")}
+            onClick={() => applyView({ queue: id, failedOnly })}
           >
-            {q.label}
+            {t(`jobs.queue.${id}`)}
           </button>
         ))}
       </div>
@@ -233,59 +275,76 @@ export function Jobs({ jobApi }: JobsProps) {
           <input
             type="checkbox"
             checked={failedOnly}
-            onChange={(event) => {
-              setFailedOnly(event.target.checked);
-              setStart(0);
-            }}
+            onChange={(event) => applyView({ queue, failedOnly: event.target.checked })}
           />
-          Failed only
+          {t("jobs.failedOnly")}
         </label>
+
+        {/* Saved filters (§14.4) — see the note on Control's instance list. */}
+        <SavedViews
+          views={savedViews.views}
+          current={{ queue, failedOnly }}
+          onApply={applyView}
+          onSave={savedViews.save}
+          onRemove={savedViews.remove}
+        />
 
         {rows.length > 0 ? (
           <label className="tf-checkbox">
             <input
               type="checkbox"
               checked={allSelected}
-              aria-label="Select all jobs on this page"
+              aria-label={t("jobs.selectAll")}
               onChange={() =>
                 setSelected(allSelected ? new Set() : new Set(rows.map((job) => job.id)))
               }
             />
-            Select all on page
+            {t("jobs.selectAllShort")}
           </label>
         ) : null}
 
         {selectedIds.length > 0 ? (
-          <div className="tf-toolbar__actions" role="group" aria-label="Bulk actions">
-            <span className="tf-muted">{selectedIds.length} selected</span>
+          <div className="tf-toolbar__actions" role="group" aria-label={t("jobs.bulkLabel")}>
+            <span className="tf-muted">{t("jobs.selected", { count: selectedIds.length })}</span>
             {queue === "deadletter" ? (
               <Button
                 loading={busy}
                 onClick={() =>
                   setConfirm({
-                    title: `Move ${selectedIds.length} job(s) back?`,
-                    description: `${selectedIds.length} dead-letter job(s) will be put back on the executable queue and retried. If the underlying cause is not fixed they will fail again.`,
+                    title: t("jobs.moveBack.title", { count: selectedIds.length }),
+                    description: t("jobs.moveBack.description", {
+                      count: selectedIds.length,
+                    }),
+                    confirmLabel: t("jobs.moveBack.action"),
                     run: () =>
-                      void run(`${selectedIds.length} job(s) moved back.`, () =>
-                        jobApi.moveDeadLetters(selectedIds),
+                      void run(
+                        t("jobs.done", {
+                          count: selectedIds.length,
+                          verb: t("jobs.verb.movedBack"),
+                        }),
+                        () => jobApi.moveDeadLetters(selectedIds),
                       ),
                   })
                 }
               >
-                Move back
+                {t("jobs.moveBack.action")}
               </Button>
             ) : (
               <Button
                 loading={busy}
                 onClick={() =>
                   setConfirm({
-                    title: `Run ${selectedIds.length} job(s) now?`,
-                    description: `${selectedIds.length} job(s) will be executed immediately rather than waiting for the scheduler.`,
-                    run: () => void runEach(selectedIds, "executed", (id) => jobApi.execute(queue, id)),
+                    title: t("jobs.runNow.title", { count: selectedIds.length }),
+                    description: t("jobs.runNow.description", { count: selectedIds.length }),
+                    confirmLabel: t("jobs.runNow.action"),
+                    run: () =>
+                      void runEach(selectedIds, t("jobs.verb.executed"), (id) =>
+                        jobApi.execute(queue, id),
+                      ),
                   })
                 }
               >
-                Run now
+                {t("jobs.runNow.action")}
               </Button>
             )}
             <Button
@@ -293,13 +352,18 @@ export function Jobs({ jobApi }: JobsProps) {
               loading={busy}
               onClick={() =>
                 setConfirm({
-                  title: `Delete ${selectedIds.length} job(s)?`,
-                  description: `${selectedIds.length} job(s) will be deleted permanently. Whatever they were going to do will never happen, and the instances waiting on them may stall. This can't be undone.`,
-                  run: () => void runEach(selectedIds, "deleted", (id) => jobApi.delete(queue, id)),
+                  title: t("jobs.delete.title", { count: selectedIds.length }),
+                  description: t("jobs.delete.description", { count: selectedIds.length }),
+                  destructive: true,
+                  confirmLabel: t("jobs.delete.action"),
+                  run: () =>
+                    void runEach(selectedIds, t("jobs.verb.deleted"), (id) =>
+                      jobApi.delete(queue, id),
+                    ),
                 })
               }
             >
-              Delete
+              {t("jobs.delete.action")}
             </Button>
           </div>
         ) : null}
@@ -313,11 +377,13 @@ export function Jobs({ jobApi }: JobsProps) {
         isEmpty={(page) => page.data.length === 0}
         empty={
           <EmptyState
-            title={failedOnly ? "No failed jobs" : `No ${active.label.toLowerCase()} jobs`}
-            description={
+            title={
               failedOnly
-                ? "Nothing in this queue has an exception recorded."
-                : "This queue is empty — nothing is waiting here."
+                ? t("jobs.empty.failed.title")
+                : t("jobs.empty.title", { queue: activeLabel.toLowerCase() })
+            }
+            description={
+              failedOnly ? t("jobs.empty.failed.description") : t("jobs.empty.description")
             }
           />
         }
@@ -325,7 +391,7 @@ export function Jobs({ jobApi }: JobsProps) {
         {(page) => (
           <>
             <DataTable
-              caption={`${active.label} jobs`}
+              caption={t("jobs.caption", { queue: activeLabel })}
               columns={columns}
               rows={page.data as JobResponse[]}
               rowKey={(job) => job.id}
@@ -353,8 +419,8 @@ export function Jobs({ jobApi }: JobsProps) {
         open={confirm !== null}
         title={confirm?.title ?? ""}
         description={confirm?.description ?? ""}
-        confirmLabel="Confirm"
-        destructive={confirm?.title.startsWith("Delete")}
+        confirmLabel={confirm?.confirmLabel}
+        destructive={confirm?.destructive}
         busy={busy}
         onCancel={() => setConfirm(null)}
         onConfirm={() => {
@@ -378,6 +444,7 @@ function StacktraceDialog({
   jobId: string;
   onClose: () => void;
 }) {
+  const { t } = useI18n();
   const { data, error, loading, refetch } = useAsync(
     (signal) => jobApi.stacktrace(queue, jobId, signal),
     [jobApi, queue, jobId],
@@ -389,17 +456,17 @@ function StacktraceDialog({
         className="tf-dialog tf-dialog--wide"
         role="dialog"
         aria-modal="true"
-        aria-label={`Stack trace for job ${jobId}`}
+        aria-label={t("jobs.stackTrace.label", { id: jobId })}
         onMouseDown={(event) => event.stopPropagation()}
       >
-        <h2 className="tf-dialog__title">Stack trace</h2>
+        <h2 className="tf-dialog__title">{t("jobs.stackTrace.title")}</h2>
         <p className="tf-dialog__description">{jobId}</p>
         <AsyncBoundary loading={loading} error={error} data={data} onRetry={refetch} skeletonRows={6}>
           {(trace) => <pre className="tf-stacktrace">{trace}</pre>}
         </AsyncBoundary>
         <div className="tf-dialog__actions">
           <Button variant="secondary" onClick={onClose}>
-            Close
+            {t("action.close")}
           </Button>
         </div>
       </div>

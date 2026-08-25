@@ -8,6 +8,7 @@
 
 import { useId, useState } from "react";
 import type { FormField, FormModelResponse, OptionFormField } from "../api/types";
+import { useT, type TFunction } from "../i18n/I18nContext";
 import { isFieldVisible } from "./visibility";
 import {
   isContainer,
@@ -145,6 +146,7 @@ function InputField({
   onBlur,
   onUploadFile,
 }: NodeProps) {
+  const t = useT();
   const generatedId = useId();
   const inputId = `tf-form-${field.id || generatedId}`;
   const errorId = `${inputId}-error`;
@@ -211,6 +213,7 @@ function InputField({
       describedBy,
       onChange,
       onBlur,
+      t,
     });
   } else if (field.type === "multi-line-text") {
     control = (
@@ -237,17 +240,17 @@ function InputField({
         onUploadFile={onUploadFile}
       />
     ) : (
-      <p className="tf-form__static tf-muted">
-        Files can't be attached before the work is started — start it first, then attach
-        from the task.
-      </p>
+      <p className="tf-form__static tf-muted">{t("form.upload.beforeStart")}</p>
     );
   } else if (field.type === "people" || field.type === "functional-group") {
     control = (
       <input
         {...commonProps}
         type="text"
-        placeholder={field.placeholder || (field.type === "people" ? "User id" : "Group id")}
+        placeholder={
+          field.placeholder ||
+          (field.type === "people" ? t("form.userId") : t("form.groupId"))
+        }
         value={String(value ?? "")}
         onChange={(event) => onChange(field.id, event.target.value)}
       />
@@ -287,6 +290,8 @@ interface OptionRenderContext {
   describedBy: string | undefined;
   onChange: (fieldId: string, value: unknown) => void;
   onBlur?: (fieldId: string) => void;
+  /** Passed down rather than hooked: renderOptions is a helper, not a component. */
+  t: TFunction;
 }
 
 function renderOptions(field: OptionFormField, ctx: OptionRenderContext): React.ReactNode {
@@ -352,7 +357,7 @@ function renderOptions(field: OptionFormField, ctx: OptionRenderContext): React.
       onChange={(event) => ctx.onChange(field.id, event.target.value)}
       onBlur={ctx.onBlur ? () => ctx.onBlur?.(field.id) : undefined}
     >
-      <option value="">{field.placeholder || "Choose…"}</option>
+      <option value="">{field.placeholder || ctx.t("form.choose")}</option>
       {options.map((option) => (
         <option key={option.id ?? option.name} value={option.name}>
           {option.name}
@@ -396,6 +401,7 @@ function UploadField({
   onChange: (fieldId: string, value: unknown) => void;
   onUploadFile: (field: FormField, file: File) => Promise<string>;
 }) {
+  const t = useT();
   const [busy, setBusy] = useState(false);
   const [failed, setFailed] = useState<string | null>(null);
   const [name, setName] = useState<string | null>(null);
@@ -419,7 +425,7 @@ function UploadField({
               setName(file.name);
             })
             .catch((cause: unknown) => {
-              setFailed(cause instanceof Error ? cause.message : "Upload failed.");
+              setFailed(cause instanceof Error ? cause.message : t("form.upload.failed"));
               // Leave the field empty rather than pretending a value was stored.
               onChange(field.id, undefined);
             })
@@ -428,14 +434,14 @@ function UploadField({
       />
       {busy ? (
         <span className="tf-form__upload-state" role="status">
-          Uploading…
+          {t("form.upload.busy")}
         </span>
       ) : failed ? (
         <span className="tf-form__upload-state tf-form__upload-state--error" role="alert">
           {failed}
         </span>
       ) : value && name ? (
-        <span className="tf-form__upload-state">Attached {name}</span>
+        <span className="tf-form__upload-state">{t("form.upload.attached", { name })}</span>
       ) : null}
     </div>
   );

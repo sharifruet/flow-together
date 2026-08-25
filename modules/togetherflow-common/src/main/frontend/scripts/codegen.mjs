@@ -30,6 +30,9 @@ const outDir = resolve(here, "../src/api/generated");
 const SPECS = [
   ["openapi/process/flowable-oas-process.yaml", "process", false],
   ["openapi/decision/flowable-oas-decision.yaml", "decision", false],
+  // Hand-authored rather than generated from the engine's annotations — see the
+  // spec's own preamble and REQUIREMENTS.md §8.
+  ["openapi/idm/flowable-oas-idm.yaml", "idm", false],
   ["swagger/cmmn/flowable-swagger-cmmn.yaml", "cmmn", true],
   ["swagger/app/flowable-swagger-app.yaml", "app", true],
   ["swagger/eventregistry/flowable-swagger-eventregistry.yaml", "eventregistry", true],

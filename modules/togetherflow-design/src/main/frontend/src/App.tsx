@@ -3,19 +3,19 @@ import {
   ApiClient,
   AppApi,
   EventRegistryApi,
+  LoginScreen,
   ModelApi,
   Skeleton,
-  ToastProvider,
   UserProfileApi,
   modelKindOf,
   useAsync,
   useAuth,
+  useT,
   useTenant,
   type ModelResponse,
   type AppLinks,
 } from "@togetherflow/common";
 import { AppShell } from "./features/shell/AppShell";
-import { LoginScreen } from "./features/shell/LoginScreen";
 import { ModelLibrary } from "./features/library/ModelLibrary";
 
 /**
@@ -54,6 +54,7 @@ export interface AppProps {
 
 export function App({ apps,
   apiBase, dmnBase, cmmnBase, appBase, eventBase, fetchImpl }: AppProps) {
+  const t = useT();
   const { session, signOut, getAuthHeaders, isInitialising } = useAuth();
   const { tenantId } = useTenant();
   const [editing, setEditing] = useState<ModelResponse | null>(null);
@@ -66,9 +67,11 @@ export function App({ apps,
         fetchImpl,
         getAuthHeaders,
         getTenantId: () => tenantId,
+        // Error copy the user sees comes from the active catalogue, not English (§8).
+        translate: t,
         onUnauthorized: signOut,
       }),
-    [fetchImpl, getAuthHeaders, tenantId, signOut],
+    [fetchImpl, getAuthHeaders, tenantId, signOut, t],
   );
 
   const modelApi = useMemo(
@@ -89,7 +92,15 @@ export function App({ apps,
   );
 
   const close = useCallback(() => setEditing(null), []);
-  const onSaved = useCallback(() => setRefreshToken((t) => t + 1), []);
+  /**
+   * A save or deploy finished. Deploying cuts a version (§7.4.1), which bumps the draft's
+   * version number — the row is unchanged, so this updates what the editor displays
+   * without re-importing the diagram and discarding the user's undo stack.
+   */
+  const onSaved = useCallback((draft?: ModelResponse) => {
+    if (draft) setEditing(draft);
+    setRefreshToken((token) => token + 1);
+  }, []);
   /**
    * Self-service password change (§7.5). The identity resource that owns this lives on
    * the *process* API, so every app can offer it without carrying an IDM client.
@@ -107,13 +118,13 @@ export function App({ apps,
     return (
       <main className="tf-login">
         <div className="tf-login__card">
-          <p className="tf-login__subtitle">Signing you in…</p>
+          <p className="tf-login__subtitle">{t("app.starting")}</p>
         </div>
       </main>
     );
   }
 
-  if (!session) return <LoginScreen />;
+  if (!session) return <LoginScreen app="design" />;
 
   if (editing) {
     const loadError =
@@ -183,10 +194,7 @@ export function App({ apps,
   );
 }
 
+/** Public entry point; the provider stack lives in `AppRoot` (`main.tsx`). */
 export function DesignApp(props: AppProps) {
-  return (
-    <ToastProvider>
-      <App {...props} />
-    </ToastProvider>
-  );
+  return <App {...props} />;
 }

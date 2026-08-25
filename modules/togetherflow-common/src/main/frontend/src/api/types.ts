@@ -83,7 +83,10 @@ export interface TaskQueryRequest {
   nameLikeIgnoreCase?: string;
   processDefinitionKey?: string;
   dueBefore?: string;
+  dueAfter?: string;
+  withoutDueDate?: boolean;
   minimumPriority?: number;
+  maximumPriority?: number;
   active?: boolean;
   tenantId?: string;
   includeProcessVariables?: boolean;

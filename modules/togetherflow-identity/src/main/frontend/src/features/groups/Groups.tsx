@@ -11,6 +11,7 @@ import {
   TextInput,
   useAsync,
   useDebouncedValue,
+  useT,
   useToast,
   userDisplayName,
   type Column,
@@ -27,6 +28,7 @@ export interface GroupsProps {
 }
 
 export function Groups({ idm, readOnly }: GroupsProps) {
+  const t = useT();
   const { push } = useToast();
   const [start, setStart] = useState(0);
   const [search, setSearch] = useState("");
@@ -67,7 +69,7 @@ export function Groups({ idm, readOnly }: GroupsProps) {
         const apiError = cause instanceof ApiError ? cause : undefined;
         push({
           tone: "error",
-          message: apiError?.message ?? "That action could not be completed.",
+          message: apiError?.message ?? t("action.failed"),
           reference: apiError?.correlationId,
         });
         return false;
@@ -75,14 +77,14 @@ export function Groups({ idm, readOnly }: GroupsProps) {
         setBusy(false);
       }
     },
-    [push, reload],
+    [push, reload, t],
   );
 
   const columns = useMemo<Column<IdmGroup>[]>(
     () => [
       {
         key: "name",
-        header: "Group",
+        header: t("groups.column.group"),
         render: (group) => (
           <div className="tf-task-cell">
             <span className="tf-task-cell__name">{group.name || group.id}</span>
@@ -92,7 +94,7 @@ export function Groups({ idm, readOnly }: GroupsProps) {
       },
       {
         key: "type",
-        header: "Type",
+        header: t("groups.column.type"),
         secondary: true,
         width: "140px",
         render: (group) => group.type || <span className="tf-muted">—</span>,
@@ -104,15 +106,15 @@ export function Groups({ idm, readOnly }: GroupsProps) {
         render: (group) => (
           <div className="tf-row-actions">
             <Button variant="ghost" onClick={() => setSelected(group)}>
-              Members
+              {t("groups.members.action")}
             </Button>
             {!readOnly ? (
               <>
                 <Button variant="ghost" onClick={() => setEditing(group)}>
-                  Edit
+                  {t("action.edit")}
                 </Button>
                 <Button variant="ghost" onClick={() => setPendingDelete(group)}>
-                  Delete
+                  {t("action.delete")}
                 </Button>
               </>
             ) : null}
@@ -120,7 +122,7 @@ export function Groups({ idm, readOnly }: GroupsProps) {
         ),
       },
     ],
-    [readOnly],
+    [readOnly, t],
   );
 
   if (selected) {
@@ -135,28 +137,28 @@ export function Groups({ idm, readOnly }: GroupsProps) {
   }
 
   return (
-    <section className="tf-panel" aria-label="Groups">
+    <section className="tf-panel" aria-label={t("groups.label")}>
       <header className="tf-panel__header">
         <div>
-          <h1 className="tf-panel__title">Groups</h1>
+          <h1 className="tf-panel__title">{t("groups.title")}</h1>
           <p className="tf-panel__meta">
             {readOnly
-              ? "Groups come from a directory and can't be changed here."
-              : "Groups collect users so work and privileges can be assigned in bulk."}
+              ? t("groups.meta.readOnly")
+              : t("groups.meta")}
           </p>
         </div>
-        {!readOnly ? <Button onClick={() => setCreating(true)}>New group</Button> : null}
+        {!readOnly ? <Button onClick={() => setCreating(true)}>{t("groups.new")}</Button> : null}
       </header>
 
       <div className="tf-panel__search">
         <label className="tf-visually-hidden" htmlFor="tf-group-search">
-          Search groups by name
+          {t("groups.searchLabel")}
         </label>
         <input
           id="tf-group-search"
           className="tf-input"
           type="search"
-          placeholder="Search groups…"
+          placeholder={t("groups.search")}
           value={search}
           onChange={(event) => {
             setSearch(event.target.value);
@@ -181,14 +183,14 @@ export function Groups({ idm, readOnly }: GroupsProps) {
             />
           ) : (
             <EmptyState
-              title="No groups yet"
+              title={t("groups.empty.title")}
               description={
                 readOnly
-                  ? "No groups were returned by the directory."
-                  : "Create a group to assign work to a team rather than an individual."
+                  ? t("groups.empty.description.readOnly")
+                  : t("groups.empty.description")
               }
               action={
-                !readOnly ? <Button onClick={() => setCreating(true)}>New group</Button> : undefined
+                !readOnly ? <Button onClick={() => setCreating(true)}>{t("groups.new")}</Button> : undefined
               }
             />
           )
@@ -197,7 +199,7 @@ export function Groups({ idm, readOnly }: GroupsProps) {
         {(page) => (
           <>
             <DataTable
-              caption="Groups"
+              caption={t("groups.caption")}
               columns={columns}
               rows={page.data}
               rowKey={(group) => group.id}
@@ -214,11 +216,13 @@ export function Groups({ idm, readOnly }: GroupsProps) {
 
       {creating ? (
         <GroupDialog
-          title="New group"
+          title={t("groups.create.title")}
           busy={busy}
           onCancel={() => setCreating(false)}
           onSubmit={async (values) => {
-            const ok = await run(`Group "${values.id}" created.`, () => idm.createGroup(values));
+            const ok = await run(t("groups.created", { id: values.id }), () =>
+              idm.createGroup(values),
+            );
             if (ok) setCreating(false);
           }}
         />
@@ -226,12 +230,12 @@ export function Groups({ idm, readOnly }: GroupsProps) {
 
       {editing ? (
         <GroupDialog
-          title={`Edit ${editing.name || editing.id}`}
+          title={t("groups.edit.title", { name: editing.name || editing.id })}
           group={editing}
           busy={busy}
           onCancel={() => setEditing(null)}
           onSubmit={async (values) => {
-            const ok = await run(`Group "${editing.id}" updated.`, () =>
+            const ok = await run(t("groups.updated", { id: editing.id }), () =>
               idm.updateGroup(editing.id, { name: values.name, type: values.type }),
             );
             if (ok) setEditing(null);
@@ -241,9 +245,11 @@ export function Groups({ idm, readOnly }: GroupsProps) {
 
       <ConfirmDialog
         open={pendingDelete !== null}
-        title="Delete this group?"
-        description={`"${pendingDelete?.name || pendingDelete?.id || ""}" will be removed. Anyone relying on it for task assignment or privileges loses that access. This can't be undone.`}
-        confirmLabel="Delete group"
+        title={t("groups.delete.title")}
+        description={t("groups.delete.description", {
+          name: pendingDelete?.name || pendingDelete?.id || "",
+        })}
+        confirmLabel={t("groups.delete.confirm")}
         destructive
         busy={busy}
         onCancel={() => setPendingDelete(null)}
@@ -265,6 +271,7 @@ interface GroupMembersProps {
 }
 
 function GroupMembers({ idm, group, readOnly, onBack }: GroupMembersProps) {
+  const t = useT();
   const { push } = useToast();
   const [newMember, setNewMember] = useState("");
   const [busy, setBusy] = useState(false);
@@ -288,7 +295,7 @@ function GroupMembers({ idm, group, readOnly, onBack }: GroupMembersProps) {
         const apiError = cause instanceof ApiError ? cause : undefined;
         push({
           tone: "error",
-          message: apiError?.message ?? "That action could not be completed.",
+          message: apiError?.message ?? t("action.failed"),
           reference: apiError?.correlationId,
         });
         return false;
@@ -296,14 +303,14 @@ function GroupMembers({ idm, group, readOnly, onBack }: GroupMembersProps) {
         setBusy(false);
       }
     },
-    [push],
+    [push, t],
   );
 
   const columns = useMemo<Column<IdmUser>[]>(
     () => [
       {
         key: "user",
-        header: "Member",
+        header: t("groups.members.column"),
         render: (user) => (
           <div className="tf-task-cell">
             <span className="tf-task-cell__name">{userDisplayName(user)}</span>
@@ -319,13 +326,13 @@ function GroupMembers({ idm, group, readOnly, onBack }: GroupMembersProps) {
           readOnly ? null : (
             <div className="tf-row-actions">
               <Button variant="ghost" onClick={() => setPendingRemove(user)}>
-                Remove
+                {t("action.remove")}
               </Button>
             </div>
           ),
       },
     ],
-    [readOnly],
+    [readOnly, t],
   );
 
   return (
@@ -354,14 +361,14 @@ function GroupMembers({ idm, group, readOnly, onBack }: GroupMembersProps) {
           }}
         >
           <TextInput
-            label="Add a member"
-            placeholder="User id"
+            label={t("groups.members.add")}
+            placeholder={t("groups.members.addPlaceholder")}
             value={newMember}
             disabled={busy}
             onChange={(event) => setNewMember(event.target.value)}
           />
           <Button type="submit" loading={busy} disabled={!newMember.trim()}>
-            Add
+            {t("action.add")}
           </Button>
         </form>
       ) : null}
@@ -374,18 +381,18 @@ function GroupMembers({ idm, group, readOnly, onBack }: GroupMembersProps) {
         isEmpty={(page) => page.data.length === 0}
         empty={
           <EmptyState
-            title="No members"
+            title={t("groups.members.empty.title")}
             description={
               readOnly
-                ? "This group has no members in the directory."
-                : "Add a user by id to make them a member of this group."
+                ? t("groups.members.empty.description.readOnly")
+                : t("groups.members.empty.description")
             }
           />
         }
       >
         {(page) => (
           <DataTable
-            caption={`Members of ${group.id}`}
+            caption={t("groups.members.caption", { id: group.id })}
             columns={columns}
             rows={page.data}
             rowKey={(user) => user.id}
@@ -395,9 +402,12 @@ function GroupMembers({ idm, group, readOnly, onBack }: GroupMembersProps) {
 
       <ConfirmDialog
         open={pendingRemove !== null}
-        title="Remove this member?"
-        description={`"${pendingRemove ? userDisplayName(pendingRemove) : ""}" will no longer be a member of "${group.name || group.id}", and loses any access that membership granted.`}
-        confirmLabel="Remove member"
+        title={t("groups.members.remove.title")}
+        description={t("groups.members.remove.description", {
+          name: pendingRemove ? userDisplayName(pendingRemove) : "",
+          group: group.name || group.id,
+        })}
+        confirmLabel={t("groups.members.remove.confirm")}
         destructive
         busy={busy}
         onCancel={() => setPendingRemove(null)}
@@ -405,7 +415,7 @@ function GroupMembers({ idm, group, readOnly, onBack }: GroupMembersProps) {
           const target = pendingRemove;
           setPendingRemove(null);
           if (target) {
-            void run(`"${target.id}" removed from ${group.id}.`, () =>
+            void run(t("groups.members.removed", { id: target.id, group: group.id }), () =>
               idm.removeGroupMember(group.id, target.id),
             );
           }
@@ -424,6 +434,7 @@ interface GroupDialogProps {
 }
 
 function GroupDialog({ title, group, busy, onCancel, onSubmit }: GroupDialogProps) {
+  const t = useT();
   const isEdit = Boolean(group);
   const [values, setValues] = useState<IdmGroup>({
     id: group?.id ?? "",
@@ -431,7 +442,7 @@ function GroupDialog({ title, group, busy, onCancel, onSubmit }: GroupDialogProp
     type: group?.type ?? "",
   });
   const [submitted, setSubmitted] = useState(false);
-  const idError = !values.id.trim() ? "A group id is required." : undefined;
+  const idError = !values.id.trim() ? t("groups.error.idRequired") : undefined;
 
   return (
     <div className="tf-dialog-backdrop" onMouseDown={onCancel}>
@@ -453,34 +464,34 @@ function GroupDialog({ title, group, busy, onCancel, onSubmit }: GroupDialogProp
         <h2 className="tf-dialog__title">{title}</h2>
 
         <TextInput
-          label="Group id"
+          label={t("groups.field.id")}
           value={values.id}
           required
           disabled={isEdit || busy}
-          hint={isEdit ? "A group's id can't be changed." : "Referenced by process models."}
+          hint={isEdit ? t("groups.field.id.hintEdit") : t("groups.field.id.hintNew")}
           error={submitted ? idError : undefined}
           onChange={(event) => setValues((v) => ({ ...v, id: event.target.value }))}
         />
         <TextInput
-          label="Name"
+          label={t("groups.field.name")}
           value={values.name ?? ""}
           disabled={busy}
           onChange={(event) => setValues((v) => ({ ...v, name: event.target.value }))}
         />
         <TextInput
-          label="Type"
+          label={t("groups.field.type")}
           value={values.type ?? ""}
           disabled={busy}
-          hint="Free-form, e.g. 'assignment' or 'security-role'."
+          hint={t("groups.field.type.hint")}
           onChange={(event) => setValues((v) => ({ ...v, type: event.target.value }))}
         />
 
         <div className="tf-dialog__actions">
           <Button variant="secondary" onClick={onCancel} disabled={busy}>
-            Cancel
+            {t("dialog.cancel")}
           </Button>
           <Button type="submit" loading={busy}>
-            {isEdit ? "Save changes" : "Create group"}
+            {isEdit ? t("action.saveChanges") : t("groups.create.submit")}
           </Button>
         </div>
       </form>

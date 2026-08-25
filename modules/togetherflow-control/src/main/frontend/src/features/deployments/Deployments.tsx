@@ -9,6 +9,7 @@ import {
   Pagination,
   formatDateTime,
   useAsync,
+  useI18n,
   useDebouncedValue,
   useToast,
   type Column,
@@ -23,6 +24,7 @@ export interface DeploymentsProps {
 }
 
 export function Deployments({ repositoryApi }: DeploymentsProps) {
+  const { t, locale } = useI18n();
   const { push } = useToast();
   const fileInput = useRef<HTMLInputElement>(null);
   const [start, setStart] = useState(0);
@@ -55,21 +57,21 @@ export function Deployments({ repositoryApi }: DeploymentsProps) {
         const apiError = cause instanceof ApiError ? cause : undefined;
         push({
           tone: "error",
-          message: apiError?.message ?? "That action could not be completed.",
+          message: apiError?.message ?? t("action.failed"),
           reference: apiError?.correlationId,
         });
       } finally {
         setBusy(false);
       }
     },
-    [push],
+    [push, t],
   );
 
   const columns = useMemo<Column<DeploymentResponse>[]>(
     () => [
       {
         key: "name",
-        header: "Deployment",
+        header: t("deployments.column.deployment"),
         render: (deployment) => (
           <div className="tf-task-cell">
             <span className="tf-task-cell__name">{deployment.name || deployment.id}</span>
@@ -79,10 +81,10 @@ export function Deployments({ repositoryApi }: DeploymentsProps) {
       },
       {
         key: "time",
-        header: "Deployed",
+        header: t("deployments.column.deployed"),
         width: "180px",
         secondary: true,
-        render: (deployment) => formatDateTime(deployment.deploymentTime ?? undefined),
+        render: (deployment) => formatDateTime(deployment.deploymentTime ?? undefined, locale),
       },
       {
         key: "actions",
@@ -91,7 +93,7 @@ export function Deployments({ repositoryApi }: DeploymentsProps) {
         render: (deployment) => (
           <div className="tf-row-actions">
             <Button variant="ghost" onClick={() => setSelected(deployment)}>
-              Resources
+              {t("deployments.resources.action")}
             </Button>
             <Button
               variant="ghost"
@@ -100,13 +102,13 @@ export function Deployments({ repositoryApi }: DeploymentsProps) {
                 setPendingDelete(deployment);
               }}
             >
-              Delete
+              {t("action.delete")}
             </Button>
           </div>
         ),
       },
     ],
-    [],
+    [locale, t],
   );
 
   if (selected) {
@@ -120,10 +122,10 @@ export function Deployments({ repositoryApi }: DeploymentsProps) {
   }
 
   return (
-    <section className="tf-panel" aria-label="Deployments">
+    <section className="tf-panel" aria-label={t("deployments.label")}>
       <header className="tf-panel__header">
         <div>
-          <h1 className="tf-panel__title">Deployments</h1>
+          <h1 className="tf-panel__title">{t("deployments.title")}</h1>
           <p className="tf-panel__meta">
             What has been deployed to the engine, and the resources inside each one.
           </p>
@@ -139,27 +141,27 @@ export function Deployments({ repositoryApi }: DeploymentsProps) {
             onChange={(event) => {
               const file = event.target.files?.[0];
               if (!file) return;
-              void run(`"${file.name}" deployed.`, async () => {
+              void run(t("deployments.deployed", { name: file.name }), async () => {
                 await repositoryApi.upload(file);
                 if (fileInput.current) fileInput.current.value = "";
               });
             }}
           />
           <Button loading={busy} onClick={() => fileInput.current?.click()}>
-            Deploy file
+            {t("deployments.deployFile")}
           </Button>
         </div>
       </header>
 
       <div className="tf-panel__search">
         <label className="tf-visually-hidden" htmlFor="tf-deployment-search">
-          Search deployments by name
+          {t("deployments.searchLabel")}
         </label>
         <input
           id="tf-deployment-search"
           className="tf-input"
           type="search"
-          placeholder="Search deployments…"
+          placeholder={t("deployments.search")}
           value={search}
           onChange={(event) => {
             setSearch(event.target.value);
@@ -184,8 +186,8 @@ export function Deployments({ repositoryApi }: DeploymentsProps) {
             />
           ) : (
             <EmptyState
-              title="Nothing deployed"
-              description="Deploy a BPMN, CMMN, DMN or form file to get started."
+              title={t("deployments.empty.title")}
+              description={t("deployments.empty.description")}
             />
           )
         }
@@ -193,7 +195,7 @@ export function Deployments({ repositoryApi }: DeploymentsProps) {
         {(page) => (
           <>
             <DataTable
-              caption="Deployments"
+              caption={t("deployments.caption")}
               columns={columns}
               rows={page.data}
               rowKey={(deployment) => deployment.id}
@@ -214,10 +216,10 @@ export function Deployments({ repositoryApi }: DeploymentsProps) {
             className="tf-dialog"
             role="alertdialog"
             aria-modal="true"
-            aria-label="Delete deployment"
+            aria-label={t("deployments.delete.label")}
             onMouseDown={(event) => event.stopPropagation()}
           >
-            <h2 className="tf-dialog__title">Delete this deployment?</h2>
+            <h2 className="tf-dialog__title">{t("deployments.delete.title")}</h2>
             <p className="tf-dialog__description">
               "{pendingDelete.name || pendingDelete.id}" and its definitions will be removed.
             </p>
@@ -227,16 +229,16 @@ export function Deployments({ repositoryApi }: DeploymentsProps) {
                 checked={cascade}
                 onChange={(event) => setCascade(event.target.checked)}
               />
-              Also delete running instances started from it
+              {t("deployments.delete.cascadeLabel")}
             </label>
             <p className="tf-dialog__warning" role="note">
               {cascade
-                ? "Every running instance from this deployment will be deleted too. Work in progress is lost."
-                : "Without this, the delete fails if any instance is still running."}
+                ? t("deployments.delete.cascade")
+                : t("deployments.delete.noCascade")}
             </p>
             <div className="tf-dialog__actions">
               <Button variant="secondary" onClick={() => setPendingDelete(null)} disabled={busy}>
-                Cancel
+                {t("dialog.cancel")}
               </Button>
               <Button
                 variant="danger"
@@ -244,12 +246,12 @@ export function Deployments({ repositoryApi }: DeploymentsProps) {
                 onClick={() => {
                   const target = pendingDelete;
                   setPendingDelete(null);
-                  void run(`Deployment "${target.name || target.id}" deleted.`, () =>
+                  void run(t("deployments.deleted", { name: target.name || target.id }), () =>
                     repositoryApi.deleteDeployment(target.id, cascade),
                   );
                 }}
               >
-                Delete deployment
+                {t("deployments.delete.button")}
               </Button>
             </div>
           </div>
@@ -268,13 +270,14 @@ function DeploymentResources({
   deployment: DeploymentResponse;
   onBack: () => void;
 }) {
+  const { t, locale } = useI18n();
   const { data, error, loading, refetch } = useAsync(
     (signal) => repositoryApi.listDeploymentResources(deployment.id, signal),
     [repositoryApi, deployment.id],
   );
 
   return (
-    <section className="tf-panel" aria-label="Deployment resources">
+    <section className="tf-panel" aria-label={t("deployments.resources.label")}>
       <button type="button" className="tf-back" onClick={onBack}>
         ← Back to all deployments
       </button>
@@ -282,7 +285,9 @@ function DeploymentResources({
         <div>
           <h1 className="tf-panel__title">{deployment.name || deployment.id}</h1>
           <p className="tf-panel__meta">
-            Deployed {formatDateTime(deployment.deploymentTime ?? undefined)}
+            {t("deployments.deployedAt", {
+              when: formatDateTime(deployment.deploymentTime ?? undefined, locale),
+            })}
           </p>
         </div>
       </header>
@@ -293,7 +298,12 @@ function DeploymentResources({
         data={data}
         onRetry={refetch}
         isEmpty={(resources) => resources.length === 0}
-        empty={<EmptyState title="No resources" description="This deployment contains no files." />}
+        empty={
+          <EmptyState
+            title={t("deployments.resources.empty.title")}
+            description={t("deployments.resources.empty.description")}
+          />
+        }
       >
         {(resources) => (
           <ul className="tf-resources">

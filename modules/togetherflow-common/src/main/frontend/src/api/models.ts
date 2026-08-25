@@ -9,6 +9,10 @@
  * 2. There is **no endpoint that deploys a model**. Deployment means re-uploading the
  *    source to `/repository/deployments` (or `/dmn-repository/deployments`) as a
  *    multipart file, so `deploy()` below reads the draft and posts it onward.
+ * 3. The model table **is versioned natively** — the query resource exposes `version`
+ *    and `latestVersion`, and rows sharing a `key` form a version series. Version
+ *    history (§7.4.1) is therefore built on the engine's own model, not on a side table:
+ *    see `cutVersion` below.
  */
 
 import type { ApiClient } from "./client";
@@ -38,6 +42,18 @@ export interface ModelRequest {
   metaInfo?: string;
   deploymentId?: string;
   tenantId?: string;
+}
+
+/**
+ * A deployment, plus the draft as it stands afterwards.
+ *
+ * Deploying cuts a version (§7.4.1), which bumps the draft's version number. The row
+ * itself is unchanged, so an editor can carry on without re-importing — see `cutVersion`.
+ * `draft` is absent when the version could not be recorded.
+ */
+export interface DeployResult {
+  id: string;
+  draft?: ModelResponse;
 }
 
 export interface ModelQuery {
@@ -147,6 +163,76 @@ export class ModelApi {
    * The source endpoint only accepts multipart, and takes the first file part
    * regardless of its field name.
    */
+  /**
+   * Every version of a model, newest first.
+   *
+   * Rows sharing a `key` are one series; the highest version is the working draft and
+   * everything below it is history. Scoped by category as well as key so a form and a
+   * process that happen to share a key are not mistaken for one another.
+   */
+  async listVersions(
+    model: ModelResponse,
+    signal?: AbortSignal,
+  ): Promise<ModelResponse[]> {
+    if (!model.key) return [model];
+    const page = await this.list(
+      { key: model.key, sort: "version", order: "desc", size: 100 },
+      signal,
+    );
+    return page.data.filter((candidate) => candidate.category === model.category);
+  }
+
+  /**
+   * Cuts a version: moves the working draft on to `version + 1` and writes the content
+   * as it stands into a new row at the version just left behind. That row is history
+   * from then on.
+   *
+   * Archives *backward* rather than copying forward. Copying the content into a new row
+   * and treating that as the draft was the first design and reads more naturally, but it
+   * changes the draft's id — which means the editor re-imports, and the user loses their
+   * undo stack every time they deploy. Keeping the draft's id stable is worth the one
+   * oddity this introduces: an archive row's `createTime` is the moment the version was
+   * cut, not the moment its content was written. `version` is the field that carries the
+   * ordering, and it is correct.
+   *
+   * Returns the updated draft — same id, new version number.
+   */
+  async cutVersion(model: ModelResponse, currentSource: string): Promise<ModelResponse> {
+    const from = model.version ?? 1;
+    // Move the draft first, so there is never a moment where two rows share a version.
+    const draft = await this.update(model.id, { version: from + 1 });
+    const archived = await this.create({
+      name: model.name,
+      key: model.key,
+      category: model.category,
+      version: from,
+      metaInfo: model.metaInfo,
+      tenantId: model.tenantId,
+    });
+    await this.saveSource(archived.id, currentSource);
+    return draft;
+  }
+
+  /**
+   * Restores an older version into the working draft.
+   *
+   * Cuts a version first, so the state being rolled back *from* becomes history rather
+   * than being lost — a history that silently drops what you undid is worse than none.
+   * Never rewrites or deletes an existing version.
+   */
+  async restoreVersion(
+    current: ModelResponse,
+    version: ModelResponse,
+  ): Promise<ModelResponse> {
+    const [restoring, currentSource] = await Promise.all([
+      this.getSource(version.id),
+      this.getSource(current.id),
+    ]);
+    const draft = await this.cutVersion(current, currentSource ?? "");
+    await this.saveSource(current.id, restoring ?? "");
+    return draft;
+  }
+
   saveSource(modelId: string, xml: string): Promise<void> {
     const form = new FormData();
     form.append("file", new Blob([xml], { type: "application/xml" }), "model.xml");
@@ -165,7 +251,7 @@ export class ModelApi {
    * engine, hence the exact casing. `deploymentName` is only honoured as a query
    * parameter, not as a form field.
    */
-  async deploy(model: ModelResponse, xml: string): Promise<{ id: string }> {
+  async deploy(model: ModelResponse, xml: string): Promise<DeployResult> {
     const kind = modelKindOf(model);
     if (kind === "app") {
       // Apps ship as a zip bundle via AppApi.deployBundle, not as a single resource.
@@ -188,11 +274,11 @@ export class ModelApi {
       const fileName = `${baseName}.dmn`;
       const form = new FormData();
       form.append(fileName, new Blob([xml], { type: "application/xml" }), fileName);
-      return this.dmnClient.request("/dmn-repository/deployments", {
-        method: "POST",
-        query: { tenantId: this.dmnClient.tenantId },
-        body: form,
-      });
+      const deployment = await this.dmnClient.request<{ id: string }>(
+        "/dmn-repository/deployments",
+        { method: "POST", query: { tenantId: this.dmnClient.tenantId }, body: form },
+      );
+      return { ...deployment, draft: await this.cutVersionAfterDeploy(model, xml) };
     }
 
     if (kind === "cmmn") {
@@ -203,20 +289,41 @@ export class ModelApi {
       const fileName = `${baseName}.cmmn`;
       const form = new FormData();
       form.append(fileName, new Blob([xml], { type: "application/xml" }), fileName);
-      return this.cmmnClient.request("/cmmn-repository/deployments", {
-        method: "POST",
-        query: { tenantId: this.cmmnClient.tenantId },
-        body: form,
-      });
+      const deployment = await this.cmmnClient.request<{ id: string }>(
+        "/cmmn-repository/deployments",
+        { method: "POST", query: { tenantId: this.cmmnClient.tenantId }, body: form },
+      );
+      return { ...deployment, draft: await this.cutVersionAfterDeploy(model, xml) };
     }
 
     const fileName = `${baseName}.bpmn20.xml`;
     const form = new FormData();
     form.append(fileName, new Blob([xml], { type: "application/xml" }), fileName);
-    return this.client.request("/repository/deployments", {
+    const deployment = await this.client.request<{ id: string }>("/repository/deployments", {
       method: "POST",
       query: { deploymentName: model.name || baseName, tenantId: this.client.tenantId },
       body: form,
     });
+    return { ...deployment, draft: await this.cutVersionAfterDeploy(model, xml) };
+  }
+
+  /**
+   * Cuts a version once a deploy has succeeded — §7.4.1's "deployed models are immutable,
+   * superseded by a new version instead".
+   *
+   * Failure here is swallowed on purpose. The deploy already happened and is what the
+   * user asked for; turning a bookkeeping failure into a failed deploy would be a lie
+   * about what the engine did. The caller gets `undefined` and keeps editing the row it
+   * had, so the worst case is a missing history entry rather than a lost model.
+   */
+  private async cutVersionAfterDeploy(
+    model: ModelResponse,
+    source: string,
+  ): Promise<ModelResponse | undefined> {
+    try {
+      return await this.cutVersion(model, source);
+    } catch {
+      return undefined;
+    }
   }
 }

@@ -1,0 +1,458 @@
+openapi: 3.0.3
+info:
+  title: Flowable IDM REST API
+  description: >-
+    Identity management: users, groups, memberships and privileges, as exposed by
+    `flowable-idm-rest`.
+
+    Hand-authored rather than generated. The other engines publish a spec produced from
+    their Swagger annotations; `flowable-idm-rest` is not part of that generation, which
+    REQUIREMENTS.md §8 records as a gap ("Phase 1 should add one under docs/public-api,
+    mirroring the existing generator"). This file closes it so the IDM client is covered
+    by the same generated-types contract check as every other engine, instead of being
+    the one surface where frontend/backend drift goes unnoticed.
+
+    Derived by reading the resource classes named against each operation below. Keep it
+    in step with them: `togetherflow-common`'s `contract.test-d.ts` asserts the curated
+    client types conform to what is generated from here, so a change made in one place
+    and not the other fails the build.
+  version: 8.1.0
+servers:
+  - url: /idm-api
+    description: Default servlet mapping for the IDM REST app.
+tags:
+  - name: Users
+  - name: Groups
+  - name: Privileges
+  - name: Engine
+paths:
+  /users:
+    get:
+      tags: [Users]
+      summary: List users
+      description: UserCollectionResource#getUsers
+      operationId: listUsers
+      parameters:
+        - { name: id, in: query, schema: { type: string } }
+        - { name: firstName, in: query, schema: { type: string } }
+        - { name: lastName, in: query, schema: { type: string } }
+        - { name: displayName, in: query, schema: { type: string } }
+        - { name: email, in: query, schema: { type: string } }
+        - { name: firstNameLike, in: query, schema: { type: string } }
+        - { name: lastNameLike, in: query, schema: { type: string } }
+        - { name: displayNameLike, in: query, schema: { type: string } }
+        - { name: emailLike, in: query, schema: { type: string } }
+        - name: memberOfGroup
+          in: query
+          description: Only users who are members of the given group.
+          schema: { type: string }
+        - name: sort
+          in: query
+          schema:
+            type: string
+            enum: [id, firstName, lastname, email, displayName]
+        - { name: order, in: query, schema: { type: string, enum: [asc, desc] } }
+        - { name: start, in: query, schema: { type: integer, format: int32 } }
+        - { name: size, in: query, schema: { type: integer, format: int32 } }
+      responses:
+        "200":
+          description: Matching users.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/DataResponseUserResponse" }
+    post:
+      tags: [Users]
+      summary: Create a user
+      description: UserCollectionResource#createUser
+      operationId: createUser
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/UserRequest" }
+      responses:
+        "201":
+          description: The created user.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/UserResponse" }
+  /users/{userId}:
+    parameters:
+      - { name: userId, in: path, required: true, schema: { type: string } }
+    get:
+      tags: [Users]
+      summary: Get a user
+      description: UserResource#getUser
+      operationId: getUser
+      responses:
+        "200":
+          description: The user.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/UserResponse" }
+        "404": { description: No user with that id. }
+    put:
+      tags: [Users]
+      summary: Update a user
+      description: >-
+        UserResource#updateUser. Only the properties present in the body are changed —
+        omitting `password` leaves the current one in place.
+      operationId: updateUser
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/UserRequest" }
+      responses:
+        "200":
+          description: The updated user.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/UserResponse" }
+    delete:
+      tags: [Users]
+      summary: Delete a user
+      description: UserResource#deleteUser
+      operationId: deleteUser
+      responses:
+        "204": { description: Deleted. }
+        "404": { description: No user with that id. }
+  /groups:
+    get:
+      tags: [Groups]
+      summary: List groups
+      description: GroupCollectionResource#getGroups
+      operationId: listGroups
+      parameters:
+        - { name: id, in: query, schema: { type: string } }
+        - { name: name, in: query, schema: { type: string } }
+        - { name: type, in: query, schema: { type: string } }
+        - { name: nameLike, in: query, schema: { type: string } }
+        - name: member
+          in: query
+          description: Only groups with the given user as a member.
+          schema: { type: string }
+        - { name: sort, in: query, schema: { type: string, enum: [id, name, type] } }
+        - { name: order, in: query, schema: { type: string, enum: [asc, desc] } }
+        - { name: start, in: query, schema: { type: integer, format: int32 } }
+        - { name: size, in: query, schema: { type: integer, format: int32 } }
+      responses:
+        "200":
+          description: Matching groups.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/DataResponseGroupResponse" }
+    post:
+      tags: [Groups]
+      summary: Create a group
+      description: GroupCollectionResource#createGroup
+      operationId: createGroup
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/GroupRequest" }
+      responses:
+        "201":
+          description: The created group.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/GroupResponse" }
+  /groups/{groupId}:
+    parameters:
+      - { name: groupId, in: path, required: true, schema: { type: string } }
+    get:
+      tags: [Groups]
+      summary: Get a group
+      description: GroupResource#getGroup
+      operationId: getGroup
+      responses:
+        "200":
+          description: The group.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/GroupResponse" }
+        "404": { description: No group with that id. }
+    put:
+      tags: [Groups]
+      summary: Update a group
+      description: GroupResource#updateGroup
+      operationId: updateGroup
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/GroupRequest" }
+      responses:
+        "200":
+          description: The updated group.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/GroupResponse" }
+    delete:
+      tags: [Groups]
+      summary: Delete a group
+      description: GroupResource#deleteGroup
+      operationId: deleteGroup
+      responses:
+        "204": { description: Deleted. }
+        "404": { description: No group with that id. }
+  /groups/{groupId}/members:
+    parameters:
+      - { name: groupId, in: path, required: true, schema: { type: string } }
+    post:
+      tags: [Groups]
+      summary: Add a member to a group
+      description: >-
+        GroupMembershipCollectionResource#createMembership. There is no matching "list
+        members" operation — members are listed through `GET /users?memberOfGroup=`.
+      operationId: addGroupMember
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/MembershipRequest" }
+      responses:
+        "201":
+          description: The created membership.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/MembershipResponse" }
+  /groups/{groupId}/members/{userId}:
+    parameters:
+      - { name: groupId, in: path, required: true, schema: { type: string } }
+      - { name: userId, in: path, required: true, schema: { type: string } }
+    delete:
+      tags: [Groups]
+      summary: Remove a member from a group
+      description: GroupMembershipResource#deleteMembership
+      operationId: removeGroupMember
+      responses:
+        "204": { description: Removed. }
+        "404": { description: No such membership. }
+  /privileges:
+    get:
+      tags: [Privileges]
+      summary: List privileges
+      description: >-
+        PrivilegeCollectionResource#listPrivileges. Privileges themselves are defined by
+        the deployment; this API grants and revokes them but cannot create them.
+      operationId: listPrivileges
+      parameters:
+        - { name: id, in: query, schema: { type: string } }
+        - { name: name, in: query, schema: { type: string } }
+        - { name: userId, in: query, schema: { type: string } }
+        - { name: groupId, in: query, schema: { type: string } }
+        - { name: start, in: query, schema: { type: integer, format: int32 } }
+        - { name: size, in: query, schema: { type: integer, format: int32 } }
+      responses:
+        "200":
+          description: Matching privileges.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/DataResponsePrivilegeResponse" }
+  /privileges/{privilegeId}:
+    parameters:
+      - { name: privilegeId, in: path, required: true, schema: { type: string } }
+    get:
+      tags: [Privileges]
+      summary: Get a privilege, with the users and groups holding it
+      description: PrivilegeResource#getPrivilege
+      operationId: getPrivilege
+      responses:
+        "200":
+          description: The privilege.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/PrivilegeResponse" }
+        "404": { description: No privilege with that id. }
+  /privileges/{privilegeId}/users:
+    parameters:
+      - { name: privilegeId, in: path, required: true, schema: { type: string } }
+    get:
+      tags: [Privileges]
+      summary: List the users holding a privilege
+      description: PrivilegeCollectionResource#listPrivilegeUsers
+      operationId: listPrivilegeUsers
+      responses:
+        "200":
+          description: Users holding it.
+          content:
+            application/json:
+              schema:
+                type: array
+                items: { $ref: "#/components/schemas/UserResponse" }
+    post:
+      tags: [Privileges]
+      summary: Grant a privilege to a user
+      description: PrivilegeCollectionResource#addUserPrivilege
+      operationId: addUserPrivilege
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/AddPrivilegeRequest" }
+      responses:
+        "201": { description: Granted. }
+  /privileges/{privilegeId}/users/{userId}:
+    parameters:
+      - { name: privilegeId, in: path, required: true, schema: { type: string } }
+      - { name: userId, in: path, required: true, schema: { type: string } }
+    delete:
+      tags: [Privileges]
+      summary: Revoke a privilege from a user
+      description: PrivilegeCollectionResource#deleteUserPrivilege
+      operationId: deleteUserPrivilege
+      responses:
+        "204": { description: Revoked. }
+  /privileges/{privilegeId}/groups:
+    parameters:
+      - { name: privilegeId, in: path, required: true, schema: { type: string } }
+    get:
+      tags: [Privileges]
+      summary: List the groups holding a privilege
+      description: PrivilegeCollectionResource#listPrivilegeGroups
+      operationId: listPrivilegeGroups
+      responses:
+        "200":
+          description: Groups holding it.
+          content:
+            application/json:
+              schema:
+                type: array
+                items: { $ref: "#/components/schemas/GroupResponse" }
+    post:
+      tags: [Privileges]
+      summary: Grant a privilege to a group
+      description: PrivilegeCollectionResource#addGroupPrivilege
+      operationId: addGroupPrivilege
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/AddPrivilegeRequest" }
+      responses:
+        "201": { description: Granted. }
+  /privileges/{privilegeId}/groups/{groupId}:
+    parameters:
+      - { name: privilegeId, in: path, required: true, schema: { type: string } }
+      - { name: groupId, in: path, required: true, schema: { type: string } }
+    delete:
+      tags: [Privileges]
+      summary: Revoke a privilege from a group
+      description: PrivilegeCollectionResource#deleteGroupPrivilege
+      operationId: deleteGroupPrivilege
+      responses:
+        "204": { description: Revoked. }
+  /management/engine:
+    get:
+      tags: [Engine]
+      summary: IDM engine info
+      description: IdmEngineResource#getEngineInfo
+      operationId: getIdmEngineInfo
+      responses:
+        "200":
+          description: Engine name, version and resource URL.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/IdmEngineInfoResponse" }
+components:
+  schemas:
+    UserResponse:
+      type: object
+      properties:
+        id: { type: string, example: testuser }
+        firstName: { type: string }
+        lastName: { type: string }
+        displayName: { type: string }
+        email: { type: string, example: no-reply@flowable.org }
+        url: { type: string }
+        # `password` is never returned; it exists on the request only.
+    UserRequest:
+      type: object
+      properties:
+        id: { type: string }
+        firstName: { type: string }
+        lastName: { type: string }
+        displayName: { type: string }
+        email: { type: string }
+        password: { type: string, description: Write-only. }
+    GroupResponse:
+      type: object
+      properties:
+        id: { type: string }
+        name: { type: string }
+        type: { type: string }
+        url: { type: string }
+    GroupRequest:
+      type: object
+      properties:
+        id: { type: string }
+        name: { type: string }
+        type: { type: string }
+    MembershipRequest:
+      type: object
+      properties:
+        userId: { type: string }
+    MembershipResponse:
+      type: object
+      properties:
+        userId: { type: string }
+        groupId: { type: string }
+        url: { type: string }
+    PrivilegeResponse:
+      type: object
+      properties:
+        id: { type: string }
+        name: { type: string }
+        users:
+          type: array
+          items: { $ref: "#/components/schemas/UserResponse" }
+        groups:
+          type: array
+          items: { $ref: "#/components/schemas/GroupResponse" }
+    AddPrivilegeRequest:
+      type: object
+      properties:
+        userId: { type: string }
+        groupId: { type: string }
+    IdmEngineInfoResponse:
+      type: object
+      properties:
+        name: { type: string }
+        version: { type: string }
+        resourceUrl: { type: string }
+        exception: { type: string }
+    DataResponseUserResponse:
+      allOf:
+        - $ref: "#/components/schemas/DataResponse"
+        - type: object
+          properties:
+            data:
+              type: array
+              items: { $ref: "#/components/schemas/UserResponse" }
+    DataResponseGroupResponse:
+      allOf:
+        - $ref: "#/components/schemas/DataResponse"
+        - type: object
+          properties:
+            data:
+              type: array
+              items: { $ref: "#/components/schemas/GroupResponse" }
+    DataResponsePrivilegeResponse:
+      allOf:
+        - $ref: "#/components/schemas/DataResponse"
+        - type: object
+          properties:
+            data:
+              type: array
+              items: { $ref: "#/components/schemas/PrivilegeResponse" }
+    DataResponse:
+      type: object
+      description: The paging envelope every collection resource returns.
+      properties:
+        total: { type: integer, format: int64 }
+        start: { type: integer, format: int32 }
+        size: { type: integer, format: int32 }
+        sort: { type: string }
+        order: { type: string }

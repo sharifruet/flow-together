@@ -18,6 +18,7 @@ import {
   TextInput,
   emptyChannel,
   parseEventDraft,
+  useT,
   useToast,
   type ChannelDirection,
   type EventDraft,
@@ -36,7 +37,8 @@ export interface EventEditorProps {
   initialSource: string | null;
   loadError?: string | null;
   onBack: () => void;
-  onSaved: () => void;
+  /** Called after a save or deploy; carries the updated draft where one exists. */
+  onSaved: (draft?: ModelResponse) => void;
 }
 
 export function EventEditor({
@@ -48,6 +50,7 @@ export function EventEditor({
   onBack,
   onSaved,
 }: EventEditorProps) {
+  const t = useT();
   const { push } = useToast();
   const parsed = useMemo(
     () => parseEventDraft(initialSource, model.key ?? "event", model.name ?? "Event"),
@@ -76,20 +79,20 @@ export function EventEditor({
       try {
         await modelApi.saveSource(model.id, JSON.stringify(draft, null, 2));
         setDirty(false);
-        if (!options.silent) push({ tone: "success", message: "Saved." });
+        if (!options.silent) push({ tone: "success", message: t("editor.saved.toast") });
         onSaved();
       } catch (cause) {
         const apiError = cause instanceof ApiError ? cause : undefined;
         push({
           tone: "error",
-          message: apiError?.message ?? "Could not save this model.",
+          message: apiError?.message ?? t("editor.saveFailed"),
           reference: apiError?.correlationId,
         });
       } finally {
         setSaving(false);
       }
     },
-    [modelApi, model.id, draft, push, onSaved],
+    [modelApi, model.id, draft, push, onSaved, t],
   );
 
   const saveRef = useRef(save);
@@ -127,13 +130,13 @@ export function EventEditor({
         await eventApi.deploy("channel", draft.channel.key, JSON.stringify(draft.channel, null, 2));
         deployed.push("channel");
       }
-      push({ tone: "success", message: `Deployed ${deployed.join(" and ")}.` });
+      push({ tone: "success", message: t("event.deployed", { what: deployed.join(" and ") }) });
       onSaved();
     } catch (cause) {
       const apiError = cause instanceof ApiError ? cause : undefined;
       push({
         tone: "error",
-        message: apiError?.message ?? "Deployment failed.",
+        message: apiError?.message ?? t("editor.deployFailed"),
         reference: apiError?.correlationId,
       });
     } finally {
@@ -156,7 +159,7 @@ export function EventEditor({
   };
 
   return (
-    <section className="tf-panel" aria-label={`Editing ${model.name || model.id}`}>
+    <section className="tf-panel" aria-label={t("editor.editing", { name: model.name || model.id })}>
       <button
         type="button"
         className="tf-back"
@@ -169,19 +172,19 @@ export function EventEditor({
         <div>
           <h1 className="tf-panel__title">{model.name || model.id}</h1>
           <p className="tf-panel__meta" aria-live="polite">
-            {dirty ? "Unsaved changes" : "Event definition"}
+            {dirty ? t("editor.unsaved") : t("event.definition")}
           </p>
         </div>
         <div className="tf-row-actions">
           <Button variant="secondary" loading={saving} onClick={() => void save()}>
-            Save
+            {t("action.save")}
           </Button>
           <Button
             loading={deploying}
             disabled={!event && !channel}
             onClick={() => setConfirmDeploy(true)}
           >
-            Deploy
+            {t("action.deploy")}
           </Button>
         </div>
       </header>
@@ -194,18 +197,18 @@ export function EventEditor({
 
       <div className="tf-app-builder">
         <section>
-          <h2 className="tf-panel__section-title">Event</h2>
+          <h2 className="tf-panel__section-title">{t("event.section.event")}</h2>
           {event ? (
             <>
               <TextInput
-                label="Event key"
+                label={t("event.key")}
                 value={event.key}
                 disabled={busy}
-                hint="Referenced by process and case models."
+                hint={t("event.key.hint")}
                 onChange={(e) => update({ event: { ...event, key: e.target.value } })}
               />
               <TextInput
-                label="Event name"
+                label={t("event.name")}
                 value={event.name}
                 disabled={busy}
                 onChange={(e) => update({ event: { ...event, name: e.target.value } })}
@@ -215,7 +218,7 @@ export function EventEditor({
                 disabled={busy}
                 onClick={() => update({ event: undefined })}
               >
-                Remove event
+                {t("event.removeEvent")}
               </Button>
             </>
           ) : (
@@ -232,7 +235,7 @@ export function EventEditor({
                 })
               }
             >
-              Add an event definition
+              {t("event.addEvent")}
             </Button>
           )}
         </section>
@@ -246,19 +249,19 @@ export function EventEditor({
                 engine can match an incoming event to a waiting instance.
               </p>
               {event.payload.length === 0 ? (
-                <p className="tf-muted">No payload fields.</p>
+                <p className="tf-muted">{t("event.payload.none")}</p>
               ) : (
                 <ul className="tf-payload">
                   {event.payload.map((entry, index) => (
                     <li className="tf-payload__row" key={index}>
                       <TextInput
-                        label="Name"
+                        label={t("event.payload.name")}
                         value={entry.name}
                         disabled={busy}
                         onChange={(e) => setPayload(index, { name: e.target.value })}
                       />
                       <SelectInput
-                        label="Type"
+                        label={t("event.payload.type")}
                         value={entry.type}
                         disabled={busy}
                         onChange={(e) => setPayload(index, { type: e.target.value })}
@@ -278,12 +281,12 @@ export function EventEditor({
                             setPayload(index, { correlationParameter: e.target.checked || undefined })
                           }
                         />
-                        Correlation
+                        {t("event.correlation")}
                       </label>
                       <button
                         type="button"
                         className="tf-chip-item__remove"
-                        aria-label={`Remove field ${entry.name || index + 1}`}
+                        aria-label={t("event.payload.remove", { name: entry.name || index + 1 })}
                         disabled={busy}
                         onClick={() =>
                           update({
@@ -309,7 +312,7 @@ export function EventEditor({
                   })
                 }
               >
-                Add field
+                {t("event.addField")}
               </Button>
             </>
           ) : null}
@@ -317,37 +320,37 @@ export function EventEditor({
       </div>
 
       <section className="tf-panel__section">
-        <h2 className="tf-panel__section-title">Channel</h2>
+        <h2 className="tf-panel__section-title">{t("event.section.channel")}</h2>
         {channel ? (
           <div className="tf-app-builder">
             <div>
               <TextInput
-                label="Channel key"
+                label={t("event.channel.key")}
                 value={channel.key}
                 disabled={busy}
                 onChange={(e) => update({ channel: { ...channel, key: e.target.value } })}
               />
               <TextInput
-                label="Channel name"
+                label={t("event.channel.name")}
                 value={channel.name}
                 disabled={busy}
                 onChange={(e) => update({ channel: { ...channel, name: e.target.value } })}
               />
               <SelectInput
-                label="Direction"
+                label={t("event.channel.direction")}
                 value={channel.channelType}
                 disabled={busy}
                 onChange={(e) =>
                   update({ channel: { ...channel, channelType: e.target.value as ChannelDirection } })
                 }
               >
-                <option value="inbound">Inbound — receive events</option>
-                <option value="outbound">Outbound — send events</option>
+                <option value="inbound">{t("event.channel.inbound")}</option>
+                <option value="outbound">{t("event.channel.outbound")}</option>
               </SelectInput>
             </div>
             <div>
               <SelectInput
-                label="Transport"
+                label={t("event.channel.transport")}
                 value={channel.type}
                 disabled={busy}
                 onChange={(e) => update({ channel: { ...channel, type: e.target.value } })}
@@ -359,18 +362,18 @@ export function EventEditor({
                 ))}
               </SelectInput>
               <TextInput
-                label="Destination"
+                label={t("event.channel.destination")}
                 value={channel.destination ?? ""}
                 disabled={busy}
-                hint="Queue, topic or exchange name."
+                hint={t("event.channel.destination.hint")}
                 onChange={(e) => update({ channel: { ...channel, destination: e.target.value } })}
               />
               {channel.channelType === "inbound" ? (
                 <TextInput
-                  label="Maps to event key"
+                  label={t("event.channel.mapsTo")}
                   value={channel.channelEventKeyDetection?.fixedValue ?? ""}
                   disabled={busy}
-                  hint="Which event an incoming message becomes."
+                  hint={t("event.channel.mapsTo.hint")}
                   onChange={(e) =>
                     update({
                       channel: {
@@ -386,7 +389,7 @@ export function EventEditor({
                 disabled={busy}
                 onClick={() => update({ channel: undefined })}
               >
-                Remove channel
+                {t("event.removeChannel")}
               </Button>
             </div>
           </div>
@@ -398,16 +401,23 @@ export function EventEditor({
               update({ channel: emptyChannel(event?.key ?? model.key ?? "event", model.name ?? "Event") })
             }
           >
-            Add a channel
+            {t("event.addChannel")}
           </Button>
         )}
       </section>
 
       <ConfirmDialog
         open={confirmDeploy}
-        title="Deploy to the event registry?"
-        description={`${[draft.event && "the event definition", draft.channel && "the channel"].filter(Boolean).join(" and ")} will be deployed. An inbound channel starts listening as soon as it is deployed.`}
-        confirmLabel="Save and deploy"
+        title={t("event.deploy.title")}
+        description={t("event.deploy.description", {
+          what: [
+            draft.event && t("event.deploy.eventDefinition"),
+            draft.channel && t("event.deploy.channel"),
+          ]
+            .filter(Boolean)
+            .join(" and "),
+        })}
+        confirmLabel={t("event.deploy.confirm")}
         busy={deploying}
         onCancel={() => setConfirmDeploy(false)}
         onConfirm={() => {
@@ -418,10 +428,10 @@ export function EventEditor({
 
       <ConfirmDialog
         open={confirmLeave}
-        title="Leave without saving?"
-        description={`"${model.name || model.id}" has unsaved changes. Leaving now discards them.`}
-        confirmLabel="Discard changes"
-        cancelLabel="Keep editing"
+        title={t("editor.leave.title")}
+        description={t("editor.leave.description", { name: model.name || model.id })}
+        confirmLabel={t("editor.leave.confirm")}
+        cancelLabel={t("editor.leave.cancel")}
         destructive
         onCancel={() => setConfirmLeave(false)}
         onConfirm={() => {

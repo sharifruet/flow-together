@@ -1,9 +1,10 @@
 import { StrictMode } from "react";
 import { createRoot } from "react-dom/client";
-import { AuthProvider, TenantProvider, readRuntimeConfig } from "@togetherflow/common";
+import { AppRoot, readRuntimeConfig } from "@togetherflow/common";
 import "@togetherflow/common/theme.css";
 import "./styles/identity.css";
 import { IdentityApp } from "./App";
+import { identityMessages } from "./i18n/messages";
 
 const root = createRoot(document.getElementById("root")!);
 
@@ -13,16 +14,14 @@ try {
     <StrictMode>
       {/* Sign-in verification still goes through the process API, which is where
           the credential check lives; IDM is only used for identity data. */}
-      <AuthProvider baseUrl={config.apiBase} mode={config.auth.mode} oidc={config.auth.oidc}>
-        <TenantProvider>
-          <IdentityApp
-            apps={config.apps}
-            apiBase={config.apiBase}
-            idmBase={config.idmBase}
-            readOnly={config.identity.readOnly}
-          />
-        </TenantProvider>
-      </AuthProvider>
+      <AppRoot app="identity" config={config} messages={identityMessages}>
+        <IdentityApp
+          apps={config.apps}
+          apiBase={config.apiBase}
+          idmBase={config.idmBase}
+          readOnly={config.identity.readOnly}
+        />
+      </AppRoot>
     </StrictMode>,
   );
 } catch (error) {

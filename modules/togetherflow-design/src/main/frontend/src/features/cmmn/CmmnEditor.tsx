@@ -15,9 +15,12 @@ import {
   ErrorState,
   Skeleton,
   TextInput,
+  useI18n,
+  useT,
   useToast,
   type ModelApi,
   type ModelResponse,
+  type TFunction,
 } from "@togetherflow/common";
 import { CmmnCanvas, DEFAULT_VIEWPORT, type Viewport } from "./CmmnCanvas";
 import {
@@ -30,6 +33,7 @@ import {
   type CmmnCase,
   type CmmnElement,
   type CmmnElementType,
+  type Sentry,
 } from "./cmmnModel";
 
 const AUTOSAVE_IDLE_MS = 4000;
@@ -53,7 +57,8 @@ export interface CmmnEditorProps {
   initialXml: string | null;
   loadError?: string | null;
   onBack: () => void;
-  onSaved: () => void;
+  /** Called after a save or deploy; carries the updated draft where one exists. */
+  onSaved: (draft?: ModelResponse) => void;
 }
 
 export function CmmnEditor({
@@ -64,6 +69,7 @@ export function CmmnEditor({
   onBack,
   onSaved,
 }: CmmnEditorProps) {
+  const { t, locale } = useI18n();
   const { push } = useToast();
   /**
    * The parse happens during render, and only *edits* live in state, keyed by model
@@ -75,9 +81,9 @@ export function CmmnEditor({
     try {
       return { model: parseCmmn(initialXml), error: null };
     } catch (cause) {
-      return { model: null, error: (cause as Error).message || "This case model could not be opened." };
+      return { model: null, error: (cause as Error).message || t("cmmn.openFailed") };
     }
-  }, [initialXml]);
+  }, [initialXml, t]);
 
   /** Undo history as state, not refs: `canUndo`/`canRedo` then derive safely. */
   const [edits, setEdits] = useState<{
@@ -220,6 +226,34 @@ export function CmmnEditor({
     setSelectedIds([]);
   }, [caseModel, selectedIds, commit]);
 
+  /**
+   * Cuts a version from the model as it stands (§7.4.1) — the checkpoint before a risky
+   * edit. Saves first, so the version records what the user is looking at rather than
+   * whatever was last written.
+   */
+  const saveVersion = useCallback(async () => {
+    if (!caseModel) return;
+    setSaving(true);
+    try {
+      const xml = serialiseCmmn(caseModel);
+      await modelApi.saveSource(model.id, xml);
+      const draft = await modelApi.cutVersion(model, xml);
+      setDirty(false);
+      setLastSavedAt(new Date());
+      push({ tone: "success", message: t("editor.versionSaved", { version: draft.version ?? 1 }) });
+      onSaved(draft);
+    } catch (cause) {
+      const apiError = cause instanceof ApiError ? cause : undefined;
+      push({
+        tone: "error",
+        message: apiError?.message ?? t("editor.versionFailed"),
+        reference: apiError?.correlationId,
+      });
+    } finally {
+      setSaving(false);
+    }
+  }, [caseModel, modelApi, model, push, onSaved, t]);
+
   const save = useCallback(
     async (options: { silent?: boolean } = {}) => {
       if (!caseModel) return;
@@ -228,20 +262,20 @@ export function CmmnEditor({
         await modelApi.saveSource(model.id, serialiseCmmn(caseModel));
         setDirty(false);
         setLastSavedAt(new Date());
-        if (!options.silent) push({ tone: "success", message: "Saved." });
+        if (!options.silent) push({ tone: "success", message: t("editor.saved.toast") });
         onSaved();
       } catch (cause) {
         const apiError = cause instanceof ApiError ? cause : undefined;
         push({
           tone: "error",
-          message: apiError?.message ?? "Could not save this case model.",
+          message: apiError?.message ?? t("cmmn.saveFailed"),
           reference: apiError?.correlationId,
         });
       } finally {
         setSaving(false);
       }
     },
-    [caseModel, modelApi, model.id, push, onSaved],
+    [caseModel, modelApi, model.id, push, onSaved, t],
   );
 
   const saveRef = useRef(save);
@@ -296,13 +330,15 @@ export function CmmnEditor({
       setDirty(false);
       setLastSavedAt(new Date());
       const deployment = await modelApi.deploy(model, xml);
-      push({ tone: "success", message: `Deployed as ${deployment.id}.` });
-      onSaved();
+      push({ tone: "success", message: t("editor.deployed", { id: deployment.id }) });
+      // Deploying cuts a version (§7.4.1), so the draft's version number has moved on.
+      // The row itself is unchanged, which is why nothing has to re-import.
+      onSaved(deployment.draft);
     } catch (cause) {
       const apiError = cause instanceof ApiError ? cause : undefined;
       push({
         tone: "error",
-        message: apiError?.message ?? "Deployment failed.",
+        message: apiError?.message ?? t("editor.deployFailed"),
         reference: apiError?.correlationId,
       });
     } finally {
@@ -315,7 +351,7 @@ export function CmmnEditor({
   const canRedo = (history?.future.length ?? 0) > 0;
 
   return (
-    <section className="tf-editor" aria-label={`Editing ${model.name || model.id}`}>
+    <section className="tf-editor" aria-label={t("editor.editing", { name: model.name || model.id })}>
       <header className="tf-editor__header">
         <div className="tf-editor__identity">
           <button
@@ -328,45 +364,53 @@ export function CmmnEditor({
           <h1 className="tf-editor__title">{model.name || model.key || model.id}</h1>
           <p className="tf-editor__meta" aria-live="polite">
             {dirty
-              ? "Unsaved changes"
+              ? t("editor.unsaved")
               : lastSavedAt
-                ? `Saved ${lastSavedAt.toLocaleTimeString()}`
-                : "No changes"}
+                ? t("editor.saved", { time: lastSavedAt.toLocaleTimeString(locale) })
+                : t("editor.noChanges")}
           </p>
         </div>
         <div className="tf-editor__actions">
-          <div className="tf-editor__group" role="group" aria-label="History">
+          <div className="tf-editor__group" role="group" aria-label={t("editor.history")}>
             <Button variant="secondary" disabled={!canUndo || busy} onClick={undo}>
-              Undo
+              {t("action.undo")}
             </Button>
             <Button variant="secondary" disabled={!canRedo || busy} onClick={redo}>
-              Redo
+              {t("action.redo")}
             </Button>
           </div>
-          <div className="tf-editor__group" role="group" aria-label="Zoom">
+          <div className="tf-editor__group" role="group" aria-label={t("editor.zoom")}>
             <Button
               variant="secondary"
-              aria-label="Zoom out"
+              aria-label={t("editor.zoomOut")}
               onClick={() => setViewport((v) => ({ ...v, scale: Math.max(0.25, v.scale / 1.2) }))}
             >
               −
             </Button>
             <Button variant="secondary" onClick={() => setViewport(DEFAULT_VIEWPORT)}>
-              Fit
+              {t("action.fit")}
             </Button>
             <Button
               variant="secondary"
-              aria-label="Zoom in"
+              aria-label={t("editor.zoomIn")}
               onClick={() => setViewport((v) => ({ ...v, scale: Math.min(3, v.scale * 1.2) }))}
             >
               +
             </Button>
           </div>
           <Button variant="secondary" loading={saving} disabled={!caseModel} onClick={() => void save()}>
-            Save
+            {t("action.save")}
+          </Button>
+          <Button
+            variant="secondary"
+            loading={saving}
+            disabled={!caseModel}
+            onClick={() => void saveVersion()}
+          >
+            {t("editor.saveVersion")}
           </Button>
           <Button loading={deploying} disabled={!caseModel} onClick={() => setConfirmDeploy(true)}>
-            Deploy
+            {t("action.deploy")}
           </Button>
         </div>
       </header>
@@ -376,13 +420,13 @@ export function CmmnEditor({
 
       {!caseModel && !parseError && !loadError ? (
         <div className="tf-editor__loading-standalone">
-          <Skeleton rows={6} label="Loading case model" />
+          <Skeleton rows={6} label={t("cmmn.loading")} />
         </div>
       ) : null}
 
       {caseModel ? (
         <div className="tf-editor__body tf-editor__body--cmmn">
-          <nav className="tf-palette" aria-label="Palette">
+          <nav className="tf-palette" aria-label={t("cmmn.palette")}>
             <h2 className="tf-palette__title">Add</h2>
             {PALETTE.map((type) => (
               <button
@@ -426,10 +470,10 @@ export function CmmnEditor({
 
       <ConfirmDialog
         open={confirmLeave}
-        title="Leave without saving?"
-        description={`"${model.name || model.id}" has unsaved changes. Leaving now discards them.`}
-        confirmLabel="Discard changes"
-        cancelLabel="Keep editing"
+        title={t("editor.leave.title")}
+        description={t("editor.leave.description", { name: model.name || model.id })}
+        confirmLabel={t("editor.leave.confirm")}
+        cancelLabel={t("editor.leave.cancel")}
         destructive
         onCancel={() => setConfirmLeave(false)}
         onConfirm={() => {
@@ -440,9 +484,9 @@ export function CmmnEditor({
 
       <ConfirmDialog
         open={confirmDeploy}
-        title="Deploy this case?"
-        description={`"${model.name || model.id}" will be saved and deployed to the case engine. New case instances use this version; instances already running keep the version they started on.`}
-        confirmLabel="Save and deploy"
+        title={t("cmmn.deploy.title")}
+        description={t("cmmn.deploy.description", { name: model.name || model.id })}
+        confirmLabel={t("cmmn.deploy.confirm")}
         busy={deploying}
         onCancel={() => setConfirmDeploy(false)}
         onConfirm={() => {
@@ -471,28 +515,29 @@ function CmmnProperties({
   onChangeCase: (changes: Partial<CmmnCase>) => void;
   onDelete: () => void;
 }) {
+  const t = useT();
   if (isPlanModel) {
     return (
-      <aside className="tf-properties" aria-label="Case properties">
+      <aside className="tf-properties" aria-label={t("cmmn.caseProperties")}>
         <header className="tf-properties__header">
-          <h2 className="tf-properties__title">Case</h2>
+          <h2 className="tf-properties__title">{t("cmmn.case")}</h2>
           <p className="tf-properties__type">cmmn:Case</p>
         </header>
         <TextInput
-          label="Case id"
+          label={t("cmmn.caseId")}
           value={model.caseId}
           disabled={disabled}
-          hint="The key the engine starts this case by."
+          hint={t("cmmn.caseId.hint")}
           onChange={(event) => onChangeCase({ caseId: event.target.value })}
         />
         <TextInput
-          label="Case name"
+          label={t("cmmn.caseName")}
           value={model.caseName}
           disabled={disabled}
           onChange={(event) => onChangeCase({ caseName: event.target.value })}
         />
         <TextInput
-          label="Plan model name"
+          label={t("cmmn.planModelName")}
           value={model.planModelName}
           disabled={disabled}
           onChange={(event) => onChangeCase({ planModelName: event.target.value })}
@@ -503,7 +548,7 @@ function CmmnProperties({
 
   if (!element) {
     return (
-      <aside className="tf-properties" aria-label="Element properties">
+      <aside className="tf-properties" aria-label={t("properties.label")}>
         <p className="tf-muted tf-properties__empty">
           Select an element on the canvas, or the case plan model, to edit its properties.
         </p>
@@ -519,21 +564,21 @@ function CmmnProperties({
     });
 
   return (
-    <aside className="tf-properties" aria-label="Element properties">
+    <aside className="tf-properties" aria-label={t("properties.label")}>
       <header className="tf-properties__header">
         <h2 className="tf-properties__title">{TYPE_LABELS[element.type]}</h2>
         <p className="tf-properties__type">cmmn:{element.type}</p>
       </header>
 
       <TextInput
-        label="Id"
+        label={t("properties.id")}
         value={element.definitionId}
         disabled={disabled}
-        hint="Referenced by the engine and by sentries."
+        hint={t("cmmn.id.hint")}
         onChange={(event) => onChangeElement({ definitionId: event.target.value })}
       />
       <TextInput
-        label="Name"
+        label={t("properties.name")}
         value={element.name}
         disabled={disabled}
         onChange={(event) => onChangeElement({ name: event.target.value })}
@@ -541,22 +586,22 @@ function CmmnProperties({
 
       {element.type === "humanTask" ? (
         <section className="tf-properties__section">
-          <h3 className="tf-properties__section-title">Flowable</h3>
+          <h3 className="tf-properties__section-title">{t("properties.flowable")}</h3>
           <TextInput
-            label="Assignee"
+            label={t("properties.assignee")}
             value={element.attributes.assignee ?? ""}
             disabled={disabled}
-            hint="A user id, or an expression."
+            hint={t("cmmn.assignee.hint")}
             onChange={(event) => setAttr("assignee", event.target.value)}
           />
           <TextInput
-            label="Candidate groups"
+            label={t("properties.candidateGroups")}
             value={element.attributes.candidateGroups ?? ""}
             disabled={disabled}
             onChange={(event) => setAttr("candidateGroups", event.target.value)}
           />
           <TextInput
-            label="Form key"
+            label={t("properties.formKey")}
             value={element.attributes.formKey ?? ""}
             disabled={disabled}
             onChange={(event) => setAttr("formKey", event.target.value)}
@@ -566,20 +611,20 @@ function CmmnProperties({
 
       {element.type === "processTask" ? (
         <TextInput
-          label="Process reference"
+          label={t("cmmn.processRef")}
           value={element.attributes.processRef ?? ""}
           disabled={disabled}
-          hint="Key of the BPMN process to start."
+          hint={t("cmmn.processRef.hint")}
           onChange={(event) => setAttr("processRef", event.target.value)}
         />
       ) : null}
 
       {element.type === "decisionTask" ? (
         <TextInput
-          label="Decision reference"
+          label={t("cmmn.decisionRef")}
           value={element.attributes.decisionRef ?? ""}
           disabled={disabled}
-          hint="Key of the DMN decision to evaluate."
+          hint={t("cmmn.decisionRef.hint")}
           onChange={(event) => setAttr("decisionRef", event.target.value)}
         />
       ) : null}
@@ -592,80 +637,156 @@ function CmmnProperties({
             disabled={disabled}
             onChange={(event) => onChangeElement({ blocking: event.target.checked })}
           />
-          Blocking
+          {t("cmmn.blocking")}
         </label>
       ) : null}
 
-      <section className="tf-properties__section">
-        <h3 className="tf-properties__section-title">Entry criteria</h3>
-        {element.entrySentries.length === 0 ? (
-          <p className="tf-muted">Starts as soon as its stage becomes active.</p>
-        ) : (
-          <ul className="tf-sentries">
-            {element.entrySentries.map((sentry) => (
-              <li key={sentry.id} className="tf-sentries__item">
-                <select
-                  className="tf-input tf-select"
-                  aria-label="Wait for"
-                  value={sentry.sourceRef ?? ""}
-                  disabled={disabled}
-                  onChange={(event) =>
-                    onChangeElement({
-                      entrySentries: element.entrySentries.map((s) =>
-                        s.id === sentry.id ? { ...s, sourceRef: event.target.value || undefined } : s,
-                      ),
-                    })
-                  }
-                >
-                  <option value="">Choose an element…</option>
-                  {model.elements
-                    .filter((el) => el.planItemId !== element.planItemId)
-                    .map((el) => (
-                      <option key={el.planItemId} value={el.planItemId}>
-                        {el.name || el.definitionId}
-                      </option>
-                    ))}
-                </select>
-                <button
-                  type="button"
-                  className="tf-chip-item__remove"
-                  aria-label="Remove entry criterion"
-                  disabled={disabled}
-                  onClick={() =>
-                    onChangeElement({
-                      entrySentries: element.entrySentries.filter((s) => s.id !== sentry.id),
-                    })
-                  }
-                >
-                  ×
-                </button>
-              </li>
-            ))}
-          </ul>
-        )}
-        <Button
-          variant="secondary"
-          disabled={disabled}
-          onClick={() =>
-            onChangeElement({
-              entrySentries: [
-                ...element.entrySentries,
-                { id: `crit_${Date.now().toString(36)}`, standardEvent: "complete" },
-              ],
-            })
-          }
-        >
-          Add entry criterion
-        </Button>
-      </section>
+      {/*
+        Entry and exit criteria are the same shape — a sentry watching another plan item —
+        so they share one editor rather than two near-identical blocks. Exit criteria were
+        missing entirely: the model layer round-tripped them, but nothing could author one
+        (§7.4.3).
+      */}
+      <CriteriaSection
+        t={t}
+        kind="entry"
+        model={model}
+        element={element}
+        disabled={disabled}
+        onChangeElement={onChangeElement}
+      />
+      <CriteriaSection
+        t={t}
+        kind="exit"
+        model={model}
+        element={element}
+        disabled={disabled}
+        onChangeElement={onChangeElement}
+      />
 
       <div className="tf-properties__section">
         <Button variant="danger" disabled={disabled} onClick={onDelete}>
-          Delete element
+          {t("cmmn.deleteElement")}
         </Button>
       </div>
     </aside>
   );
 }
+
+/**
+ * One criterion list — entry or exit.
+ *
+ * The two differ only in which array they read and in what the criterion means: an entry
+ * criterion starts the item when the watched event happens, an exit criterion terminates
+ * it. The hint says which, because "wait for" reads the same on both and the consequence
+ * is opposite.
+ */
+function CriteriaSection({
+  t,
+  kind,
+  model,
+  element,
+  disabled,
+  onChangeElement,
+}: {
+  t: TFunction;
+  kind: "entry" | "exit";
+  model: CmmnCase;
+  element: CmmnElement;
+  disabled: boolean;
+  onChangeElement: (patch: Partial<CmmnElement>) => void;
+}) {
+  const sentries = kind === "entry" ? element.entrySentries : element.exitSentries;
+  const commit = (next: Sentry[]) =>
+    onChangeElement(kind === "entry" ? { entrySentries: next } : { exitSentries: next });
+
+  return (
+    <section className="tf-properties__section">
+      <h3 className="tf-properties__section-title">{t(`cmmn.${kind}Criteria`)}</h3>
+      <p className="tf-muted tf-properties__hint">{t(`cmmn.${kind}Criteria.hint`)}</p>
+
+      {sentries.length === 0 ? (
+        <p className="tf-muted">{t(`cmmn.${kind}Criteria.none`)}</p>
+      ) : (
+        <ul className="tf-sentries">
+          {sentries.map((sentry) => (
+            <li key={sentry.id} className="tf-sentries__item">
+              <select
+                className="tf-input tf-select"
+                aria-label={t("cmmn.waitFor")}
+                value={sentry.sourceRef ?? ""}
+                disabled={disabled}
+                onChange={(event) =>
+                  commit(
+                    sentries.map((s) =>
+                      s.id === sentry.id
+                        ? { ...s, sourceRef: event.target.value || undefined }
+                        : s,
+                    ),
+                  )
+                }
+              >
+                <option value="">{t("cmmn.chooseElement")}</option>
+                {model.elements
+                  .filter((el) => el.planItemId !== element.planItemId)
+                  .map((el) => (
+                    <option key={el.planItemId} value={el.planItemId}>
+                      {el.name || el.definitionId}
+                    </option>
+                  ))}
+              </select>
+              <select
+                className="tf-input tf-select"
+                aria-label={t("cmmn.onEvent")}
+                value={sentry.standardEvent || "complete"}
+                disabled={disabled}
+                onChange={(event) =>
+                  commit(
+                    sentries.map((s) =>
+                      s.id === sentry.id ? { ...s, standardEvent: event.target.value } : s,
+                    ),
+                  )
+                }
+              >
+                {STANDARD_EVENTS.map((name) => (
+                  <option key={name} value={name}>
+                    {name}
+                  </option>
+                ))}
+              </select>
+              <button
+                type="button"
+                className="tf-chip-item__remove"
+                aria-label={t("cmmn.removeCriterion")}
+                disabled={disabled}
+                onClick={() => commit(sentries.filter((s) => s.id !== sentry.id))}
+              >
+                ×
+              </button>
+            </li>
+          ))}
+        </ul>
+      )}
+      <Button
+        variant="secondary"
+        disabled={disabled}
+        onClick={() =>
+          commit([
+            ...sentries,
+            { id: `crit_${Date.now().toString(36)}`, standardEvent: "complete" },
+          ])
+        }
+      >
+        {t(`cmmn.${kind}Criteria.add`)}
+      </Button>
+    </section>
+  );
+}
+
+/**
+ * The plan-item lifecycle transitions a sentry can watch. CMMN 1.1 defines more, but
+ * these are the ones that are meaningful on the element types this editor can draw.
+ */
+const STANDARD_EVENTS = ["complete", "terminate", "disable", "enable", "start", "occur"];
 
 export { emptyCase };

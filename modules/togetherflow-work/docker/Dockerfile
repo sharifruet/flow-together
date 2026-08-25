@@ -5,8 +5,8 @@
 #
 #   docker build -f togetherflow-work/docker/Dockerfile -t togetherflow/work:dev .
 #
-# The image carries no secrets. Runtime configuration is written to /config.js at
-# container start from environment variables, so one image is promoted across
+# The image carries no secrets. Runtime configuration is written at container start
+# from environment variables and served at /config.js, so one image is promoted across
 # environments rather than rebuilt per environment (REQUIREMENTS.md §13.3).
 
 FROM node:22-alpine AS build
@@ -27,14 +27,12 @@ COPY togetherflow-work/docker/work-nginx.conf /etc/nginx/conf.d/default.conf
 COPY togetherflow-work/docker/security-headers.conf /etc/nginx/conf.d/security-headers.conf
 COPY togetherflow-work/docker/entrypoint.sh /docker-entrypoint.d/40-togetherflow-config.sh
 
-# The base image runs as uid 101; the entrypoint writes config.js into the docroot
-# at startup, so that one directory must be writable by that user. Everything else
-# stays root-owned and read-only.
-# -R, not just the directory: dist/ ships a placeholder config.js, and overwriting
-# an existing root-owned file needs write permission on the file itself.
+# The docroot stays root-owned and read-only: runtime configuration is written to
+# /tmp/togetherflow instead, which nginx serves at /config.js. That lets the container run
+# with a read-only root filesystem in Kubernetes (see k8s/resources/togetherflow-*.yaml).
 USER root
-RUN chown -R 101:101 /usr/share/nginx/html \
- && chmod 755 /usr/share/nginx/html \
+RUN mkdir -p /tmp/togetherflow \
+ && chown 101:101 /tmp/togetherflow \
  && chmod +x /docker-entrypoint.d/40-togetherflow-config.sh
 USER 101
 

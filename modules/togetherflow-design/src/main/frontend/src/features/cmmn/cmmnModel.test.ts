@@ -139,6 +139,40 @@ describe("serialiseCmmn", () => {
     expect(parseCmmn(xml).elements[1].entrySentries[0].sourceRef).toBe(first.planItemId);
   });
 
+  it("writes exit criteria the same way, and reads them back", () => {
+    // Exit criteria round-tripped through the model layer long before anything could
+    // author one (§7.4.3); this pins that half now that the panel exposes it.
+    let model = emptyCase("c1", "Case");
+    const trigger = createElement("humanTask", { x: 100, y: 100 }, model.planModelId);
+    const stage = createElement("stage", { x: 300, y: 100 }, model.planModelId);
+    stage.exitSentries = [
+      { id: "exit1", sourceRef: trigger.planItemId, standardEvent: "complete" },
+    ];
+    model = { ...model, elements: [trigger, stage] };
+
+    const xml = serialiseCmmn(model);
+    expect(xml).toContain('<exitCriterion id="exit1" sentryRef="sentry_exit1"');
+
+    const reparsed = parseCmmn(xml);
+    expect(reparsed.elements[1].exitSentries[0].sourceRef).toBe(trigger.planItemId);
+    // Entry and exit must not be confused for one another on the way back in.
+    expect(reparsed.elements[1].entrySentries).toEqual([]);
+  });
+
+  it("keeps entry and exit criteria on the same element apart", () => {
+    let model = emptyCase("c1", "Case");
+    const trigger = createElement("humanTask", { x: 100, y: 100 }, model.planModelId);
+    const target = createElement("humanTask", { x: 300, y: 100 }, model.planModelId);
+    target.entrySentries = [{ id: "in1", sourceRef: trigger.planItemId, standardEvent: "complete" }];
+    target.exitSentries = [{ id: "out1", sourceRef: trigger.planItemId, standardEvent: "terminate" }];
+    model = { ...model, elements: [trigger, target] };
+
+    const reparsed = parseCmmn(serialiseCmmn(model));
+    expect(reparsed.elements[1].entrySentries).toHaveLength(1);
+    expect(reparsed.elements[1].exitSentries).toHaveLength(1);
+    expect(reparsed.elements[1].exitSentries[0].standardEvent).toBe("terminate");
+  });
+
   it("produces a parseable document for an empty case", () => {
     const xml = serialiseCmmn(emptyCase("newCase", "New case"));
     const reparsed = parseCmmn(xml);

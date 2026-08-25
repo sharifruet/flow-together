@@ -19,6 +19,7 @@ import {
   ConfirmDialog,
   TextInput,
   useAsync,
+  useT,
   useToast,
   type IdmUser,
   type UserInfoEntry,
@@ -33,6 +34,7 @@ export interface UserProfileProps {
 }
 
 export function UserProfile({ profileApi, user, readOnly, onClose }: UserProfileProps) {
+  const t = useT();
   const { push } = useToast();
   const [refresh, setRefresh] = useState(0);
   const [busy, setBusy] = useState(false);
@@ -54,7 +56,7 @@ export function UserProfile({ profileApi, user, readOnly, onClose }: UserProfile
       const apiError = cause instanceof ApiError ? cause : undefined;
       push({
         tone: "error",
-        message: apiError?.message ?? "That didn't work.",
+        message: apiError?.message ?? t("profile.failed"),
         reference: apiError?.correlationId,
       });
       return false;
@@ -104,7 +106,7 @@ export function UserProfile({ profileApi, user, readOnly, onClose }: UserProfile
                   onChange={async (event) => {
                     const file = event.target.files?.[0];
                     if (!file) return;
-                    const ok = await run("Picture updated.", () =>
+                    const ok = await run(t("profile.picture.updated"), () =>
                       profileApi.uploadPicture(user.id, file),
                     );
                     if (ok) setPictureFailed(false);
@@ -115,14 +117,14 @@ export function UserProfile({ profileApi, user, readOnly, onClose }: UserProfile
           </div>
 
           <div className="tf-profile__info">
-            <h3 className="tf-detail__section-title">Custom info</h3>
+            <h3 className="tf-detail__section-title">{t("profile.info.title")}</h3>
             <AsyncBoundary
               loading={info.loading}
               error={info.error}
               data={info.data}
               onRetry={info.refetch}
               isEmpty={(rows) => rows.length === 0}
-              empty={<p className="tf-muted">No custom info recorded for this user.</p>}
+              empty={<p className="tf-muted">{t("profile.info.none")}</p>}
             >
               {(rows) => (
                 <ul className="tf-starters">
@@ -136,7 +138,7 @@ export function UserProfile({ profileApi, user, readOnly, onClose }: UserProfile
                           disabled={busy}
                           onClick={() => setPendingDelete(entry)}
                         >
-                          Remove
+                          {t("action.remove")}
                         </Button>
                       ) : null}
                     </li>
@@ -148,13 +150,13 @@ export function UserProfile({ profileApi, user, readOnly, onClose }: UserProfile
             {!readOnly ? (
               <div className="tf-starters__add">
                 <TextInput
-                  label="Key"
+                  label={t("profile.info.key")}
                   value={newKey}
                   disabled={busy}
                   onChange={(event) => setNewKey(event.target.value)}
                 />
                 <TextInput
-                  label="Value"
+                  label={t("profile.info.value")}
                   value={newValue}
                   disabled={busy}
                   onChange={(event) => setNewValue(event.target.value)}
@@ -164,7 +166,7 @@ export function UserProfile({ profileApi, user, readOnly, onClose }: UserProfile
                   disabled={!newKey.trim()}
                   onClick={async () => {
                     const key = newKey.trim();
-                    const ok = await run(`Saved "${key}".`, () =>
+                    const ok = await run(t("profile.info.saved", { key }), () =>
                       profileApi.setInfo(user.id, key, newValue),
                     );
                     if (ok) {
@@ -173,7 +175,7 @@ export function UserProfile({ profileApi, user, readOnly, onClose }: UserProfile
                     }
                   }}
                 >
-                  Save
+                  {t("action.save")}
                 </Button>
               </div>
             ) : null}
@@ -182,23 +184,30 @@ export function UserProfile({ profileApi, user, readOnly, onClose }: UserProfile
 
         <div className="tf-dialog__actions">
           <Button variant="secondary" onClick={onClose}>
-            Close
+            {t("action.close")}
           </Button>
         </div>
       </div>
 
       <ConfirmDialog
         open={pendingDelete !== null}
-        title="Remove this entry?"
-        description={`"${pendingDelete?.key}" will be removed from ${user.id}'s profile.`}
-        confirmLabel="Remove"
+        title={t("profile.info.delete.title")}
+        description={t("profile.info.delete.description", {
+          key: pendingDelete?.key ?? "",
+          id: user.id,
+        })}
+        confirmLabel={t("profile.info.delete.confirm")}
         destructive
         busy={busy}
         onCancel={() => setPendingDelete(null)}
         onConfirm={() => {
           const target = pendingDelete;
           setPendingDelete(null);
-          if (target) void run(`Removed "${target.key}".`, () => profileApi.deleteInfo(user.id, target.key));
+          if (target) {
+            void run(t("profile.info.removed", { key: target.key }), () =>
+              profileApi.deleteInfo(user.id, target.key),
+            );
+          }
         }}
       />
     </div>

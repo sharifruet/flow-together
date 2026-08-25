@@ -9,8 +9,10 @@ import {
   NoResultsState,
   Pagination,
   TextInput,
+  exportUserData,
   useAsync,
   useDebouncedValue,
+  useT,
   useToast,
   userDisplayName,
   type Column,
@@ -30,6 +32,7 @@ export interface UsersProps {
 }
 
 export function Users({ idm, profileApi, readOnly }: UsersProps) {
+  const t = useT();
   const { push } = useToast();
   const [start, setStart] = useState(0);
   const [search, setSearch] = useState("");
@@ -40,6 +43,39 @@ export function Users({ idm, profileApi, readOnly }: UsersProps) {
   const [pendingDelete, setPendingDelete] = useState<IdmUser | null>(null);
   const [busy, setBusy] = useState(false);
   const [reloadToken, setReloadToken] = useState(0);
+
+  /**
+   * Answers a data subject access request (§13.7) by collecting what the identity store
+   * holds and handing it over as a file. The export names its own scope — it is not a
+   * complete record of the person's data, and a file that implied otherwise would be
+   * worse than none.
+   */
+  const exportData = useCallback(
+    async (user: IdmUser) => {
+      setBusy(true);
+      try {
+        const data = await exportUserData(idm, profileApi, user.id);
+        const blob = new Blob([JSON.stringify(data, null, 2)], { type: "application/json" });
+        const url = URL.createObjectURL(blob);
+        const link = document.createElement("a");
+        link.href = url;
+        link.download = `togetherflow-user-${user.id}.json`;
+        link.click();
+        URL.revokeObjectURL(url);
+        push({ tone: "success", message: t("users.export.done", { id: user.id }) });
+      } catch (cause) {
+        const apiError = cause instanceof ApiError ? cause : undefined;
+        push({
+          tone: "error",
+          message: apiError?.message ?? t("users.export.failed"),
+          reference: apiError?.correlationId,
+        });
+      } finally {
+        setBusy(false);
+      }
+    },
+    [idm, profileApi, push, t],
+  );
 
   const query = useMemo(
     () => ({
@@ -58,7 +94,7 @@ export function Users({ idm, profileApi, readOnly }: UsersProps) {
     [idm, query, reloadToken],
   );
 
-  const reload = useCallback(() => setReloadToken((t) => t + 1), []);
+  const reload = useCallback(() => setReloadToken((token) => token + 1), []);
 
   const run = useCallback(
     async (message: string, action: () => Promise<unknown>) => {
@@ -72,7 +108,7 @@ export function Users({ idm, profileApi, readOnly }: UsersProps) {
         const apiError = cause instanceof ApiError ? cause : undefined;
         push({
           tone: "error",
-          message: apiError?.message ?? "That action could not be completed.",
+          message: apiError?.message ?? t("action.failed"),
           reference: apiError?.correlationId,
         });
         return false;
@@ -80,14 +116,14 @@ export function Users({ idm, profileApi, readOnly }: UsersProps) {
         setBusy(false);
       }
     },
-    [push, reload],
+    [push, reload, t],
   );
 
   const columns = useMemo<Column<IdmUser>[]>(
     () => [
       {
         key: "id",
-        header: "User",
+        header: t("users.column.user"),
         render: (user) => (
           <div className="tf-task-cell">
             <span className="tf-task-cell__name">{userDisplayName(user)}</span>
@@ -97,27 +133,35 @@ export function Users({ idm, profileApi, readOnly }: UsersProps) {
       },
       {
         key: "email",
-        header: "Email",
+        header: t("users.column.email"),
         secondary: true,
         render: (user) => user.email || <span className="tf-muted">—</span>,
       },
       {
         key: "actions",
         header: "",
-        width: readOnly ? "110px" : "230px",
+        width: readOnly ? "200px" : "320px",
         render: (user) => (
           <div className="tf-row-actions">
             {/* Viewable even in a directory-backed deployment; editing is gated below. */}
             <Button variant="ghost" onClick={() => setProfileFor(user)}>
-              Profile
+              {t("users.profile.action")}
+            </Button>
+            {/*
+              Data subject access (§13.7). Offered regardless of readOnly: reading what
+              is held about someone is not a mutation, and a directory-backed deployment
+              still has to be able to answer the request.
+            */}
+            <Button variant="ghost" onClick={() => void exportData(user)}>
+              {t("users.export.action")}
             </Button>
             {readOnly ? null : (
               <>
                 <Button variant="ghost" onClick={() => setEditing(user)}>
-                  Edit
+                  {t("action.edit")}
                 </Button>
                 <Button variant="ghost" onClick={() => setPendingDelete(user)}>
-                  Delete
+                  {t("action.delete")}
                 </Button>
               </>
             )}
@@ -125,32 +169,32 @@ export function Users({ idm, profileApi, readOnly }: UsersProps) {
         ),
       },
     ],
-    [readOnly],
+    [readOnly, t, exportData],
   );
 
   return (
-    <section className="tf-panel" aria-label="Users">
+    <section className="tf-panel" aria-label={t("users.label")}>
       <header className="tf-panel__header">
         <div>
-          <h1 className="tf-panel__title">Users</h1>
+          <h1 className="tf-panel__title">{t("users.title")}</h1>
           <p className="tf-panel__meta">
             {readOnly
-              ? "Users come from a directory and can't be changed here."
-              : "People who can sign in and be assigned work."}
+              ? t("users.meta.readOnly")
+              : t("users.meta")}
           </p>
         </div>
-        {!readOnly ? <Button onClick={() => setCreating(true)}>New user</Button> : null}
+        {!readOnly ? <Button onClick={() => setCreating(true)}>{t("users.new")}</Button> : null}
       </header>
 
       <div className="tf-panel__search">
         <label className="tf-visually-hidden" htmlFor="tf-user-search">
-          Search users by id
+          {t("users.searchLabel")}
         </label>
         <input
           id="tf-user-search"
           className="tf-input"
           type="search"
-          placeholder="Search by user id…"
+          placeholder={t("users.search")}
           value={search}
           onChange={(event) => {
             setSearch(event.target.value);
@@ -175,13 +219,13 @@ export function Users({ idm, profileApi, readOnly }: UsersProps) {
             />
           ) : (
             <EmptyState
-              title="No users yet"
+              title={t("users.empty.title")}
               description={
                 readOnly
-                  ? "No users were returned by the directory."
-                  : "Create the first user to get started."
+                  ? t("users.empty.description.readOnly")
+                  : t("users.empty.description")
               }
-              action={!readOnly ? <Button onClick={() => setCreating(true)}>New user</Button> : undefined}
+              action={!readOnly ? <Button onClick={() => setCreating(true)}>{t("users.new")}</Button> : undefined}
             />
           )
         }
@@ -189,7 +233,7 @@ export function Users({ idm, profileApi, readOnly }: UsersProps) {
         {(page) => (
           <>
             <DataTable
-              caption="Users"
+              caption={t("users.caption")}
               columns={columns}
               rows={page.data}
               rowKey={(user) => user.id}
@@ -206,11 +250,13 @@ export function Users({ idm, profileApi, readOnly }: UsersProps) {
 
       {creating ? (
         <UserDialog
-          title="New user"
+          title={t("users.create.title")}
           busy={busy}
           onCancel={() => setCreating(false)}
           onSubmit={async (values) => {
-            const ok = await run(`User "${values.id}" created.`, () => idm.createUser(values));
+            const ok = await run(t("users.created", { id: values.id }), () =>
+              idm.createUser(values),
+            );
             if (ok) setCreating(false);
           }}
         />
@@ -218,7 +264,7 @@ export function Users({ idm, profileApi, readOnly }: UsersProps) {
 
       {editing ? (
         <UserDialog
-          title={`Edit ${userDisplayName(editing)}`}
+          title={t("users.edit.title", { name: userDisplayName(editing) })}
           user={editing}
           busy={busy}
           onCancel={() => setEditing(null)}
@@ -226,7 +272,7 @@ export function Users({ idm, profileApi, readOnly }: UsersProps) {
             const { id: _id, ...changes } = values;
             // Omit an untouched password so the engine does not reset it.
             if (!changes.password) delete changes.password;
-            const ok = await run(`User "${editing.id}" updated.`, () =>
+            const ok = await run(t("users.updated", { id: editing.id }), () =>
               idm.updateUser(editing.id, changes),
             );
             if (ok) setEditing(null);
@@ -245,16 +291,21 @@ export function Users({ idm, profileApi, readOnly }: UsersProps) {
 
       <ConfirmDialog
         open={pendingDelete !== null}
-        title="Delete this user?"
-        description={`"${pendingDelete ? userDisplayName(pendingDelete) : ""}" (${pendingDelete?.id ?? ""}) will be removed. They will no longer be able to sign in, and any work assigned to them stays assigned to a user that no longer exists. This can't be undone.`}
-        confirmLabel="Delete user"
+        title={t("users.delete.title")}
+        description={t("users.delete.description", {
+          name: pendingDelete ? userDisplayName(pendingDelete) : "",
+          id: pendingDelete?.id ?? "",
+        })}
+        confirmLabel={t("users.delete.confirm")}
         destructive
         busy={busy}
         onCancel={() => setPendingDelete(null)}
         onConfirm={() => {
           const target = pendingDelete;
           setPendingDelete(null);
-          if (target) void run(`User "${target.id}" deleted.`, () => idm.deleteUser(target.id));
+          if (target) {
+            void run(t("users.deleted", { id: target.id }), () => idm.deleteUser(target.id));
+          }
         }}
       />
     </section>
@@ -270,6 +321,7 @@ interface UserDialogProps {
 }
 
 function UserDialog({ title, user, busy, onCancel, onSubmit }: UserDialogProps) {
+  const t = useT();
   const isEdit = Boolean(user);
   const [values, setValues] = useState<IdmUser>({
     id: user?.id ?? "",
@@ -280,13 +332,12 @@ function UserDialog({ title, user, busy, onCancel, onSubmit }: UserDialogProps) 
   });
   const [submitted, setSubmitted] = useState(false);
 
-  const idError = !values.id.trim() ? "A user id is required." : undefined;
+  const idError = !values.id.trim() ? t("users.error.idRequired") : undefined;
   const emailError =
     values.email && !/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(values.email)
-      ? "Enter a valid email address."
+      ? t("users.error.email")
       : undefined;
-  const passwordError =
-    !isEdit && !values.password ? "Set an initial password." : undefined;
+  const passwordError = !isEdit && !values.password ? t("users.error.password") : undefined;
   const invalid = Boolean(idError || emailError || passwordError);
 
   return (
@@ -309,30 +360,30 @@ function UserDialog({ title, user, busy, onCancel, onSubmit }: UserDialogProps) 
         <h2 className="tf-dialog__title">{title}</h2>
 
         <TextInput
-          label="User id"
+          label={t("users.field.id")}
           value={values.id}
           required
           disabled={isEdit || busy}
-          hint={isEdit ? "A user's id can't be changed." : "Used to sign in and to assign work."}
+          hint={isEdit ? t("users.field.id.hintEdit") : t("users.field.id.hintNew")}
           error={submitted ? idError : undefined}
           onChange={(event) => setValues((v) => ({ ...v, id: event.target.value }))}
         />
         <div className="tf-dialog__row">
           <TextInput
-            label="First name"
+            label={t("users.field.firstName")}
             value={values.firstName ?? ""}
             disabled={busy}
             onChange={(event) => setValues((v) => ({ ...v, firstName: event.target.value }))}
           />
           <TextInput
-            label="Last name"
+            label={t("users.field.lastName")}
             value={values.lastName ?? ""}
             disabled={busy}
             onChange={(event) => setValues((v) => ({ ...v, lastName: event.target.value }))}
           />
         </div>
         <TextInput
-          label="Email"
+          label={t("users.field.email")}
           type="email"
           value={values.email ?? ""}
           disabled={busy}
@@ -340,22 +391,22 @@ function UserDialog({ title, user, busy, onCancel, onSubmit }: UserDialogProps) 
           onChange={(event) => setValues((v) => ({ ...v, email: event.target.value }))}
         />
         <TextInput
-          label={isEdit ? "New password" : "Password"}
+          label={isEdit ? t("users.field.newPassword") : t("users.field.password")}
           type="password"
           autoComplete="new-password"
           value={values.password ?? ""}
           disabled={busy}
-          hint={isEdit ? "Leave blank to keep the current password." : undefined}
+          hint={isEdit ? t("users.field.password.hintEdit") : undefined}
           error={submitted ? passwordError : undefined}
           onChange={(event) => setValues((v) => ({ ...v, password: event.target.value }))}
         />
 
         <div className="tf-dialog__actions">
           <Button variant="secondary" onClick={onCancel} disabled={busy}>
-            Cancel
+            {t("dialog.cancel")}
           </Button>
           <Button type="submit" loading={busy}>
-            {isEdit ? "Save changes" : "Create user"}
+            {isEdit ? t("action.saveChanges") : t("users.create.submit")}
           </Button>
         </div>
       </form>

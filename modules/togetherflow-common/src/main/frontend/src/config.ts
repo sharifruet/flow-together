@@ -54,6 +54,17 @@ export interface RuntimeConfig {
      */
     readOnly: boolean;
   };
+  /** Frontend error tracking (§13.2). Unset means console-only. */
+  observability: {
+    errorEndpoint?: string;
+    /** Build identifier, so a report can be tied to the bundle that produced it. */
+    release?: string;
+  };
+  /**
+   * Forces a UI language for the whole deployment (§8 i18n). Unset lets each user's
+   * browser — and their own choice in the shell menu — decide.
+   */
+  locale?: string;
 }
 
 declare global {
@@ -69,6 +80,8 @@ declare global {
       apps?: AppLinks;
       attachmentGateway?: string;
       identity?: { readOnly?: boolean };
+      observability?: { errorEndpoint?: string; release?: string };
+      locale?: string;
       auth?: {
         mode?: string;
         authority?: string;
@@ -95,6 +108,11 @@ export function readRuntimeConfig(): RuntimeConfig {
   const apps: AppLinks = raw.apps ?? {};
   const attachmentGateway = raw.attachmentGateway ?? "";
   const identity = { readOnly: raw.identity?.readOnly === true };
+  const observability = {
+    errorEndpoint: raw.observability?.errorEndpoint || undefined,
+    release: raw.observability?.release || undefined,
+  };
+  const locale = raw.locale || undefined;
 
   const mode: AuthMode = raw.auth?.mode === "basic" ? "basic" : "oidc";
 
@@ -110,6 +128,8 @@ export function readRuntimeConfig(): RuntimeConfig {
       apps,
       attachmentGateway,
       identity,
+      observability,
+      locale,
       auth: { mode: "basic" },
     };
   }
@@ -135,6 +155,8 @@ export function readRuntimeConfig(): RuntimeConfig {
     apps,
     attachmentGateway,
     identity,
+    observability,
+    locale,
     auth: {
       mode: "oidc",
       oidc: {

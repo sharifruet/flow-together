@@ -1,0 +1,123 @@
+# TogetherFlow Attachment Gateway — optional attachment storage (REQUIREMENTS.md §7.6).
+#
+# Apply this ONLY when a non-`db` attachment provider is configured. With the default
+# provider the Work app posts bytes straight to the engine and this service is not part
+# of the deployment at all.
+#
+# SharePoint credentials are a Secret, never a ConfigMap (§13.1 Secrets). The Secret
+# below is referenced but deliberately not defined here — create it out of band:
+#
+#   kubectl create secret generic togetherflow-attachment-gateway-secrets \
+#     --from-literal=TOGETHERFLOW_ATTACHMENTS_SHAREPOINT_CLIENTSECRET=...
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: togetherflow-attachment-gateway
+  labels:
+    app: togetherflow-attachment-gateway
+spec:
+  # The filesystem provider writes to a volume shared by every replica, so scaling out
+  # needs a ReadWriteMany claim. Left at 1 because ReadWriteOnce is the common default
+  # and two replicas on it would fail to schedule; raise it once storage supports it.
+  # The SharePoint provider has no such constraint — it holds no local state (§13.4).
+  replicas: 1
+  selector:
+    matchLabels:
+      app: togetherflow-attachment-gateway
+  template:
+    metadata:
+      labels:
+        app: togetherflow-attachment-gateway
+    spec:
+      securityContext:
+        runAsNonRoot: true
+        fsGroup: 1000
+      containers:
+        - name: togetherflow-attachment-gateway
+          image: flowable/togetherflow-attachment-gateway:latest
+          ports:
+            - name: http
+              containerPort: 8091
+          envFrom:
+            - configMapRef:
+                name: togetherflow-attachment-gateway-config
+            - secretRef:
+                name: togetherflow-attachment-gateway-secrets
+                optional: true
+          resources:
+            requests:
+              memory: 256Mi
+              cpu: 100m
+            limits:
+              memory: 512Mi
+              cpu: 500m
+          # Configuration is validated at startup, so a misconfigured gateway fails its
+          # readiness check rather than accepting an upload it cannot store.
+          livenessProbe:
+            httpGet:
+              path: /attachments/health
+              port: http
+            initialDelaySeconds: 20
+            periodSeconds: 20
+          readinessProbe:
+            httpGet:
+              path: /attachments/health
+              port: http
+            initialDelaySeconds: 10
+            periodSeconds: 10
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            capabilities:
+              drop: ["ALL"]
+          volumeMounts:
+            - name: attachments
+              mountPath: /var/lib/togetherflow/attachments
+            - name: tmp
+              mountPath: /tmp
+      volumes:
+        - name: attachments
+          persistentVolumeClaim:
+            claimName: togetherflow-attachments
+        - name: tmp
+          emptyDir: {}
+      restartPolicy: Always
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: togetherflow-attachment-gateway
+spec:
+  type: ClusterIP
+  selector:
+    app: togetherflow-attachment-gateway
+  ports:
+    - name: http
+      protocol: TCP
+      port: 8091
+      targetPort: http
+---
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: togetherflow-attachments
+spec:
+  accessModes:
+    - ReadWriteOnce
+  resources:
+    requests:
+      storage: 20Gi
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: togetherflow-attachment-gateway-config
+data:
+  # db | filesystem | sharepoint. `db` needs no gateway at all, so a deployment that
+  # applies this file will want one of the other two.
+  TOGETHERFLOW_ATTACHMENTS_PROVIDER: "filesystem"
+  TOGETHERFLOW_ATTACHMENTS_FILESYSTEM_BASEPATH: "/var/lib/togetherflow/attachments"
+  # Must be reachable by the browser — it is stored on the attachment as its URL.
+  TOGETHERFLOW_ATTACHMENTS_FILESYSTEM_PUBLICBASEURL: "https://files.example.com"
+  TOGETHERFLOW_ATTACHMENTS_MAXFILESIZEBYTES: "26214400"

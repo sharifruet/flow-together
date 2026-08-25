@@ -4,6 +4,7 @@
  */
 
 import { useEffect, useRef } from "react";
+import { useT } from "../i18n/I18nContext";
 import { Button } from "./Button";
 
 export interface ConfirmDialogProps {
@@ -23,13 +24,14 @@ export function ConfirmDialog({
   open,
   title,
   description,
-  confirmLabel = "Confirm",
-  cancelLabel = "Cancel",
+  confirmLabel,
+  cancelLabel,
   destructive = false,
   busy = false,
   onConfirm,
   onCancel,
 }: ConfirmDialogProps) {
+  const t = useT();
   const confirmRef = useRef<HTMLButtonElement>(null);
 
   useEffect(() => {
@@ -65,7 +67,7 @@ export function ConfirmDialog({
         </p>
         <div className="tf-dialog__actions">
           <Button variant="secondary" onClick={onCancel} disabled={busy}>
-            {cancelLabel}
+            {cancelLabel ?? t("dialog.cancel")}
           </Button>
           <Button
             ref={confirmRef}
@@ -73,7 +75,7 @@ export function ConfirmDialog({
             onClick={onConfirm}
             loading={busy}
           >
-            {confirmLabel}
+            {confirmLabel ?? t("dialog.confirm")}
           </Button>
         </div>
       </div>

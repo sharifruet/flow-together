@@ -16,6 +16,7 @@ import {
   TextInput,
   formatDateTime,
   useAsync,
+  useI18n,
   useDebouncedValue,
   useToast,
   type Column,
@@ -36,6 +37,7 @@ import {
   detectKind,
   exportModel,
 } from "./importExport";
+import { VersionHistory } from "./VersionHistory";
 
 const PAGE_SIZE = 25;
 
@@ -46,6 +48,7 @@ export interface ModelLibraryProps {
 }
 
 export function ModelLibrary({ modelApi, onOpen, refreshToken }: ModelLibraryProps) {
+  const { t, locale } = useI18n();
   const { push } = useToast();
   const [start, setStart] = useState(0);
   const [search, setSearch] = useState("");
@@ -53,11 +56,20 @@ export function ModelLibrary({ modelApi, onOpen, refreshToken }: ModelLibraryPro
   const [creating, setCreating] = useState<ModelKind | null>(null);
   const importRef = useRef<HTMLInputElement>(null);
   const [pendingDelete, setPendingDelete] = useState<ModelResponse | null>(null);
+  const [historyFor, setHistoryFor] = useState<ModelResponse | null>(null);
   const [busy, setBusy] = useState(false);
   const [reloadToken, setReloadToken] = useState(0);
 
   const query = useMemo(
-    () => ({ start, size: PAGE_SIZE, ...(debounced ? { nameLike: `%${debounced}%` } : {}) }),
+    () => ({
+      start,
+      size: PAGE_SIZE,
+      // Only working drafts: the model table is versioned natively, so without this the
+      // library would list every historical version alongside the one being edited
+      // (§7.4.1).
+      latestVersion: true,
+      ...(debounced ? { nameLike: `%${debounced}%` } : {}),
+    }),
     [start, debounced],
   );
 
@@ -78,7 +90,7 @@ export function ModelLibrary({ modelApi, onOpen, refreshToken }: ModelLibraryPro
         const apiError = cause instanceof ApiError ? cause : undefined;
         push({
           tone: "error",
-          message: apiError?.message ?? "That action could not be completed.",
+          message: apiError?.message ?? t("action.failed"),
           reference: apiError?.correlationId,
         });
         return undefined;
@@ -86,18 +98,18 @@ export function ModelLibrary({ modelApi, onOpen, refreshToken }: ModelLibraryPro
         setBusy(false);
       }
     },
-    [push],
+    [push, t],
   );
 
   const duplicate = async (model: ModelResponse) => {
     const source = await modelApi.getSource(model.id);
     if (!source) {
-      push({ tone: "error", message: "That model has no saved content to copy." });
+      push({ tone: "error", message: t("library.noContentToCopy") });
       return;
     }
-    const copy = await run(`"${model.name}" duplicated.`, async () => {
+    const copy = await run(t("library.duplicated", { name: model.name ?? "" }), async () => {
       const created = await modelApi.create({
-        name: `${model.name ?? model.id} (copy)`,
+        name: t("library.copySuffix", { name: model.name ?? model.id }),
         key: `${model.key ?? "model"}_copy`,
         category: model.category,
         version: 1,
@@ -122,12 +134,12 @@ export function ModelLibrary({ modelApi, onOpen, refreshToken }: ModelLibraryPro
       if (!kind) {
         push({
           tone: "error",
-          message: `Can't tell what kind of model "${file.name}" is. Expected BPMN, CMMN, DMN, a form or an event.`,
+          message: t("library.unknownKind", { name: file.name }),
         });
         return;
       }
       const { name, key } = describeImport(file.name, content, kind);
-      const created = await run(`Imported "${name}".`, async () => {
+      const created = await run(t("library.imported", { name }), async () => {
         const model = await modelApi.create({ name, key, category: categoryFor(kind), version: 1 });
         await modelApi.saveSource(model.id, content);
         return model;
@@ -142,19 +154,22 @@ export function ModelLibrary({ modelApi, onOpen, refreshToken }: ModelLibraryPro
     async (model: ModelResponse) => {
       const source = await modelApi.getSource(model.id);
       if (!source) {
-        push({ tone: "error", message: `"${model.name ?? model.id}" has no saved content to export.` });
+        push({
+          tone: "error",
+          message: t("library.noContentToExport", { name: model.name ?? model.id }),
+        });
         return;
       }
       exportModel(model, modelKindOf(model), source);
     },
-    [modelApi, push],
+    [modelApi, push, t],
   );
 
   const columns = useMemo<Column<ModelResponse>[]>(
     () => [
       {
         key: "name",
-        header: "Model",
+        header: t("library.column.model"),
         render: (model) => (
           <div className="tf-task-cell">
             <span className="tf-task-cell__name">{model.name || model.key || model.id}</span>
@@ -164,36 +179,46 @@ export function ModelLibrary({ modelApi, onOpen, refreshToken }: ModelLibraryPro
       },
       {
         key: "kind",
-        header: "Type",
+        header: t("library.column.type"),
         width: "100px",
         render: (model) => (
           <span className="tf-badge tf-badge--running">{modelKindOf(model).toUpperCase()}</span>
         ),
       },
       {
+        key: "version",
+        header: t("library.column.version"),
+        width: "90px",
+        secondary: true,
+        render: (model) => `v${model.version ?? 1}`,
+      },
+      {
         key: "updated",
-        header: "Last edited",
+        header: t("library.column.lastEdited"),
         width: "180px",
         secondary: true,
-        render: (model) => formatDateTime(model.lastUpdateTime ?? undefined),
+        render: (model) => formatDateTime(model.lastUpdateTime ?? undefined, locale),
       },
       {
         key: "actions",
         header: "",
-        width: "220px",
+        width: "320px",
         render: (model) => (
           <div className="tf-row-actions">
             <Button variant="ghost" onClick={() => onOpen(model)}>
-              Open
+              {t("action.open")}
+            </Button>
+            <Button variant="ghost" onClick={() => setHistoryFor(model)}>
+              {t("library.history.action")}
             </Button>
             <Button variant="ghost" disabled={busy} onClick={() => void exportOne(model)}>
-              Export
+              {t("action.export")}
             </Button>
             <Button variant="ghost" disabled={busy} onClick={() => void duplicate(model)}>
-              Duplicate
+              {t("action.duplicate")}
             </Button>
             <Button variant="ghost" onClick={() => setPendingDelete(model)}>
-              Delete
+              {t("action.delete")}
             </Button>
           </div>
         ),
@@ -204,34 +229,34 @@ export function ModelLibrary({ modelApi, onOpen, refreshToken }: ModelLibraryPro
   );
 
   return (
-    <section className="tf-panel" aria-label="Model library">
+    <section className="tf-panel" aria-label={t("library.label")}>
       <header className="tf-panel__header">
         <div>
-          <h1 className="tf-panel__title">Models</h1>
+          <h1 className="tf-panel__title">{t("library.title")}</h1>
           <p className="tf-panel__meta">
             Drafts you can edit and deploy. Deploying does not delete the draft — keep
             editing and deploy again to publish a new version.
           </p>
         </div>
         <div className="tf-row-actions">
-          <Button onClick={() => setCreating("bpmn")}>New process</Button>
+          <Button onClick={() => setCreating("bpmn")}>{t("library.newProcess")}</Button>
           <Button variant="secondary" onClick={() => setCreating("cmmn")}>
-            New case
+            {t("library.new.cmmn")}
           </Button>
           <Button variant="secondary" onClick={() => setCreating("dmn")}>
-            New decision
+            {t("library.new.dmn")}
           </Button>
           <Button variant="secondary" onClick={() => setCreating("form")}>
-            New form
+            {t("library.new.form")}
           </Button>
           <Button variant="secondary" onClick={() => setCreating("event")}>
-            New event
+            {t("library.new.event")}
           </Button>
           <Button variant="secondary" onClick={() => setCreating("app")}>
-            New app
+            {t("library.new.app")}
           </Button>
           <Button variant="secondary" disabled={busy} onClick={() => importRef.current?.click()}>
-            Import
+            {t("action.import")}
           </Button>
           {/*
             A hidden input rather than a drop zone: importing is occasional, and the
@@ -256,13 +281,13 @@ export function ModelLibrary({ modelApi, onOpen, refreshToken }: ModelLibraryPro
 
       <div className="tf-panel__search">
         <label className="tf-visually-hidden" htmlFor="tf-model-search">
-          Search models by name
+          {t("library.searchLabel")}
         </label>
         <input
           id="tf-model-search"
           className="tf-input"
           type="search"
-          placeholder="Search models…"
+          placeholder={t("library.search")}
           value={search}
           onChange={(event) => {
             setSearch(event.target.value);
@@ -287,9 +312,9 @@ export function ModelLibrary({ modelApi, onOpen, refreshToken }: ModelLibraryPro
             />
           ) : (
             <EmptyState
-              title="No models yet"
-              description="Create a process or decision model to get started."
-              action={<Button onClick={() => setCreating("bpmn")}>New process</Button>}
+              title={t("library.empty.title")}
+              description={t("library.empty.description")}
+              action={<Button onClick={() => setCreating("bpmn")}>{t("library.newProcess")}</Button>}
             />
           )
         }
@@ -297,7 +322,7 @@ export function ModelLibrary({ modelApi, onOpen, refreshToken }: ModelLibraryPro
         {(page) => (
           <>
             <DataTable
-              caption="Models"
+              caption={t("library.caption")}
               columns={columns}
               rows={page.data}
               rowKey={(model) => model.id}
@@ -319,7 +344,7 @@ export function ModelLibrary({ modelApi, onOpen, refreshToken }: ModelLibraryPro
           onCancel={() => setCreating(null)}
           onSubmit={async ({ name, key }) => {
             const kind = creating;
-            const created = await run(`"${name}" created.`, async () => {
+            const created = await run(t("library.created", { name }), async () => {
               const model = await modelApi.create({
                 name,
                 key,
@@ -347,11 +372,25 @@ export function ModelLibrary({ modelApi, onOpen, refreshToken }: ModelLibraryPro
         />
       ) : null}
 
+      {historyFor ? (
+        <VersionHistory
+          modelApi={modelApi}
+          model={historyFor}
+          onClose={() => setHistoryFor(null)}
+          onRestored={() => {
+            setHistoryFor(null);
+            setReloadToken((token) => token + 1);
+          }}
+        />
+      ) : null}
+
       <ConfirmDialog
         open={pendingDelete !== null}
-        title="Delete this model?"
-        description={`The draft "${pendingDelete?.name || pendingDelete?.id || ""}" will be deleted. Anything already deployed from it keeps running — this removes the editable draft only. This can't be undone.`}
-        confirmLabel="Delete model"
+        title={t("library.delete.title")}
+        description={t("library.delete.description", {
+          name: pendingDelete?.name || pendingDelete?.id || "",
+        })}
+        confirmLabel={t("library.delete.confirm")}
         destructive
         busy={busy}
         onCancel={() => setPendingDelete(null)}
@@ -359,7 +398,9 @@ export function ModelLibrary({ modelApi, onOpen, refreshToken }: ModelLibraryPro
           const target = pendingDelete;
           setPendingDelete(null);
           if (target) {
-            void run(`"${target.name || target.id}" deleted.`, () => modelApi.delete(target.id));
+            void run(t("library.deleted", { name: target.name || target.id }), () =>
+              modelApi.delete(target.id),
+            );
           }
         }}
       />
@@ -378,17 +419,18 @@ function NewModelDialog({
   onCancel: () => void;
   onSubmit: (values: { name: string; key: string }) => void;
 }) {
+  const { t } = useI18n();
   const [name, setName] = useState("");
   const [key, setKey] = useState("");
   const [keyEdited, setKeyEdited] = useState(false);
   const [submitted, setSubmitted] = useState(false);
 
-  const nameError = !name.trim() ? "Give the model a name." : undefined;
+  const nameError = !name.trim() ? t("library.error.name") : undefined;
   // The key becomes an XML id, so it cannot start with a digit or contain spaces.
   const keyError = !key.trim()
-    ? "A key is required."
+    ? t("library.error.keyRequired")
     : !/^[A-Za-z_][\w.-]*$/.test(key.trim())
-      ? "Start with a letter or underscore; letters, digits, dot, dash and underscore only."
+      ? t("library.error.keyFormat")
       : undefined;
 
   return (
@@ -397,19 +439,7 @@ function NewModelDialog({
         className="tf-dialog tf-dialog--form"
         role="dialog"
         aria-modal="true"
-        aria-label={
-          kind === "bpmn"
-            ? "New process"
-            : kind === "cmmn"
-              ? "New case"
-              : kind === "app"
-                ? "New app"
-                : kind === "form"
-                  ? "New form"
-                  : kind === "event"
-                    ? "New event"
-                    : "New decision"
-        }
+        aria-label={t(`library.new.${kind}`)}
         noValidate
         onMouseDown={(event) => event.stopPropagation()}
         onSubmit={(event) => {
@@ -418,22 +448,10 @@ function NewModelDialog({
           if (!nameError && !keyError) onSubmit({ name: name.trim(), key: key.trim() });
         }}
       >
-        <h2 className="tf-dialog__title">
-          {kind === "bpmn"
-            ? "New process model"
-            : kind === "cmmn"
-              ? "New case model"
-              : kind === "app"
-                ? "New app"
-                : kind === "form"
-                  ? "New form"
-                  : kind === "event"
-                    ? "New event"
-                    : "New decision model"}
-        </h2>
+        <h2 className="tf-dialog__title">{t(`library.newTitle.${kind}`)}</h2>
 
         <TextInput
-          label="Name"
+          label={t("library.field.name")}
           value={name}
           required
           disabled={busy}
@@ -446,11 +464,11 @@ function NewModelDialog({
           }}
         />
         <TextInput
-          label="Key"
+          label={t("library.field.key")}
           value={key}
           required
           disabled={busy}
-          hint="Used by the engine to identify this model. Can't contain spaces."
+          hint={t("library.field.key.hint")}
           error={submitted ? keyError : undefined}
           onChange={(event) => {
             setKeyEdited(true);
@@ -460,10 +478,10 @@ function NewModelDialog({
 
         <div className="tf-dialog__actions">
           <Button variant="secondary" onClick={onCancel} disabled={busy}>
-            Cancel
+            {t("dialog.cancel")}
           </Button>
           <Button type="submit" loading={busy}>
-            Create and open
+            {t("library.createAndOpen")}
           </Button>
         </div>
       </form>

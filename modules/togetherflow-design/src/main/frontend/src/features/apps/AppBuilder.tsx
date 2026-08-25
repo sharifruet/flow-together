@@ -22,6 +22,7 @@ import {
   bundleFileName,
   modelKindOf,
   useAsync,
+  useT,
   useToast,
   type AppApi,
   type ModelApi,
@@ -36,7 +37,8 @@ export interface AppBuilderProps {
   initialSource: string | null;
   loadError?: string | null;
   onBack: () => void;
-  onSaved: () => void;
+  /** Called after a save or deploy; carries the updated draft where one exists. */
+  onSaved: (draft?: ModelResponse) => void;
 }
 
 export function AppBuilder({
@@ -48,6 +50,7 @@ export function AppBuilder({
   onBack,
   onSaved,
 }: AppBuilderProps) {
+  const t = useT();
   const { push } = useToast();
   const parsed = useMemo(() => parseAppDraft(initialSource, model), [initialSource, model]);
   const [edits, setEdits] = useState<{ modelId: string; draft: AppDraft } | null>(null);
@@ -103,21 +106,21 @@ export function AppBuilder({
     try {
       await modelApi.saveSource(model.id, JSON.stringify(draft, null, 2));
       setDirty(false);
-      push({ tone: "success", message: "Saved." });
+      push({ tone: "success", message: t("editor.saved.toast") });
       onSaved();
       return true;
     } catch (cause) {
       const apiError = cause instanceof ApiError ? cause : undefined;
       push({
         tone: "error",
-        message: apiError?.message ?? "Could not save this app.",
+        message: apiError?.message ?? t("app.saveFailed"),
         reference: apiError?.correlationId,
       });
       return false;
     } finally {
       setSaving(false);
     }
-  }, [modelApi, model.id, draft, push, onSaved]);
+  }, [modelApi, model.id, draft, push, onSaved, t]);
 
   const publish = async () => {
     setPublishing(true);
@@ -157,7 +160,7 @@ export function AppBuilder({
         // Publishing a bundle that silently omits a model is worse than refusing.
         push({
           tone: "error",
-          message: `Can't publish: ${missing.join(", ")} ${missing.length === 1 ? "has" : "have"} no saved content.`,
+          message: t("app.cannotPublish", { models: missing.join(", ") }),
         });
         return;
       }
@@ -166,7 +169,7 @@ export function AppBuilder({
       setPublishedToken((n) => n + 1);
       push({
         tone: "success",
-        message: `Published "${draft.name}" with ${selected.length} model${selected.length === 1 ? "" : "s"}.`,
+        message: t("app.published", { name: draft.name, count: selected.length }),
       });
       onSaved();
       return deployment;
@@ -174,7 +177,7 @@ export function AppBuilder({
       const apiError = cause instanceof ApiError ? cause : undefined;
       push({
         tone: "error",
-        message: apiError?.message ?? (cause as Error).message ?? "Publishing failed.",
+        message: apiError?.message ?? (cause as Error).message ?? t("app.publishFailed"),
         reference: apiError?.correlationId,
       });
     } finally {
@@ -184,11 +187,11 @@ export function AppBuilder({
 
   const busy = saving || publishing;
   const keyError = !/^[A-Za-z_][\w.-]*$/.test(draft.key)
-    ? "Start with a letter or underscore; no spaces."
+    ? t("app.field.keyError")
     : undefined;
 
   return (
-    <section className="tf-panel" aria-label={`Editing ${model.name || model.id}`}>
+    <section className="tf-panel" aria-label={t("editor.editing", { name: model.name || model.id })}>
       <button
         type="button"
         className="tf-back"
@@ -201,19 +204,19 @@ export function AppBuilder({
         <div>
           <h1 className="tf-panel__title">{draft.name || model.id}</h1>
           <p className="tf-panel__meta" aria-live="polite">
-            {dirty ? "Unsaved changes" : "App definition"}
+            {dirty ? t("editor.unsaved") : t("app.definition")}
           </p>
         </div>
         <div className="tf-row-actions">
           <Button variant="secondary" loading={saving} onClick={() => void save()}>
-            Save
+            {t("action.save")}
           </Button>
           <Button
             loading={publishing}
             disabled={Boolean(keyError)}
             onClick={() => setConfirmPublish(true)}
           >
-            Publish
+            {t("action.publish")}
           </Button>
         </div>
       </header>
@@ -226,32 +229,32 @@ export function AppBuilder({
 
       <div className="tf-app-builder">
         <section>
-          <h2 className="tf-panel__section-title">Details</h2>
+          <h2 className="tf-panel__section-title">{t("app.details")}</h2>
           <TextInput
-            label="Name"
+            label={t("app.field.name")}
             value={draft.name}
             disabled={busy}
             onChange={(event) => update({ name: event.target.value })}
           />
           <TextInput
-            label="Key"
+            label={t("app.field.key")}
             value={draft.key}
             disabled={busy}
             error={keyError}
-            hint="Identifies the app in the engine."
+            hint={t("app.field.key.hint")}
             onChange={(event) => update({ key: event.target.value })}
           />
           <TextInput
-            label="Description"
+            label={t("app.field.description")}
             value={draft.description ?? ""}
             disabled={busy}
             onChange={(event) => update({ description: event.target.value })}
           />
           <TextInput
-            label="Icon"
+            label={t("app.field.icon")}
             value={draft.icon ?? ""}
             disabled={busy}
-            hint="Glyph name, e.g. glyphicon-cog."
+            hint={t("app.field.icon.hint")}
             onChange={(event) => update({ icon: event.target.value })}
           />
         </section>
@@ -311,7 +314,7 @@ export function AppBuilder({
         way to tell whether the draft has been published since it was last edited.
       */}
       <section className="tf-panel__section">
-        <h2 className="tf-panel__section-title">Published versions</h2>
+        <h2 className="tf-panel__section-title">{t("app.publishedVersions")}</h2>
         <AsyncBoundary
           loading={published.loading}
           error={published.error}
@@ -340,9 +343,12 @@ export function AppBuilder({
 
       <ConfirmDialog
         open={confirmPublish}
-        title="Publish this app?"
-        description={`"${draft.name}" and its ${draft.modelIds.length} bundled model${draft.modelIds.length === 1 ? "" : "s"} will be deployed to the engine. New instances use these versions; anything already running keeps the version it started on.`}
-        confirmLabel="Save and publish"
+        title={t("app.publish.title")}
+        description={t("app.publish.description", {
+          name: draft.name,
+          count: draft.modelIds.length,
+        })}
+        confirmLabel={t("app.publish.confirm")}
         busy={publishing}
         onCancel={() => setConfirmPublish(false)}
         onConfirm={() => {
@@ -353,10 +359,10 @@ export function AppBuilder({
 
       <ConfirmDialog
         open={confirmLeave}
-        title="Leave without saving?"
-        description={`"${draft.name}" has unsaved changes. Leaving now discards them.`}
-        confirmLabel="Discard changes"
-        cancelLabel="Keep editing"
+        title={t("editor.leave.title")}
+        description={t("editor.leave.description", { name: draft.name })}
+        confirmLabel={t("editor.leave.confirm")}
+        cancelLabel={t("editor.leave.cancel")}
         destructive
         onCancel={() => setConfirmLeave(false)}
         onConfirm={() => {

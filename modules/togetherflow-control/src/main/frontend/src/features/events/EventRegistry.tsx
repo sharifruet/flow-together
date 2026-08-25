@@ -21,6 +21,7 @@ import {
   EmptyState,
   TextInput,
   useAsync,
+  useI18n,
   useToast,
   type ChannelDefinitionResponse,
   type Column,
@@ -35,25 +36,26 @@ export interface EventRegistryProps {
 }
 
 export function EventRegistry({ eventApi }: EventRegistryProps) {
+  const { t } = useI18n();
   const [tab, setTab] = useState<EventTab>("events");
 
   return (
-    <section className="tf-panel" aria-label="Event registry">
+    <section className="tf-panel" aria-label={t("events.label")}>
       <header className="tf-panel__header">
         <div>
-          <h1 className="tf-panel__title">Event registry</h1>
+          <h1 className="tf-panel__title">{t("events.title")}</h1>
           <p className="tf-panel__meta">
             What the engine will react to, and a way to prove it does.
           </p>
         </div>
       </header>
 
-      <div className="tf-chips" role="tablist" aria-label="Event registry section">
+      <div className="tf-chips" role="tablist" aria-label={t("events.sectionLabel")}>
         {(
           [
-            ["events", "Event definitions"],
-            ["channels", "Channels"],
-            ["send", "Send an event"],
+            ["events", t("events.tab.events")],
+            ["channels", t("events.tab.channels")],
+            ["send", t("events.tab.send")],
           ] as const
         ).map(([value, label]) => (
           <button
@@ -83,6 +85,7 @@ export function EventRegistry({ eventApi }: EventRegistryProps) {
 }
 
 function EventDefinitions({ eventApi }: { eventApi: EventRegistryApi }) {
+  const { t } = useI18n();
   const [inspect, setInspect] = useState<EventDefinitionResponse | null>(null);
 
   const { data, error, loading, refetch } = useAsync(
@@ -94,7 +97,7 @@ function EventDefinitions({ eventApi }: { eventApi: EventRegistryApi }) {
     () => [
       {
         key: "name",
-        header: "Event",
+        header: t("events.column.event"),
         render: (definition) => (
           <div className="tf-task-cell">
             <span className="tf-task-cell__name">{definition.name ?? definition.key}</span>
@@ -110,12 +113,12 @@ function EventDefinitions({ eventApi }: { eventApi: EventRegistryApi }) {
         width: "120px",
         render: (definition) => (
           <Button variant="ghost" onClick={() => setInspect(definition)}>
-            View source
+            {t("events.viewSource")}
           </Button>
         ),
       },
     ],
-    [],
+    [t],
   );
 
   return (
@@ -128,14 +131,14 @@ function EventDefinitions({ eventApi }: { eventApi: EventRegistryApi }) {
         isEmpty={(page) => page.data.length === 0}
         empty={
           <EmptyState
-            title="No event definitions"
-            description="Deploy an event from Design to see it here."
+            title={t("events.empty.events.title")}
+            description={t("events.empty.events.description")}
           />
         }
       >
         {(page) => (
           <DataTable
-            caption="Event definitions"
+            caption={t("events.caption.events")}
             columns={columns}
             rows={page.data}
             rowKey={(definition) => definition.id}
@@ -155,6 +158,7 @@ function EventDefinitions({ eventApi }: { eventApi: EventRegistryApi }) {
 }
 
 function ChannelDefinitions({ eventApi }: { eventApi: EventRegistryApi }) {
+  const { t } = useI18n();
   const [inspect, setInspect] = useState<ChannelDefinitionResponse | null>(null);
 
   const { data, error, loading, refetch } = useAsync(
@@ -166,7 +170,7 @@ function ChannelDefinitions({ eventApi }: { eventApi: EventRegistryApi }) {
     () => [
       {
         key: "name",
-        header: "Channel",
+        header: t("events.column.channel"),
         render: (definition) => (
           <div className="tf-task-cell">
             <span className="tf-task-cell__name">{definition.name ?? definition.key}</span>
@@ -178,7 +182,7 @@ function ChannelDefinitions({ eventApi }: { eventApi: EventRegistryApi }) {
       },
       {
         key: "type",
-        header: "Type",
+        header: t("events.column.type"),
         width: "140px",
         render: (definition) =>
           definition.type ? (
@@ -193,12 +197,12 @@ function ChannelDefinitions({ eventApi }: { eventApi: EventRegistryApi }) {
         width: "120px",
         render: (definition) => (
           <Button variant="ghost" onClick={() => setInspect(definition)}>
-            View source
+            {t("events.viewSource")}
           </Button>
         ),
       },
     ],
-    [],
+    [t],
   );
 
   return (
@@ -211,14 +215,14 @@ function ChannelDefinitions({ eventApi }: { eventApi: EventRegistryApi }) {
         isEmpty={(page) => page.data.length === 0}
         empty={
           <EmptyState
-            title="No channels"
-            description="Deploy a channel from Design to see it here."
+            title={t("events.empty.channels.title")}
+            description={t("events.empty.channels.description")}
           />
         }
       >
         {(page) => (
           <DataTable
-            caption="Channel definitions"
+            caption={t("events.caption.channels")}
             columns={columns}
             rows={page.data}
             rowKey={(definition) => definition.id}
@@ -246,6 +250,7 @@ function SourceDialog({
   load: (signal?: AbortSignal) => Promise<unknown>;
   onClose: () => void;
 }) {
+  const { t } = useI18n();
   const model = useAsync((signal) => load(signal), []);
 
   return (
@@ -254,11 +259,11 @@ function SourceDialog({
         className="tf-dialog tf-dialog--wide"
         role="dialog"
         aria-modal="true"
-        aria-label={`Source of ${title}`}
+        aria-label={t("events.source.label", { title })}
         onMouseDown={(event) => event.stopPropagation()}
       >
         <h2 className="tf-dialog__title">{title}</h2>
-        <p className="tf-dialog__description">The definition as it is deployed right now.</p>
+        <p className="tf-dialog__description">{t("events.source.description")}</p>
         <AsyncBoundary
           loading={model.loading}
           error={model.error}
@@ -269,7 +274,7 @@ function SourceDialog({
         </AsyncBoundary>
         <div className="tf-dialog__actions">
           <Button variant="secondary" onClick={onClose}>
-            Close
+            {t("action.close")}
           </Button>
         </div>
       </div>
@@ -280,6 +285,7 @@ function SourceDialog({
 /* ── Send an event ───────────────────────────────────────────────────────── */
 
 function SendEvent({ eventApi }: { eventApi: EventRegistryApi }) {
+  const { t } = useI18n();
   const { push } = useToast();
   const [eventKey, setEventKey] = useState("");
   const [channelKey, setChannelKey] = useState("");
@@ -290,13 +296,13 @@ function SendEvent({ eventApi }: { eventApi: EventRegistryApi }) {
     try {
       const parsed: unknown = JSON.parse(payload);
       if (typeof parsed !== "object" || parsed === null || Array.isArray(parsed)) {
-        return "The payload must be a JSON object.";
+        return t("events.send.notObject");
       }
       return undefined;
     } catch {
-      return "That isn't valid JSON.";
+      return t("events.send.notJson");
     }
-  }, [payload]);
+  }, [payload, t]);
 
   const send = async () => {
     setBusy(true);
@@ -306,12 +312,12 @@ function SendEvent({ eventApi }: { eventApi: EventRegistryApi }) {
         channelDefinitionKey: channelKey.trim(),
         eventPayload: JSON.parse(payload) as Record<string, unknown>,
       });
-      push({ tone: "success", message: `Sent "${eventKey.trim()}".` });
+      push({ tone: "success", message: t("events.send.sent", { key: eventKey.trim() }) });
     } catch (cause) {
       const apiError = cause instanceof ApiError ? cause : undefined;
       push({
         tone: "error",
-        message: apiError?.message ?? "Could not send that event.",
+        message: apiError?.message ?? t("events.send.failed"),
         reference: apiError?.correlationId,
       });
     } finally {
@@ -328,22 +334,22 @@ function SendEvent({ eventApi }: { eventApi: EventRegistryApi }) {
       </p>
 
       <TextInput
-        label="Event key"
+        label={t("events.send.eventKey")}
         value={eventKey}
         disabled={busy}
-        hint="Must match a deployed event definition."
+        hint={t("events.send.eventKey.hint")}
         onChange={(event) => setEventKey(event.target.value)}
       />
       <TextInput
-        label="Channel key"
+        label={t("events.send.channelKey")}
         value={channelKey}
         disabled={busy}
-        hint="Required — the engine rejects the request without a channel."
+        hint={t("events.send.channelKey.hint")}
         onChange={(event) => setChannelKey(event.target.value)}
       />
 
       <label className="tf-field">
-        <span className="tf-field__label">Payload (JSON object)</span>
+        <span className="tf-field__label">{t("events.send.payload")}</span>
         <textarea
           className="tf-input tf-textarea tf-source-input"
           rows={8}
@@ -363,7 +369,7 @@ function SendEvent({ eventApi }: { eventApi: EventRegistryApi }) {
         disabled={!eventKey.trim() || !channelKey.trim() || Boolean(payloadError)}
         onClick={() => void send()}
       >
-        Send event
+        {t("events.send.action")}
       </Button>
     </div>
   );

@@ -12,6 +12,8 @@ export default tseslint.config(
   {
     ignores: [
       "dist/**",
+      // Built output of the component gallery (§14.2), not source.
+      "gallery-dist/**",
       "node_modules/**",
       "coverage/**",
       // Served verbatim to the browser as runtime config, not part of the build.

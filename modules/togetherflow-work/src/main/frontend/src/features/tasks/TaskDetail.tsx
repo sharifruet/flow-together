@@ -15,11 +15,14 @@ import {
   toEditable,
   toRestVariables,
   useAsync,
+  useI18n,
+  useRegisterShortcuts,
   useToast,
   validateForm,
   validateVariables,
   type EditableVariable,
   type FormValues,
+  type Shortcut,
   type TaskApi,
 } from "@togetherflow/common";
 import { Attachments } from "./Attachments";
@@ -42,6 +45,7 @@ export function TaskDetail({
   onChanged,
   onClose,
 }: TaskDetailProps) {
+  const { t, locale } = useI18n();
   const { push } = useToast();
   /**
    * Edits are tagged with the task they belong to and derived during render rather
@@ -178,7 +182,7 @@ export function TaskDetail({
         const apiError = cause instanceof ApiError ? cause : undefined;
         push({
           tone: "error",
-          message: apiError?.message ?? "That action could not be completed.",
+          message: apiError?.message ?? t("task.action.failed"),
           reference: apiError?.correlationId,
         });
         // A conflict usually means someone else acted first — refresh rather than
@@ -194,22 +198,71 @@ export function TaskDetail({
         setBusy(false);
       }
     },
-    [push, reload, onChanged],
+    [push, reload, onChanged, t],
   );
+
+  /*
+   * Claim and complete without the mouse (§14.4). Registered here rather than at the app
+   * root because this is where the actions and the task are — and because "complete this
+   * task" should not be a live shortcut when no task is open.
+   *
+   * Complete opens the confirmation rather than bypassing it: §14.3 requires a
+   * consequential action to be confirmed, and a keystroke is not an exemption. Where a
+   * form declares named outcomes there is no single "complete", so the shortcut steps
+   * aside rather than picking one arbitrarily.
+   */
+  const shortcuts = useMemo<Shortcut[]>(
+    () => [
+      {
+        key: "c",
+        description: t("shortcuts.claim"),
+        when: Boolean(task) && isUnassigned && !busy,
+        run: () => {
+          if (!task) return;
+          void runAction(t("task.action.claimed"), async () => {
+            await taskApi.claim(task.id, userId);
+            reload();
+            onChanged();
+          });
+        },
+      },
+      {
+        key: "d",
+        description: t("shortcuts.complete"),
+        when: Boolean(task) && isAssignedToMe && canSubmit && outcomes.length === 0 && !busy,
+        run: () => setConfirmComplete(""),
+      },
+    ],
+    [
+      t,
+      task,
+      isUnassigned,
+      isAssignedToMe,
+      canSubmit,
+      outcomes.length,
+      busy,
+      runAction,
+      taskApi,
+      userId,
+      reload,
+      onChanged,
+    ],
+  );
+  useRegisterShortcuts(shortcuts);
 
   if (!taskId) {
     return (
       <aside className="tf-detail tf-detail--empty">
         <EmptyState
-          title="No task selected"
-          description="Choose a task from the list to see its details and act on it."
+          title={t("task.detail.none.title")}
+          description={t("task.detail.none.description")}
         />
       </aside>
     );
   }
 
   return (
-    <aside className="tf-detail" aria-label="Task detail">
+    <aside className="tf-detail" aria-label={t("task.detail.label")}>
       <AsyncBoundary
         loading={detail.loading}
         error={detail.error}
@@ -224,19 +277,23 @@ export function TaskDetail({
             <>
               <header className="tf-detail__header">
                 <div>
-                  <h2 className="tf-detail__title">{current.name ?? "(untitled task)"}</h2>
+                  <h2 className="tf-detail__title">{current.name ?? t("inbox.untitled")}</h2>
                   <p className="tf-detail__meta">
                     {current.assignee ? (
-                      <>Assigned to {current.assignee}</>
+                      t("task.detail.assignedTo", { assignee: current.assignee })
                     ) : (
-                      <span className="tf-muted">Unassigned</span>
+                      <span className="tf-muted">{t("inbox.unassigned")}</span>
                     )}
                     {" · "}
-                    {priorityLabel(current.priority)} priority
+                    {t("task.detail.priorityLine", {
+                      priority: priorityLabel(current.priority, t),
+                    })}
                     {current.scopeType === "cmmn" ? (
                       <>
                         {" · "}
-                        <span className="tf-badge tf-badge--running">Case</span>
+                        <span className="tf-badge tf-badge--running">
+                          {t("task.detail.caseBadge")}
+                        </span>
                       </>
                     ) : null}
                   </p>
@@ -245,7 +302,7 @@ export function TaskDetail({
                   type="button"
                   className="tf-detail__close"
                   onClick={onClose}
-                  aria-label="Close task detail"
+                  aria-label={t("task.detail.close")}
                 >
                   ×
                 </button>
@@ -256,15 +313,22 @@ export function TaskDetail({
               ) : null}
 
               <dl className="tf-detail__facts">
-                <Fact label="Created" value={formatDateTime(current.createTime)} />
-                <Fact label="Due" value={formatDateTime(current.dueDate)} />
-                {current.owner ? <Fact label="Owner" value={current.owner} /> : null}
-                {current.category ? <Fact label="Category" value={current.category} /> : null}
+                <Fact
+                  label={t("task.fact.created")}
+                  value={formatDateTime(current.createTime, locale)}
+                />
+                <Fact label={t("task.fact.due")} value={formatDateTime(current.dueDate, locale)} />
+                {current.owner ? (
+                  <Fact label={t("task.fact.owner")} value={current.owner} />
+                ) : null}
+                {current.category ? (
+                  <Fact label={t("task.fact.category")} value={current.category} />
+                ) : null}
               </dl>
 
               <section className="tf-detail__section">
                 <h3 className="tf-detail__section-title">
-                  {usingForm ? form?.name || "Form" : "Variables"}
+                  {usingForm ? form?.name || t("task.section.form") : t("task.section.variables")}
                 </h3>
                 {usingForm && form ? (
                   <FormRenderer
@@ -273,7 +337,7 @@ export function TaskDetail({
                     errors={visibleFormErrors}
                     disabled={busy || !isAssignedToMe}
                     onChange={setFormValue}
-                    onBlur={(fieldId) => setTouched((t) => ({ ...t, [fieldId]: true }))}
+                    onBlur={(fieldId) => setTouched((previous) => ({ ...previous, [fieldId]: true }))}
                     /*
                      * An upload field stores the attachment's id. The file itself goes
                      * through the task's own attachment endpoint, so it lands in
@@ -283,7 +347,9 @@ export function TaskDetail({
                     onUploadFile={async (field, file) => {
                       const attachment = await taskApi.uploadAttachment(current.id, file, {
                         name: file.name,
-                        description: `Uploaded for "${field.name ?? field.id}"`,
+                        description: t("task.form.uploadedFor", {
+                          field: field.name ?? field.id,
+                        }),
                       });
                       reload();
                       return attachment.id;
@@ -293,8 +359,7 @@ export function TaskDetail({
                   <>
                     {current.formKey ? (
                       <p className="tf-detail__note">
-                        This task declares a form (<code>{current.formKey}</code>), but its
-                        definition could not be loaded. Showing the underlying variables instead.
+                        <code>{current.formKey}</code> — {t("task.form.unloadable")}
                       </p>
                     ) : null}
                     <VariableEditor
@@ -305,15 +370,15 @@ export function TaskDetail({
                   </>
                 )}
                 {!isAssignedToMe ? (
-                  <p className="tf-detail__note">
-                    Claim this task to fill this in and complete it.
-                  </p>
+                  <p className="tf-detail__note">{t("task.form.claimFirst")}</p>
                 ) : null}
               </section>
 
               <section className="tf-detail__section">
                 <h3 className="tf-detail__section-title">
-                  Attachments {attachments.length ? `(${attachments.length})` : ""}
+                  {attachments.length
+                    ? t("task.section.attachmentsCount", { count: attachments.length })
+                    : t("task.section.attachments")}
                 </h3>
                 <Attachments
                   taskApi={taskApi}
@@ -326,17 +391,19 @@ export function TaskDetail({
 
               <section className="tf-detail__section">
                 <h3 className="tf-detail__section-title">
-                  Comments {comments.length ? `(${comments.length})` : ""}
+                  {comments.length
+                    ? t("task.section.commentsCount", { count: comments.length })
+                    : t("task.section.comments")}
                 </h3>
                 {comments.length === 0 ? (
-                  <p className="tf-muted">No comments yet.</p>
+                  <p className="tf-muted">{t("task.comments.none")}</p>
                 ) : (
                   <ul className="tf-comments">
                     {comments.map((entry) => (
                       <li key={entry.id} className="tf-comments__item">
                         <p className="tf-comments__meta">
-                          <strong>{entry.author ?? "Unknown"}</strong> ·{" "}
-                          {formatDateTime(entry.time)}
+                          <strong>{entry.author ?? t("task.comments.unknownAuthor")}</strong> ·{" "}
+                          {formatDateTime(entry.time, locale)}
                         </p>
                         <p className="tf-comments__message">{entry.message}</p>
                       </li>
@@ -345,13 +412,13 @@ export function TaskDetail({
                 )}
                 <div className="tf-comments__compose">
                   <label className="tf-visually-hidden" htmlFor="tf-new-comment">
-                    Add a comment
+                    {t("task.comments.add")}
                   </label>
                   <textarea
                     id="tf-new-comment"
                     className="tf-input tf-textarea"
                     rows={2}
-                    placeholder="Add a comment…"
+                    placeholder={t("task.comments.placeholder")}
                     value={comment}
                     disabled={busy}
                     onChange={(event) => setComment(event.target.value)}
@@ -360,27 +427,27 @@ export function TaskDetail({
                     variant="secondary"
                     disabled={busy || comment.trim() === ""}
                     onClick={() =>
-                      runAction("Comment added.", async () => {
+                      runAction(t("task.comments.added"), async () => {
                         await taskApi.addComment(current.id, comment.trim());
                         setComment("");
                         reload();
                       })
                     }
                   >
-                    Comment
+                    {t("task.comments.submit")}
                   </Button>
                 </div>
               </section>
 
               {Array.isArray(detail.data?.people) && detail.data.people.length > 0 ? (
                 <section className="tf-detail__section">
-                  <h3 className="tf-detail__section-title">People</h3>
+                  <h3 className="tf-detail__section-title">{t("task.section.people")}</h3>
                   <ul className="tf-people">
                     {detail.data.people.map((link, index) => (
                       <li className="tf-people__item" key={`${link.type}:${link.user ?? link.group}:${index}`}>
                         <span className="tf-people__who">{link.user ?? link.group}</span>
                         <span className="tf-people__how">
-                          {link.group ? `${link.type} (group)` : link.type}
+                          {link.group ? t("task.people.group", { type: link.type }) : link.type}
                         </span>
                       </li>
                     ))}
@@ -391,14 +458,16 @@ export function TaskDetail({
               {Array.isArray(detail.data?.subTasks) && detail.data.subTasks.length > 0 ? (
                 <section className="tf-detail__section">
                   <h3 className="tf-detail__section-title">
-                    Sub-tasks ({detail.data.subTasks.length})
+                    {t("task.section.subTasks", { count: detail.data.subTasks.length })}
                   </h3>
                   <ul className="tf-people">
                     {detail.data.subTasks.map((sub) => (
                       <li className="tf-people__item" key={sub.id}>
                         <span className="tf-people__who">{sub.name ?? sub.id}</span>
                         <span className="tf-people__how">
-                          {sub.assignee ? `assigned to ${sub.assignee}` : "unassigned"}
+                          {sub.assignee
+                            ? t("task.subTasks.assignedTo", { assignee: sub.assignee })
+                            : t("task.subTasks.unassigned")}
                         </span>
                       </li>
                     ))}
@@ -407,28 +476,30 @@ export function TaskDetail({
               ) : null}
 
               <section className="tf-detail__section">
-                <h3 className="tf-detail__section-title">History</h3>
+                <h3 className="tf-detail__section-title">{t("task.section.history")}</h3>
                 {/*
                   The shape is checked, not assumed. An endpoint that answers with
                   something unexpected must not take the whole panel down with it —
                   which is exactly what reading `.data.length` off a non-page did.
                 */}
                 {!Array.isArray(detail.data?.log?.data) ? (
-                  <p className="tf-muted">This task's history could not be read.</p>
+                  <p className="tf-muted">{t("task.history.unreadable")}</p>
                 ) : detail.data.log.data.length === 0 ? (
-                  <p className="tf-muted">
-                    Nothing recorded. Engines only keep a task audit trail when
-                    <code> enableHistoricTaskLogging </code> is switched on, and it is off
-                    by default.
-                  </p>
+                  <p className="tf-muted">{t("task.history.none")}</p>
                 ) : (
                   <ol className="tf-tasklog">
                     {detail.data.log.data.map((entry) => (
                       <li className="tf-tasklog__item" key={entry.logNumber}>
-                        <span className="tf-tasklog__type">{entry.type ?? "event"}</span>
-                        <span className="tf-tasklog__when">{formatDateTime(entry.timeStamp)}</span>
+                        <span className="tf-tasklog__type">
+                          {entry.type ?? t("task.history.event")}
+                        </span>
+                        <span className="tf-tasklog__when">
+                          {formatDateTime(entry.timeStamp, locale)}
+                        </span>
                         {entry.userId ? (
-                          <span className="tf-tasklog__who">by {entry.userId}</span>
+                          <span className="tf-tasklog__who">
+                            {t("task.history.by", { userId: entry.userId })}
+                          </span>
                         ) : null}
                       </li>
                     ))}
@@ -441,14 +512,14 @@ export function TaskDetail({
                   <Button
                     loading={busy}
                     onClick={() =>
-                      runAction("Task claimed.", async () => {
+                      runAction(t("task.action.claimed"), async () => {
                         await taskApi.claim(current.id, userId);
                         reload();
                         onChanged();
                       })
                     }
                   >
-                    Claim
+                    {t("task.action.claim")}
                   </Button>
                 ) : null}
 
@@ -458,17 +529,17 @@ export function TaskDetail({
                       variant="secondary"
                       loading={busy}
                       onClick={() =>
-                        runAction("Task returned to the queue.", async () => {
+                        runAction(t("task.action.unclaimed"), async () => {
                           await taskApi.unclaim(current.id);
                           reload();
                           onChanged();
                         })
                       }
                     >
-                      Unclaim
+                      {t("task.action.unclaim")}
                     </Button>
                     <Button variant="secondary" loading={busy} onClick={() => setDelegating(true)}>
-                      Delegate
+                      {t("task.action.delegate")}
                     </Button>
                     {/*
                       A form may name its own outcomes ("Approve", "Reject"). Each is a
@@ -492,7 +563,7 @@ export function TaskDetail({
                         disabled={!canSubmit}
                         onClick={() => setConfirmComplete("")}
                       >
-                        Complete task
+                        {t("task.action.complete")}
                       </Button>
                     )}
                   </>
@@ -506,14 +577,19 @@ export function TaskDetail({
                   <Button
                     loading={busy}
                     onClick={() =>
-                      runAction(`Handed back to ${current.owner ?? "the owner"}.`, async () => {
-                        await taskApi.resolve(current.id);
-                        reload();
-                        onChanged();
-                      })
+                      runAction(
+                        t("task.action.handedBack", {
+                          owner: current.owner ?? t("task.action.owner"),
+                        }),
+                        async () => {
+                          await taskApi.resolve(current.id);
+                          reload();
+                          onChanged();
+                        },
+                      )
                     }
                   >
-                    Hand back to {current.owner ?? "owner"}
+                    {t("task.action.handBack", { owner: current.owner ?? t("task.action.owner") })}
                   </Button>
                 ) : null}
               </footer>
@@ -524,18 +600,15 @@ export function TaskDetail({
                     className="tf-dialog"
                     role="dialog"
                     aria-modal="true"
-                    aria-label="Delegate task"
+                    aria-label={t("task.delegate.label")}
                     onMouseDown={(event) => event.stopPropagation()}
                   >
-                    <h2 className="tf-dialog__title">Delegate this task</h2>
-                    <p className="tf-dialog__description">
-                      They do it on your behalf and hand it back when they are done. You stay
-                      its owner, so it returns to you rather than being completed by them.
-                    </p>
+                    <h2 className="tf-dialog__title">{t("task.delegate.title")}</h2>
+                    <p className="tf-dialog__description">{t("task.delegate.description")}</p>
                     <TextInput
-                      label="Delegate to"
+                      label={t("task.delegate.to")}
                       value={delegateTo}
-                      hint="The user id to hand it to."
+                      hint={t("task.delegate.hint")}
                       onChange={(event) => setDelegateTo(event.target.value)}
                     />
                     <div className="tf-dialog__actions">
@@ -544,7 +617,7 @@ export function TaskDetail({
                         disabled={busy}
                         onClick={() => setDelegating(false)}
                       >
-                        Cancel
+                        {t("dialog.cancel")}
                       </Button>
                       <Button
                         loading={busy}
@@ -553,14 +626,14 @@ export function TaskDetail({
                           const to = delegateTo.trim();
                           setDelegating(false);
                           setDelegateTo("");
-                          void runAction(`Delegated to ${to}.`, async () => {
+                          void runAction(t("task.delegate.done", { to }), async () => {
                             await taskApi.delegate(current.id, to);
                             reload();
                             onChanged();
                           });
                         }}
                       >
-                        Delegate
+                        {t("task.action.delegate")}
                       </Button>
                     </div>
                   </div>
@@ -569,27 +642,34 @@ export function TaskDetail({
 
               {!canSubmit ? (
                 <p className="tf-detail__note tf-detail__note--error" role="alert">
-                  {usingForm
-                    ? "Fill in the required fields before completing this task."
-                    : "Fix the highlighted variables before completing this task."}
+                  {usingForm ? t("task.validation.form") : t("task.validation.variables")}
                 </p>
               ) : null}
 
               <ConfirmDialog
                 open={confirmComplete !== null}
-                title={confirmComplete ? `${confirmComplete} this task?` : "Complete this task?"}
+                title={
+                  confirmComplete
+                    ? t("task.confirm.outcome.title", { outcome: confirmComplete })
+                    : t("task.confirm.complete.title")
+                }
                 description={
                   confirmComplete
-                    ? `"${current.name ?? "This task"}" will be submitted with the outcome "${confirmComplete}" and removed from your inbox. This can't be undone.`
-                    : `"${current.name ?? "This task"}" will be completed and removed from your inbox. This can't be undone.`
+                    ? t("task.confirm.outcome.description", {
+                        name: current.name ?? t("task.confirm.thisTask"),
+                        outcome: confirmComplete,
+                      })
+                    : t("task.confirm.complete.description", {
+                        name: current.name ?? t("task.confirm.thisTask"),
+                      })
                 }
-                confirmLabel={confirmComplete || "Complete task"}
+                confirmLabel={confirmComplete || t("task.action.complete")}
                 busy={busy}
                 onCancel={() => setConfirmComplete(null)}
                 onConfirm={() => {
                   const outcome = confirmComplete;
                   setConfirmComplete(null);
-                  void runAction("Task completed.", async () => {
+                  void runAction(t("task.action.completed"), async () => {
                     const submitted =
                       usingForm && form
                         ? formValuesToVariables(form, formValues)

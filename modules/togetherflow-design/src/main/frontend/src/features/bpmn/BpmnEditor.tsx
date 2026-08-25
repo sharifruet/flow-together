@@ -18,6 +18,7 @@ import {
   ConfirmDialog,
   ErrorState,
   Skeleton,
+  useI18n,
   useToast,
   type ModelApi,
   type ModelResponse,
@@ -35,7 +36,8 @@ export interface BpmnEditorProps {
   initialXml: string | null;
   loadError?: string | null;
   onBack: () => void;
-  onSaved: () => void;
+  /** Called after a save or deploy; carries the updated draft where one exists. */
+  onSaved: (draft?: ModelResponse) => void;
 }
 
 export function BpmnEditor({
@@ -46,6 +48,7 @@ export function BpmnEditor({
   onBack,
   onSaved,
 }: BpmnEditorProps) {
+  const { t, locale } = useI18n();
   const { push } = useToast();
   // Destructured rather than kept as an object: the members are passed as props, and
   // property access on the hook's result confuses the refs lint rule.
@@ -66,6 +69,7 @@ export function BpmnEditor({
     selectElement,
     markSaved,
     updateProperties,
+    moddle,
   } = useBpmnModeler(initialXml);
   const [saving, setSaving] = useState(false);
   const [deploying, setDeploying] = useState(false);
@@ -80,9 +84,9 @@ export function BpmnEditor({
     try {
       setSourceXml(await getXml());
     } catch (cause) {
-      push({ tone: "error", message: (cause as Error).message || "Could not read the XML." });
+      push({ tone: "error", message: (cause as Error).message || t("bpmn.xmlReadFailed") });
     }
-  }, [getXml, push]);
+  }, [getXml, push, t]);
 
   /**
    * Runs the client-side checks. They approximate `flowable-process-validation`, which
@@ -93,13 +97,41 @@ export function BpmnEditor({
     try {
       const found = validateBpmn(await getXml());
       setIssues(found);
-      if (found.length === 0) push({ tone: "success", message: "No problems found." });
+      if (found.length === 0) push({ tone: "success", message: t("bpmn.checksClean") });
     } catch (cause) {
-      push({ tone: "error", message: (cause as Error).message || "Could not check the model." });
+      push({ tone: "error", message: (cause as Error).message || t("bpmn.checkFailed") });
     }
-  }, [getXml, push]);
+  }, [getXml, push, t]);
 
   /** Deploying runs the checks first; blocking problems stop it before the round trip. */
+
+  /**
+   * Cuts a version from what is on the canvas right now (§7.4.1) — the checkpoint before
+   * a risky edit. Saves first, so the version records what the user is looking at rather
+   * than whatever was last written.
+   */
+  const saveVersion = useCallback(async () => {
+    setSaving(true);
+    try {
+      const xml = await getXml();
+      await modelApi.saveSource(model.id, xml);
+      const draft = await modelApi.cutVersion(model, xml);
+      markSaved();
+      setLastSavedAt(new Date());
+      push({ tone: "success", message: t("editor.versionSaved", { version: draft.version ?? 1 }) });
+      onSaved(draft);
+    } catch (cause) {
+      const apiError = cause instanceof ApiError ? cause : undefined;
+      push({
+        tone: "error",
+        message: apiError?.message ?? (cause as Error).message ?? t("editor.versionFailed"),
+        reference: apiError?.correlationId,
+      });
+    } finally {
+      setSaving(false);
+    }
+  }, [getXml, markSaved, modelApi, model, push, onSaved, t]);
+
   const startDeploy = useCallback(async () => {
     try {
       const found = validateBpmn(await getXml());
@@ -107,7 +139,7 @@ export function BpmnEditor({
       if (!canDeploy(found)) {
         push({
           tone: "error",
-          message: "Fix the problems listed below before deploying.",
+          message: t("bpmn.fixBeforeDeploy"),
         });
         return;
       }
@@ -115,7 +147,7 @@ export function BpmnEditor({
       // A model we cannot even read is the engine's problem to report.
     }
     setConfirmDeploy(true);
-  }, [getXml, push]);
+  }, [getXml, push, t]);
 
   const save = useCallback(
     async (options: { silent?: boolean } = {}) => {
@@ -125,14 +157,14 @@ export function BpmnEditor({
         await modelApi.saveSource(model.id, xml);
         markSaved();
         setLastSavedAt(new Date());
-        if (!options.silent) push({ tone: "success", message: "Saved." });
+        if (!options.silent) push({ tone: "success", message: t("editor.saved.toast") });
         onSaved();
         return true;
       } catch (cause) {
         const apiError = cause instanceof ApiError ? cause : undefined;
         push({
           tone: "error",
-          message: apiError?.message ?? (cause as Error).message ?? "Could not save this model.",
+          message: apiError?.message ?? (cause as Error).message ?? t("editor.saveFailed"),
           reference: apiError?.correlationId,
         });
         return false;
@@ -140,7 +172,7 @@ export function BpmnEditor({
         setSaving(false);
       }
     },
-    [getXml, markSaved, modelApi, model.id, push, onSaved],
+    [getXml, markSaved, modelApi, model.id, push, onSaved, t],
   );
 
   // Autosave once editing goes idle. Held in a ref so a re-render mid-typing does not
@@ -193,13 +225,15 @@ export function BpmnEditor({
       markSaved();
       setLastSavedAt(new Date());
       const deployment = await modelApi.deploy(model, xml);
-      push({ tone: "success", message: `Deployed as ${deployment.id}.` });
-      onSaved();
+      push({ tone: "success", message: t("editor.deployed", { id: deployment.id }) });
+      // Deploying cuts a version (§7.4.1), so the draft's version number has moved on.
+      // The row itself is unchanged, which is why nothing has to re-import.
+      onSaved(deployment.draft);
     } catch (cause) {
       const apiError = cause instanceof ApiError ? cause : undefined;
       push({
         tone: "error",
-        message: apiError?.message ?? (cause as Error).message ?? "Deployment failed.",
+        message: apiError?.message ?? (cause as Error).message ?? t("editor.deployFailed"),
         reference: apiError?.correlationId,
       });
     } finally {
@@ -210,7 +244,7 @@ export function BpmnEditor({
   const busy = saving || deploying;
 
   return (
-    <section className="tf-editor" aria-label={`Editing ${model.name || model.id}`}>
+    <section className="tf-editor" aria-label={t("editor.editing", { name: model.name || model.id })}>
       <header className="tf-editor__header">
         <div className="tf-editor__identity">
           <button type="button" className="tf-back" onClick={leave}>
@@ -219,50 +253,58 @@ export function BpmnEditor({
           <h1 className="tf-editor__title">{model.name || model.key || model.id}</h1>
           <p className="tf-editor__meta" aria-live="polite">
             {dirty
-              ? "Unsaved changes"
+              ? t("editor.unsaved")
               : lastSavedAt
-                ? `Saved ${lastSavedAt.toLocaleTimeString()}`
-                : "No changes"}
+                ? t("editor.saved", { time: lastSavedAt.toLocaleTimeString(locale) })
+                : t("editor.noChanges")}
           </p>
         </div>
 
         <div className="tf-editor__actions">
-          <div className="tf-editor__group" role="group" aria-label="History">
+          <div className="tf-editor__group" role="group" aria-label={t("editor.history")}>
             <Button variant="secondary" disabled={!canUndo || busy} onClick={undo}>
-              Undo
+              {t("action.undo")}
             </Button>
             <Button variant="secondary" disabled={!canRedo || busy} onClick={redo}>
-              Redo
+              {t("action.redo")}
             </Button>
           </div>
-          <div className="tf-editor__group" role="group" aria-label="Zoom">
-            <Button variant="secondary" onClick={zoomOut} aria-label="Zoom out">
+          <div className="tf-editor__group" role="group" aria-label={t("editor.zoom")}>
+            <Button variant="secondary" onClick={zoomOut} aria-label={t("editor.zoomOut")}>
               −
             </Button>
-            <Button variant="secondary" onClick={zoomFit} aria-label="Fit to view">
-              Fit
+            <Button variant="secondary" onClick={zoomFit} aria-label={t("editor.zoomFit")}>
+              {t("action.fit")}
             </Button>
-            <Button variant="secondary" onClick={zoomIn} aria-label="Zoom in">
+            <Button variant="secondary" onClick={zoomIn} aria-label={t("editor.zoomIn")}>
               +
             </Button>
           </div>
           <Button variant="secondary" disabled={!ready} onClick={() => void openSource()}>
-            XML
+            {t("bpmn.xmlTitle")}
           </Button>
           <Button variant="secondary" disabled={!ready} onClick={() => void check()}>
-            Check
+            {t("action.check")}
           </Button>
           <Button variant="secondary" loading={saving} disabled={!ready} onClick={() => void save()}>
-            Save
+            {t("action.save")}
+          </Button>
+          <Button
+            variant="secondary"
+            loading={saving}
+            disabled={!ready}
+            onClick={() => void saveVersion()}
+          >
+            {t("editor.saveVersion")}
           </Button>
           <Button loading={deploying} disabled={!ready} onClick={() => void startDeploy()}>
-            Deploy
+            {t("action.deploy")}
           </Button>
         </div>
       </header>
 
       {issues && issues.length > 0 ? (
-        <section className="tf-issues" aria-label="Model checks">
+        <section className="tf-issues" aria-label={t("bpmn.checksLabel")}>
           <h2 className="tf-issues__title">
             {issues.filter((i) => i.severity === "error").length} problem
             {issues.filter((i) => i.severity === "error").length === 1 ? "" : "s"},{" "}
@@ -283,7 +325,7 @@ export function BpmnEditor({
                     className="tf-issues__locate"
                     onClick={() => selectElement(issue.elementId!)}
                   >
-                    Show
+                    {t("action.show")}
                   </button>
                 ) : null}
               </li>
@@ -294,7 +336,7 @@ export function BpmnEditor({
             endpoint, so passing here doesn't guarantee the engine will accept the model.
           </p>
           <Button variant="secondary" onClick={() => setIssues(null)}>
-            Dismiss
+            {t("action.dismiss")}
           </Button>
         </section>
       ) : null}
@@ -305,10 +347,10 @@ export function BpmnEditor({
             className="tf-dialog tf-dialog--wide"
             role="dialog"
             aria-modal="true"
-            aria-label="BPMN XML"
+            aria-label={t("bpmn.xmlLabel")}
             onMouseDown={(event) => event.stopPropagation()}
           >
-            <h2 className="tf-dialog__title">BPMN XML</h2>
+            <h2 className="tf-dialog__title">{t("bpmn.xmlTitle")}</h2>
             <p className="tf-dialog__description">
               Exactly what will be deployed. Read-only — edit the diagram, not the text.
             </p>
@@ -324,10 +366,10 @@ export function BpmnEditor({
                   )
                 }
               >
-                Download
+                {t("action.download")}
               </Button>
               <Button variant="secondary" onClick={() => setSourceXml(null)}>
-                Close
+                {t("action.close")}
               </Button>
             </div>
           </div>
@@ -344,12 +386,13 @@ export function BpmnEditor({
         <div className="tf-editor__canvas-wrap">
           {!ready && !editorError ? (
             <div className="tf-editor__loading">
-              <Skeleton rows={6} label="Loading diagram" />
+              <Skeleton rows={6} label={t("bpmn.loadingDiagram")} />
             </div>
           ) : null}
           <div className="tf-editor__canvas" ref={containerRef} data-testid="bpmn-canvas" />
         </div>
         <PropertiesPanel
+          moddle={moddle}
           element={selection}
           disabled={busy}
           onChange={updateProperties}
@@ -358,10 +401,10 @@ export function BpmnEditor({
 
       <ConfirmDialog
         open={confirmLeave}
-        title="Leave without saving?"
-        description={`"${model.name || model.id}" has unsaved changes. Leaving now discards them.`}
-        confirmLabel="Discard changes"
-        cancelLabel="Keep editing"
+        title={t("editor.leave.title")}
+        description={t("editor.leave.description", { name: model.name || model.id })}
+        confirmLabel={t("editor.leave.confirm")}
+        cancelLabel={t("editor.leave.cancel")}
         destructive
         onCancel={() => setConfirmLeave(false)}
         onConfirm={() => {
@@ -372,9 +415,9 @@ export function BpmnEditor({
 
       <ConfirmDialog
         open={confirmDeploy}
-        title="Deploy this model?"
-        description={`"${model.name || model.id}" will be saved and deployed to the engine. New instances will use this version; instances already running keep the version they started on.`}
-        confirmLabel="Save and deploy"
+        title={t("bpmn.deploy.title")}
+        description={t("bpmn.deploy.description", { name: model.name || model.id })}
+        confirmLabel={t("bpmn.deploy.confirm")}
         busy={deploying}
         onCancel={() => setConfirmDeploy(false)}
         onConfirm={() => {

@@ -13,6 +13,8 @@
  */
 
 import type { components as ProcessComponents } from "./generated/process";
+import type { components as IdmComponents } from "./generated/idm";
+import type { IdmGroup, IdmPrivilege, IdmUser } from "./idm";
 import type {
   AttachmentResponse,
   CommentResponse,
@@ -24,6 +26,7 @@ import type {
 } from "./types";
 
 type Generated = ProcessComponents["schemas"];
+type GeneratedIdm = IdmComponents["schemas"];
 
 /** Compile-time assertion that `Actual` covers every field of `Expected` we use. */
 type AssertCompatible<Expected, Actual extends Expected> = Actual;
@@ -93,6 +96,29 @@ type _DataResponse = AssertCompatible<
   Partial<Pick<Generated["DataResponse"], "total" | "start" | "size">>
 >;
 
+/*
+ * IDM (§7.3). Its spec is hand-authored rather than generated from the engine's
+ * annotations (see docs/public-api/references/openapi/idm), so these assertions are the
+ * thing that keeps it honest: if the client starts reading a field the spec does not
+ * describe, this fails, and the spec — or the reading — gets fixed.
+ */
+type _IdmUser = AssertCompatible<
+  Partial<Pick<IdmUser, "id" | "firstName" | "lastName" | "displayName" | "email">>,
+  Partial<
+    Pick<GeneratedIdm["UserResponse"], "id" | "firstName" | "lastName" | "displayName" | "email">
+  >
+>;
+
+type _IdmGroup = AssertCompatible<
+  Partial<Pick<IdmGroup, "id" | "name" | "type" | "url">>,
+  Partial<Pick<GeneratedIdm["GroupResponse"], "id" | "name" | "type" | "url">>
+>;
+
+type _IdmPrivilege = AssertCompatible<
+  Partial<Pick<IdmPrivilege, "id" | "name">>,
+  Partial<Pick<GeneratedIdm["PrivilegeResponse"], "id" | "name">>
+>;
+
 // Referencing the aliases keeps `noUnusedLocals` satisfied without emitting anything.
 export type ContractAssertions = [
   _Task,
@@ -104,4 +130,7 @@ export type ContractAssertions = [
   _HistoricTask,
   _HistoricProcess,
   _DataResponse,
+  _IdmUser,
+  _IdmGroup,
+  _IdmPrivilege,
 ];

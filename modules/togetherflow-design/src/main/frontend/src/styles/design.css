@@ -1068,3 +1068,39 @@
 .tf-cmmn__connector:hover {
   fill: var(--tf-accent);
 }
+
+/* Version history (§7.4.1). */
+.tf-dialog--wide {
+  max-width: 40rem;
+  width: 100%;
+}
+.tf-versions {
+  list-style: none;
+  margin: var(--tf-space-3) 0;
+  padding: 0;
+  display: grid;
+  gap: var(--tf-space-1);
+  max-height: 22rem;
+  overflow-y: auto;
+}
+.tf-versions__item {
+  display: grid;
+  grid-template-columns: 4rem 1fr auto;
+  align-items: center;
+  gap: var(--tf-space-3);
+  padding: var(--tf-space-2) var(--tf-space-3);
+  border: 1px solid var(--tf-border);
+  border-radius: var(--tf-radius-sm);
+}
+.tf-versions__item.is-current {
+  border-color: var(--tf-accent);
+  background: var(--tf-bg-subtle);
+}
+.tf-versions__number {
+  font-family: var(--tf-font-mono);
+  font-weight: 600;
+}
+.tf-versions__when {
+  color: var(--tf-text-muted);
+  font-size: 0.875rem;
+}

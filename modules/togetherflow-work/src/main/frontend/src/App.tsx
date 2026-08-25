@@ -1,28 +1,28 @@
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useMemo, useState } from "react";
 import {
   ApiClient,
   CaseApi,
   HistoryApi,
+  LoginScreen,
   ProcessApi,
   TaskApi,
-  ToastProvider,
   UserProfileApi,
   useAuth,
+  useRegisterShortcuts,
+  useT,
   useTenant,
+  type Shortcut,
   type CaseInstanceResponse,
   type TaskResponse,
   type AppLinks,
 } from "@togetherflow/common";
-import { AppShell, type WorkView } from "./features/shell/AppShell";
-import { LoginScreen } from "./features/shell/LoginScreen";
+import { AppShell, WORK_VIEWS, type WorkView } from "./features/shell/AppShell";
 import { TaskInbox } from "./features/tasks/TaskInbox";
 import { TaskDetail } from "./features/tasks/TaskDetail";
 import { StartWork } from "./features/start/StartWork";
 import { MyHistory } from "./features/history/MyHistory";
 import { MyCases } from "./features/cases/MyCases";
 import { CaseDetail } from "./features/cases/CaseDetail";
-
-const VIEW_CYCLE: WorkView[] = ["inbox", "cases", "start", "history"];
 
 export interface AppProps {
   /** Sibling app URLs for the shell switcher (§7.5). */
@@ -42,6 +42,7 @@ export function App({
   attachmentGateway,
   fetchImpl,
 }: AppProps) {
+  const t = useT();
   const { session, signOut, getAuthHeaders, isInitialising } = useAuth();
   const { tenantId } = useTenant();
   const [view, setView] = useState<WorkView>("inbox");
@@ -59,8 +60,10 @@ export function App({
         getAuthHeaders,
         getTenantId: () => tenantId,
         onUnauthorized: signOut,
+        // Error copy the user sees comes from the active catalogue, not English (§8).
+        translate: t,
       }),
-    [fetchImpl, getAuthHeaders, tenantId, signOut],
+    [fetchImpl, getAuthHeaders, tenantId, signOut, t],
   );
 
   const client = useMemo(() => makeClient(baseUrl), [makeClient, baseUrl]);
@@ -93,32 +96,38 @@ export function App({
     refresh();
   }, [refresh]);
 
-  // Power-user shortcuts (§14.4): high-volume triage shouldn't require the mouse.
-  useEffect(() => {
-    if (!session) return;
-    const onKeyDown = (event: KeyboardEvent) => {
-      const target = event.target as HTMLElement | null;
-      const typing =
-        target &&
-        (target.tagName === "INPUT" ||
-          target.tagName === "TEXTAREA" ||
-          target.tagName === "SELECT" ||
-          target.isContentEditable);
-      if (typing || event.metaKey || event.ctrlKey || event.altKey) return;
-
-      if (event.key === "g") {
-        setView((current) => VIEW_CYCLE[(VIEW_CYCLE.indexOf(current) + 1) % VIEW_CYCLE.length]);
-      } else if (event.key === "Escape" && (selectedTask || selectedCase)) {
-        setSelectedTask(undefined);
-        setSelectedCase(undefined);
-      } else if (event.key === "/") {
-        event.preventDefault();
-        document.getElementById("tf-task-search")?.focus();
-      }
-    };
-    document.addEventListener("keydown", onKeyDown);
-    return () => document.removeEventListener("keydown", onKeyDown);
-  }, [session, selectedTask, selectedCase]);
+  /*
+   * App-level shortcuts (§14.4): high-volume triage shouldn't require the mouse. The
+   * per-screen ones — move through the list, claim, complete — are registered by the
+   * screens that own those actions, so they only exist while that screen is on.
+   */
+  const shortcuts = useMemo<Shortcut[]>(
+    () => [
+      {
+        key: "g",
+        description: t("shortcuts.cycleViews"),
+        run: () =>
+          setView((current) => WORK_VIEWS[(WORK_VIEWS.indexOf(current) + 1) % WORK_VIEWS.length]),
+      },
+      {
+        key: "/",
+        description: t("shortcuts.search"),
+        // Some browsers open quick-find on "/".
+        preventDefault: true,
+        run: () => document.getElementById("tf-task-search")?.focus(),
+      },
+      {
+        key: "Escape",
+        run: () => {
+          setSelectedTask(undefined);
+          setSelectedCase(undefined);
+        },
+        when: Boolean(selectedTask || selectedCase),
+      },
+    ],
+    [t, selectedTask, selectedCase],
+  );
+  useRegisterShortcuts(shortcuts);
 
   // Completing an OIDC redirect is asynchronous; showing the login screen during it
   // would flash a sign-in prompt at an already-authenticated user.
@@ -126,14 +135,14 @@ export function App({
     return (
       <main className="tf-login">
         <div className="tf-login__card">
-          <p className="tf-login__subtitle">Signing you in…</p>
+          <p className="tf-login__subtitle">{t("app.starting")}</p>
         </div>
       </main>
     );
   }
 
   if (!session) {
-    return <LoginScreen />;
+    return <LoginScreen app="work" />;
   }
 
   return (
@@ -151,6 +160,7 @@ export function App({
         <div className="tf-work-layout">
           <TaskInbox
             taskApi={taskApi}
+            processApi={processApi}
             userId={session.userId}
             selectedTaskId={selectedTask?.id}
             onSelectTask={setSelectedTask}
@@ -198,10 +208,11 @@ export function App({
   );
 }
 
+/**
+ * Kept as the module's public entry point. The provider stack it used to own now lives
+ * in `AppRoot` (`main.tsx`), so tests and embedders that render `<WorkApp/>` get the
+ * component itself rather than a second, divergent set of providers.
+ */
 export function WorkApp(props: AppProps) {
-  return (
-    <ToastProvider>
-      <App {...props} />
-    </ToastProvider>
-  );
+  return <App {...props} />;
 }

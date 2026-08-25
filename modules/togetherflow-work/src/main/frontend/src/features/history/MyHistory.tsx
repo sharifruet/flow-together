@@ -3,7 +3,7 @@
  * signed-in user was involved in, from the historic query resources.
  */
 
-import { useEffect, useMemo, useState } from "react";
+import { useMemo, useState } from "react";
 import {
   AsyncBoundary,
   DataTable,
@@ -12,6 +12,9 @@ import {
   Pagination,
   formatDateTime,
   useAsync,
+  useDebouncedValue,
+  useI18n,
+  useT,
   type Column,
   type HistoricProcessInstanceResponse,
   type HistoricTaskInstanceResponse,
@@ -34,14 +37,15 @@ export interface MyHistoryScreenProps extends MyHistoryProps {
 }
 
 export function MyHistory({ historyApi, caseApi, userId }: MyHistoryScreenProps) {
+  const t = useT();
   const [tab, setTab] = useState<HistoryTab>("tasks");
 
   return (
-    <section className="tf-history" aria-label="My history">
-      <h1 className="tf-start__title">My history</h1>
-      <p className="tf-start__meta">Work you've completed or been involved in.</p>
+    <section className="tf-history" aria-label={t("history.label")}>
+      <h1 className="tf-start__title">{t("history.title")}</h1>
+      <p className="tf-start__meta">{t("history.subtitle")}</p>
 
-      <div className="tf-inbox__filters" role="tablist" aria-label="History type">
+      <div className="tf-inbox__filters" role="tablist" aria-label={t("history.typeLabel")}>
         <button
           type="button"
           role="tab"
@@ -49,7 +53,7 @@ export function MyHistory({ historyApi, caseApi, userId }: MyHistoryScreenProps)
           className={chipClass(tab === "tasks")}
           onClick={() => setTab("tasks")}
         >
-          Completed tasks
+          {t("history.tab.tasks")}
         </button>
         <button
           type="button"
@@ -58,7 +62,7 @@ export function MyHistory({ historyApi, caseApi, userId }: MyHistoryScreenProps)
           className={chipClass(tab === "instances")}
           onClick={() => setTab("instances")}
         >
-          Process instances
+          {t("history.tab.instances")}
         </button>
         <button
           type="button"
@@ -67,7 +71,7 @@ export function MyHistory({ historyApi, caseApi, userId }: MyHistoryScreenProps)
           className={chipClass(tab === "cases")}
           onClick={() => setTab("cases")}
         >
-          Cases
+          {t("history.tab.cases")}
         </button>
       </div>
 
@@ -83,14 +87,10 @@ export function MyHistory({ historyApi, caseApi, userId }: MyHistoryScreenProps)
 }
 
 function CompletedTasks({ historyApi, userId }: MyHistoryProps) {
+  const { t, locale } = useI18n();
   const [start, setStart] = useState(0);
   const [search, setSearch] = useState("");
-  const [debounced, setDebounced] = useState("");
-
-  useEffect(() => {
-    const timer = setTimeout(() => setDebounced(search.trim()), 250);
-    return () => clearTimeout(timer);
-  }, [search]);
+  const debounced = useDebouncedValue(search.trim(), 250);
 
   const request = useMemo(
     () => ({
@@ -114,39 +114,39 @@ function CompletedTasks({ historyApi, userId }: MyHistoryProps) {
     () => [
       {
         key: "name",
-        header: "Task",
+        header: t("history.tasks.column.task"),
         render: (task) => (
-          <span className="tf-task-cell__name">{task.name ?? "(untitled task)"}</span>
+          <span className="tf-task-cell__name">{task.name ?? t("inbox.untitled")}</span>
         ),
       },
       {
         key: "completed",
-        header: "Completed",
+        header: t("history.tasks.column.completed"),
         width: "190px",
-        render: (task) => formatDateTime(task.endTime ?? undefined),
+        render: (task) => formatDateTime(task.endTime ?? undefined, locale),
       },
       {
         key: "duration",
-        header: "Took",
+        header: t("history.tasks.column.took"),
         width: "120px",
         secondary: true,
         render: (task) => formatDuration(task.durationInMillis),
       },
     ],
-    [],
+    [t, locale],
   );
 
   return (
     <>
       <div className="tf-history__search">
         <label className="tf-visually-hidden" htmlFor="tf-history-search">
-          Search completed tasks
+          {t("history.tasks.searchLabel")}
         </label>
         <input
           id="tf-history-search"
           className="tf-input"
           type="search"
-          placeholder="Search completed tasks…"
+          placeholder={t("history.tasks.search")}
           value={search}
           onChange={(event) => {
             setSearch(event.target.value);
@@ -171,8 +171,8 @@ function CompletedTasks({ historyApi, userId }: MyHistoryProps) {
             />
           ) : (
             <EmptyState
-              title="Nothing completed yet"
-              description="Tasks you finish will be listed here."
+              title={t("history.tasks.empty.title")}
+              description={t("history.tasks.empty.description")}
             />
           )
         }
@@ -180,7 +180,7 @@ function CompletedTasks({ historyApi, userId }: MyHistoryProps) {
         {(page) => (
           <>
             <DataTable
-              caption="Completed tasks"
+              caption={t("history.tasks.caption")}
               columns={columns}
               rows={page.data}
               rowKey={(task) => task.id}
@@ -199,6 +199,7 @@ function CompletedTasks({ historyApi, userId }: MyHistoryProps) {
 }
 
 function MyInstances({ historyApi, userId }: MyHistoryProps) {
+  const { t, locale } = useI18n();
   const [start, setStart] = useState(0);
 
   const request = useMemo(
@@ -221,7 +222,7 @@ function MyInstances({ historyApi, userId }: MyHistoryProps) {
     () => [
       {
         key: "name",
-        header: "Process",
+        header: t("history.instances.column.process"),
         render: (instance) => (
           <div className="tf-task-cell">
             <span className="tf-task-cell__name">
@@ -235,24 +236,24 @@ function MyInstances({ historyApi, userId }: MyHistoryProps) {
       },
       {
         key: "status",
-        header: "Status",
+        header: t("history.instances.column.status"),
         width: "120px",
         render: (instance) =>
           instance.endTime ? (
-            <span className="tf-badge tf-badge--done">Completed</span>
+            <span className="tf-badge tf-badge--done">{t("history.status.completed")}</span>
           ) : (
-            <span className="tf-badge tf-badge--running">Running</span>
+            <span className="tf-badge tf-badge--running">{t("history.status.running")}</span>
           ),
       },
       {
         key: "started",
-        header: "Started",
+        header: t("history.instances.column.started"),
         width: "190px",
         secondary: true,
-        render: (instance) => formatDateTime(instance.startTime ?? undefined),
+        render: (instance) => formatDateTime(instance.startTime ?? undefined, locale),
       },
     ],
-    [],
+    [t, locale],
   );
 
   return (
@@ -264,15 +265,15 @@ function MyInstances({ historyApi, userId }: MyHistoryProps) {
       isEmpty={(page) => page.data.length === 0}
       empty={
         <EmptyState
-          title="No process instances yet"
-          description="Processes you start or take part in will be listed here."
+          title={t("history.instances.empty.title")}
+          description={t("history.instances.empty.description")}
         />
       }
     >
       {(page) => (
         <>
           <DataTable
-            caption="My process instances"
+            caption={t("history.instances.caption")}
             columns={columns}
             rows={page.data}
             rowKey={(instance) => instance.id}
@@ -313,6 +314,7 @@ export function formatDuration(millis: number | null | undefined): string {
  * than silently omitting anything still open.
  */
 function MyCaseHistory({ caseApi, userId }: { caseApi: CaseApi; userId: string }) {
+  const { t, locale } = useI18n();
   const [start, setStart] = useState(0);
 
   const request = useMemo(
@@ -329,7 +331,7 @@ function MyCaseHistory({ caseApi, userId }: { caseApi: CaseApi; userId: string }
     () => [
       {
         key: "name",
-        header: "Case",
+        header: t("history.cases.column.case"),
         render: (instance) => (
           <div className="tf-task-cell">
             <span className="tf-task-cell__name">
@@ -343,24 +345,24 @@ function MyCaseHistory({ caseApi, userId }: { caseApi: CaseApi; userId: string }
       },
       {
         key: "status",
-        header: "Status",
+        header: t("history.instances.column.status"),
         width: "120px",
         render: (instance) =>
           instance.endTime ? (
-            <span className="tf-badge tf-badge--done">Completed</span>
+            <span className="tf-badge tf-badge--done">{t("history.status.completed")}</span>
           ) : (
-            <span className="tf-badge tf-badge--running">Running</span>
+            <span className="tf-badge tf-badge--running">{t("history.status.running")}</span>
           ),
       },
       {
         key: "started",
-        header: "Started",
+        header: t("history.instances.column.started"),
         width: "190px",
         secondary: true,
-        render: (instance) => formatDateTime(instance.startTime ?? undefined),
+        render: (instance) => formatDateTime(instance.startTime ?? undefined, locale),
       },
     ],
-    [],
+    [t, locale],
   );
 
   return (
@@ -372,15 +374,15 @@ function MyCaseHistory({ caseApi, userId }: { caseApi: CaseApi; userId: string }
       isEmpty={(page) => page.data.length === 0}
       empty={
         <EmptyState
-          title="No cases yet"
-          description="Cases you start or take part in will be listed here."
+          title={t("history.cases.empty.title")}
+          description={t("history.cases.empty.description")}
         />
       }
     >
       {(page) => (
         <>
           <DataTable
-            caption="My cases"
+            caption={t("history.cases.caption")}
             columns={columns}
             rows={page.data}
             rowKey={(instance) => instance.id}

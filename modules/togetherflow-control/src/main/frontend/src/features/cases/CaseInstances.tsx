@@ -27,6 +27,7 @@ import {
   availablePlanItemActions,
   formatDateTime,
   useAsync,
+  useI18n,
   useDebouncedValue,
   useToast,
   type CaseApi,
@@ -38,11 +39,12 @@ import {
 
 const PAGE_SIZE = 25;
 
-const ACTION_LABELS: Record<PlanItemAction, string> = {
-  start: "Start",
-  enable: "Enable",
-  disable: "Disable",
-  trigger: "Force complete",
+/** Message keys per action; Control's wording differs from Work's on purpose (ADR 0011). */
+const ACTION_KEYS: Record<PlanItemAction, string> = {
+  start: "cases.action.start",
+  enable: "cases.action.enable",
+  disable: "cases.action.disable",
+  trigger: "cases.action.trigger",
 };
 
 export interface CaseInstancesProps {
@@ -50,6 +52,7 @@ export interface CaseInstancesProps {
 }
 
 export function CaseInstances({ caseApi }: CaseInstancesProps) {
+  const { t, locale } = useI18n();
   const [start, setStart] = useState(0);
   const [search, setSearch] = useState("");
   const debounced = useDebouncedValue(search).trim();
@@ -70,14 +73,16 @@ export function CaseInstances({ caseApi }: CaseInstancesProps) {
     () => [
       {
         key: "name",
-        header: "Case",
+        header: t("cases.column.case"),
         render: (instance) => (
           <div className="tf-task-cell">
             <span className="tf-task-cell__name">
               {instance.name || instance.caseDefinitionName || instance.id}
             </span>
             <span className="tf-task-cell__description">
-              {instance.businessKey ? `Ref ${instance.businessKey} · ` : ""}
+              {instance.businessKey
+                ? `${t("cases.ref", { businessKey: instance.businessKey })} · `
+                : ""}
               {instance.id.slice(0, 8)}
             </span>
           </div>
@@ -85,7 +90,7 @@ export function CaseInstances({ caseApi }: CaseInstancesProps) {
       },
       {
         key: "state",
-        header: "State",
+        header: t("cases.column.state"),
         width: "110px",
         render: (instance) => (
           <span className="tf-badge tf-badge--running">{instance.state ?? "active"}</span>
@@ -93,10 +98,10 @@ export function CaseInstances({ caseApi }: CaseInstancesProps) {
       },
       {
         key: "started",
-        header: "Started",
+        header: t("cases.column.started"),
         width: "180px",
         secondary: true,
-        render: (instance) => formatDateTime(instance.startTime),
+        render: (instance) => formatDateTime(instance.startTime, locale),
       },
       {
         key: "actions",
@@ -104,30 +109,30 @@ export function CaseInstances({ caseApi }: CaseInstancesProps) {
         width: "110px",
         render: (instance) => (
           <Button variant="ghost" onClick={() => setSelected(instance)}>
-            Inspect
+            {t("cases.inspect")}
           </Button>
         ),
       },
     ],
-    [],
+    [locale, t],
   );
 
   return (
-    <section className="tf-panel" aria-label="Case instances">
+    <section className="tf-panel" aria-label={t("cases.label")}>
       <header className="tf-panel__header">
         <div>
-          <h1 className="tf-panel__title">Case instances</h1>
-          <p className="tf-panel__meta">Running cases across the engine.</p>
+          <h1 className="tf-panel__title">{t("cases.title")}</h1>
+          <p className="tf-panel__meta">{t("cases.meta")}</p>
         </div>
         <div className="tf-panel__search">
           <label className="tf-visually-hidden" htmlFor="tf-case-instance-search">
-            Search cases by reference
+            {t("cases.searchLabel")}
           </label>
           <input
             id="tf-case-instance-search"
             className="tf-input"
             type="search"
-            placeholder="Search by reference…"
+            placeholder={t("cases.search")}
             value={search}
             onChange={(event) => {
               setSearch(event.target.value);
@@ -153,8 +158,8 @@ export function CaseInstances({ caseApi }: CaseInstancesProps) {
             />
           ) : (
             <EmptyState
-              title="No running cases"
-              description="Cases started from a deployed case definition appear here."
+              title={t("cases.empty.title")}
+              description={t("cases.empty.description")}
             />
           )
         }
@@ -162,7 +167,7 @@ export function CaseInstances({ caseApi }: CaseInstancesProps) {
         {(page) => (
           <>
             <DataTable
-              caption="Case instances"
+              caption={t("cases.caption")}
               columns={columns}
               rows={page.data}
               rowKey={(instance) => instance.id}
@@ -204,6 +209,7 @@ function CaseInspector({
   onClose: () => void;
   onChanged: () => void;
 }) {
+  const { t, locale } = useI18n();
   const { push } = useToast();
   const [refresh, setRefresh] = useState(0);
   const [busy, setBusy] = useState<string | null>(null);
@@ -229,14 +235,20 @@ function CaseInspector({
     setBusy(item.id);
     try {
       await caseApi.performPlanItemAction(item.id, action);
-      push({ tone: "success", message: `${ACTION_LABELS[action]}: ${item.name ?? item.id}.` });
+      push({
+        tone: "success",
+        message: t("cases.action.done", {
+          action: t(ACTION_KEYS[action]),
+          name: item.name ?? item.id,
+        }),
+      });
       setRefresh((n) => n + 1);
       onChanged();
     } catch (cause) {
       const apiError = cause instanceof ApiError ? cause : undefined;
       push({
         tone: "error",
-        message: apiError?.message ?? "That action was rejected.",
+        message: apiError?.message ?? t("cases.action.rejected"),
         reference: apiError?.correlationId,
       });
     } finally {
@@ -251,7 +263,7 @@ function CaseInspector({
       await (mode === "terminate" ? caseApi.terminate(instance.id) : caseApi.delete(instance.id));
       push({
         tone: "success",
-        message: mode === "terminate" ? "Case terminated." : "Case deleted.",
+        message: mode === "terminate" ? t("cases.terminated") : t("cases.deletedInstance"),
       });
       onChanged();
       onClose();
@@ -259,7 +271,7 @@ function CaseInspector({
       const apiError = cause instanceof ApiError ? cause : undefined;
       push({
         tone: "error",
-        message: apiError?.message ?? `Could not ${mode} that case.`,
+        message: apiError?.message ?? t(`cases.end.failed.${mode}`),
         reference: apiError?.correlationId,
       });
     } finally {
@@ -274,26 +286,29 @@ function CaseInspector({
         className="tf-dialog tf-dialog--wide"
         role="dialog"
         aria-modal="true"
-        aria-label={`Case ${instance.name ?? instance.id}`}
+        aria-label={t("cases.detail.label", { name: instance.name ?? instance.id })}
         onMouseDown={(event) => event.stopPropagation()}
       >
         <h2 className="tf-dialog__title">
-          {instance.name || instance.caseDefinitionName || "Case instance"}
+          {instance.name || instance.caseDefinitionName || t("cases.fallbackName")}
         </h2>
         <p className="tf-dialog__description">
-          {instance.businessKey ? `Ref ${instance.businessKey} · ` : ""}
-          {instance.id} · started {formatDateTime(instance.startTime)}
-          {instance.startUserId ? ` by ${instance.startUserId}` : ""}
+          {instance.businessKey
+            ? `${t("cases.ref", { businessKey: instance.businessKey })} · `
+            : ""}
+          {instance.id} ·{" "}
+          {t("cases.startedAt", { when: formatDateTime(instance.startTime, locale) })}
+          {instance.startUserId ? t("cases.startedBy", { userId: instance.startUserId }) : ""}
         </p>
 
-        <h3 className="tf-detail__section-title">Progress</h3>
+        <h3 className="tf-detail__section-title">{t("cases.section.progress")}</h3>
         <AsyncBoundary
           loading={stages.loading}
           error={stages.error}
           data={stages.data}
           onRetry={stages.refetch}
           isEmpty={(rows) => rows.length === 0}
-          empty={<p className="tf-muted">No stages or milestones defined.</p>}
+          empty={<p className="tf-muted">{t("cases.progress.none")}</p>}
         >
           {(rows) => (
             <ul className="tf-stage-chips">
@@ -315,14 +330,14 @@ function CaseInspector({
           )}
         </AsyncBoundary>
 
-        <h3 className="tf-detail__section-title">Plan items</h3>
+        <h3 className="tf-detail__section-title">{t("cases.section.planItems")}</h3>
         <AsyncBoundary
           loading={planItems.loading}
           error={planItems.error}
           data={planItems.data}
           onRetry={planItems.refetch}
           isEmpty={(rows) => rows.length === 0}
-          empty={<p className="tf-muted">No plan items are active.</p>}
+          empty={<p className="tf-muted">{t("cases.planItems.none")}</p>}
         >
           {(rows) => (
             <ul className="tf-planitems">
@@ -347,7 +362,7 @@ function CaseInspector({
                             loading={busy === item.id}
                             onClick={() => setPending({ item, action })}
                           >
-                            {ACTION_LABELS[action]}
+                            {t(ACTION_KEYS[action])}
                           </Button>
                         ))}
                       </span>
@@ -359,14 +374,14 @@ function CaseInspector({
           )}
         </AsyncBoundary>
 
-        <h3 className="tf-detail__section-title">Variables</h3>
+        <h3 className="tf-detail__section-title">{t("cases.section.variables")}</h3>
         <AsyncBoundary
           loading={variables.loading}
           error={variables.error}
           data={variables.data}
           onRetry={variables.refetch}
           isEmpty={(rows) => rows.length === 0}
-          empty={<p className="tf-muted">No variables.</p>}
+          empty={<p className="tf-muted">{t("cases.variables.none")}</p>}
         >
           {(rows) => (
             <dl className="tf-variables">
@@ -391,14 +406,14 @@ function CaseInspector({
               disabled={busy !== null}
               onClick={() => setPendingEnd("terminate")}
             >
-              Terminate
+              {t("action.terminate")}
             </Button>
             <Button variant="danger" disabled={busy !== null} onClick={() => setPendingEnd("delete")}>
-              Delete
+              {t("action.delete")}
             </Button>
           </div>
           <Button variant="secondary" onClick={onClose}>
-            Close
+            {t("action.close")}
           </Button>
         </div>
       </div>
@@ -407,16 +422,21 @@ function CaseInspector({
         open={pending !== null}
         title={
           pending?.action === "trigger"
-            ? "Force this plan item to complete?"
-            : `${pending ? ACTION_LABELS[pending.action] : ""} this plan item?`
+            ? t("cases.confirm.force.title")
+            : t("cases.confirm.action.title", {
+                action: pending ? t(ACTION_KEYS[pending.action]) : "",
+              })
         }
         description={
           pending?.action === "trigger" &&
           (pending.item.planItemDefinitionType ?? "").toLowerCase() === "humantask"
-            ? `"${pending.item.name}" will be completed without anyone filling in its form. Use this only to unblock a case nobody can action.`
-            : `"${pending?.item.name}" will be ${pending?.action ?? "changed"}ed.`
+            ? t("cases.confirm.force.description", { name: pending.item.name ?? "" })
+            : t("cases.confirm.action.description", {
+                name: pending?.item.name ?? "",
+                action: pending?.action ?? "chang",
+              })
         }
-        confirmLabel={pending ? ACTION_LABELS[pending.action] : "Confirm"}
+        confirmLabel={pending ? t(ACTION_KEYS[pending.action]) : undefined}
         destructive={pending?.action === "trigger" || pending?.action === "disable"}
         busy={busy !== null}
         onCancel={() => setPending(null)}
@@ -425,13 +445,21 @@ function CaseInspector({
 
       <ConfirmDialog
         open={pendingEnd !== null}
-        title={pendingEnd === "delete" ? "Delete this case?" : "Terminate this case?"}
+        title={
+          pendingEnd === "delete"
+            ? t("cases.deleteInstance.title")
+            : t("cases.terminate.title")
+        }
         description={
           pendingEnd === "delete"
-            ? `"${instance.name ?? instance.id}" will be removed completely, history included. This cannot be undone.`
-            : `"${instance.name ?? instance.id}" will stop immediately and its open tasks will be cancelled. Its history is kept.`
+            ? t("cases.deleteInstance.description", { name: instance.name ?? instance.id })
+            : t("cases.terminate.description", { name: instance.name ?? instance.id })
         }
-        confirmLabel={pendingEnd === "delete" ? "Delete case" : "Terminate case"}
+        confirmLabel={
+          pendingEnd === "delete"
+            ? t("cases.deleteInstance.confirm")
+            : t("cases.terminate.confirm")
+        }
         destructive
         busy={busy !== null}
         onCancel={() => setPendingEnd(null)}

@@ -47,6 +47,24 @@ java -jar modules/togetherflow-attachment-gateway/target/togetherflow-attachment
 Then point the Work app at it — `TF_ATTACHMENT_GATEWAY=https://files.example.com` — and
 its attachment widget switches to the gateway path with no code change.
 
+## Container
+
+```bash
+./mvnw -Ptogetherflow -pl modules/togetherflow-attachment-gateway -am package
+docker build -f modules/togetherflow-attachment-gateway/docker/Dockerfile \
+  -t togetherflow/attachment-gateway:dev modules/togetherflow-attachment-gateway
+```
+
+Built from an already-packaged jar rather than compiling inside the image: this is a
+reactor module, and building it in the Dockerfile would mean re-resolving the whole engine
+build for one artifact. Runs as a non-root user, with the filesystem provider's directory
+declared as a volume — bytes written into a container layer are lost on restart.
+
+A Kubernetes manifest is at
+[`k8s/resources/togetherflow-attachment-gateway.yaml`](../../k8s/resources/togetherflow-attachment-gateway.yaml).
+Note its `replicas: 1`: the filesystem provider shares a volume across replicas, so
+scaling out needs `ReadWriteMany`. The SharePoint provider has no such constraint.
+
 ## Configuration
 
 ```yaml

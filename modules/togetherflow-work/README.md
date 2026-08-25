@@ -33,6 +33,9 @@ differently; a production deployment sets `TF_API_BASE` instead.
 | `npm test` | Component tests (Vitest + Testing Library) |
 | `npm run e2e` | Playwright golden-path suite — needs a real backend, see below |
 | `npm run typecheck` | `tsc --noEmit` |
+| `npm run budget` | Fails if a bundle exceeds `bundle-budget.json` (§13.5) — run after `build` |
+| `npm run e2e:visual` | Screenshot comparison against the committed baselines |
+| `npm run e2e:visual:docker` | The same, in the container CI uses — the only way to produce baselines CI can compare against |
 
 ## Maven
 
@@ -108,8 +111,33 @@ answerable in Control, not here.
   to `false`, so the History section says the engine records nothing rather than implying
   nothing has happened.
 
-Keyboard shortcuts: `g` cycles Tasks → Cases → Start work → My history, `/` focuses task
-search, `Esc` closes the open detail panel.
+**Keyboard shortcuts** (§14.4). Press `?` for the list — it is generated from the
+bindings themselves, so it cannot describe a shortcut that no longer exists.
+
+| Key | Does |
+|---|---|
+| `g` | Move to the next section |
+| `/` | Focus task search |
+| `j` / `k` | Next / previous task in the list |
+| `c` | Claim the open task |
+| `d` | Complete the open task |
+| `Esc` | Close the open detail panel |
+
+`c` and `d` are registered by the task detail panel, so they exist only while a task is
+open — and `d` steps aside when the form declares named outcomes, because there is no
+single "complete" to trigger. It opens the confirmation rather than bypassing it: a
+keystroke is not an exemption from §14.3.
+
+**Inbox filters** (§7.1) narrow by process definition, due-date band (overdue / today /
+this week / no due date) and priority band, on top of the audience chips and type-ahead
+search. A filter set can be **saved and reapplied** (§14.4) — saved views live in the
+browser's own storage, not on the server, because this repo's REST layer has no per-user
+preference store; the UI says so rather than implying they follow you to another machine.
+
+**Strings are externalized** ([ADR 0013](../../docs/ui/adr/0013-in-house-i18n.md)):
+`src/i18n/messages.ts` holds Work's own copy and `togetherflow-common` holds the shared
+shell's. Only `en` ships — adding a language is a sibling catalogue with the same keys,
+and the shell's language picker appears by itself once more than one exists.
 
 ## Configuration
 

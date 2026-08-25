@@ -311,3 +311,67 @@ export class UserProfileApi {
     });
   }
 }
+
+/**
+ * Everything this deployment's identity store holds about one person
+ * (REQUIREMENTS.md §13.7 "Data subject requests").
+ *
+ * Deliberately not called an "erasure" or a complete record: it covers the identity
+ * store only. Task history, process variables and attachments can also carry personal
+ * data and live in the engine's own tables, which is exactly the distinction §13.7
+ * draws — "'delete a user' and 'erase a data subject's personal data' are not
+ * automatically the same operation once task history/variables are involved". The
+ * export says so in `scope` rather than letting a reader assume otherwise.
+ */
+export interface UserDataExport {
+  exportedAt: string;
+  scope: string;
+  user: IdmUser;
+  groups: IdmGroup[];
+  privileges: string[];
+  customInfo: UserInfoEntry[];
+}
+
+const EXPORT_SCOPE =
+  "Identity store only. Personal data may also exist in task history, process and case " +
+  "variables, comments and attachments held by the engine; those are not covered here.";
+
+/**
+ * Collects a user's identity data across the endpoints that hold it. Failures on the
+ * optional parts degrade rather than abort: an export missing custom info is more use
+ * to whoever asked for it than no export at all, and the gap is visible as an empty
+ * array in the result.
+ */
+export async function exportUserData(
+  idm: IdmApi,
+  profile: UserProfileApi,
+  userId: string,
+  signal?: AbortSignal,
+): Promise<UserDataExport> {
+  const [user, groups, privileges, customInfo] = await Promise.all([
+    idm.getUser(userId, signal),
+    idm.listUserGroups(userId, signal).then(
+      (page) => page.data,
+      () => [] as IdmGroup[],
+    ),
+    idm.listPrivileges({ userId, size: 200 }, signal).then(
+      (page) => page.data.map((privilege) => privilege.name),
+      () => [] as string[],
+    ),
+    profile.listInfo(userId, signal).then(
+      (entries) => entries,
+      () => [] as UserInfoEntry[],
+    ),
+  ]);
+
+  return {
+    exportedAt: new Date().toISOString(),
+    scope: EXPORT_SCOPE,
+    // The password field is write-only and never returned, but strip it defensively
+    // rather than trusting that: this file is handed to a person.
+    user: { ...user, password: undefined },
+    groups,
+    privileges,
+    customInfo,
+  };
+}

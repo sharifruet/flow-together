@@ -1,9 +1,10 @@
 import { StrictMode } from "react";
 import { createRoot } from "react-dom/client";
-import { AuthProvider, TenantProvider, readRuntimeConfig } from "@togetherflow/common";
+import { AppRoot, readRuntimeConfig } from "@togetherflow/common";
 import "@togetherflow/common/theme.css";
 import "./styles/control.css";
 import { ControlApp } from "./App";
+import { controlMessages } from "./i18n/messages";
 
 const root = createRoot(document.getElementById("root")!);
 
@@ -11,18 +12,16 @@ try {
   const config = readRuntimeConfig();
   root.render(
     <StrictMode>
-      <AuthProvider baseUrl={config.apiBase} mode={config.auth.mode} oidc={config.auth.oidc}>
-        <TenantProvider>
-          <ControlApp
-            apps={config.apps}
-            apiBase={config.apiBase}
-            dmnBase={config.dmnBase}
-            cmmnBase={config.cmmnBase}
-            eventBase={config.eventBase}
-            externalJobBase={config.externalJobBase}
-          />
-        </TenantProvider>
-      </AuthProvider>
+      <AppRoot app="control" config={config} messages={controlMessages}>
+        <ControlApp
+          apps={config.apps}
+          apiBase={config.apiBase}
+          dmnBase={config.dmnBase}
+          cmmnBase={config.cmmnBase}
+          eventBase={config.eventBase}
+          externalJobBase={config.externalJobBase}
+        />
+      </AppRoot>
     </StrictMode>,
   );
 } catch (error) {

@@ -1,7 +1,28 @@
-import { useState, type FormEvent } from "react";
-import { ApiError, Brand, Button, TextInput, useAuth } from "@togetherflow/common";
+/**
+ * The sign-in screen, shared by all four apps (REQUIREMENTS.md §7.5).
+ *
+ * It lived as a byte-identical copy in each app before this, which is precisely what
+ * §14.2 rules out ("not just a grab-bag of one-off components copied between apps") and
+ * §7.5 forbids for branding specifically ("apply this once, so no individual app can
+ * drift from it"). Only the subtitle differs per app, and that is a message key.
+ */
 
-export function LoginScreen() {
+import { useState, type FormEvent } from "react";
+import { ApiError } from "../api/client";
+import { useAuth } from "../auth/AuthContext";
+import { Brand } from "../components/Brand";
+import { Button } from "../components/Button";
+import { TextInput } from "../components/Field";
+import { useT } from "../i18n/I18nContext";
+import type { AppLinks } from "../config";
+
+export interface LoginScreenProps {
+  /** Which app this is — decides the subtitle only. */
+  app: keyof AppLinks;
+}
+
+export function LoginScreen({ app }: LoginScreenProps) {
+  const t = useT();
   const { signIn, isSigningIn, mode } = useAuth();
   const [userId, setUserId] = useState("");
   const [password, setPassword] = useState("");
@@ -11,13 +32,13 @@ export function LoginScreen() {
     event?.preventDefault();
     setError(undefined);
     if (mode === "basic" && (!userId.trim() || !password)) {
-      setError("Enter both your username and password.");
+      setError(t("login.missingCredentials"));
       return;
     }
     try {
       await signIn(userId.trim(), password);
     } catch (cause) {
-      setError(cause instanceof ApiError ? cause.message : "Could not sign in. Please try again.");
+      setError(cause instanceof ApiError ? cause.message : t("login.failed"));
     }
   }
 
@@ -27,8 +48,8 @@ export function LoginScreen() {
         <div className="tf-login__brand">
           <Brand size={40} />
         </div>
-        <h1 className="tf-login__title">Sign in</h1>
-        <p className="tf-login__subtitle">Access your tasks, cases and work items.</p>
+        <h1 className="tf-login__title">{t("login.title")}</h1>
+        <p className="tf-login__subtitle">{t(`login.subtitle.${app}`)}</p>
 
         {error ? (
           <div className="tf-login__error" role="alert">
@@ -38,17 +59,15 @@ export function LoginScreen() {
 
         {mode === "oidc" ? (
           <>
-            <p className="tf-login__sso">
-              You'll be redirected to your organisation's sign-in page.
-            </p>
+            <p className="tf-login__sso">{t("login.sso.note")}</p>
             <Button type="submit" loading={isSigningIn} className="tf-login__submit">
-              {isSigningIn ? "Redirecting…" : "Continue to sign in"}
+              {isSigningIn ? t("login.sso.redirecting") : t("login.sso.submit")}
             </Button>
           </>
         ) : (
           <>
             <TextInput
-              label="Username"
+              label={t("login.username")}
               value={userId}
               autoComplete="username"
               autoFocus
@@ -56,7 +75,7 @@ export function LoginScreen() {
               onChange={(event) => setUserId(event.target.value)}
             />
             <TextInput
-              label="Password"
+              label={t("login.password")}
               type="password"
               value={password}
               autoComplete="current-password"
@@ -64,11 +83,9 @@ export function LoginScreen() {
               onChange={(event) => setPassword(event.target.value)}
             />
             <Button type="submit" loading={isSigningIn} className="tf-login__submit">
-              {isSigningIn ? "Signing in…" : "Sign in"}
+              {isSigningIn ? t("login.signingIn") : t("login.submit")}
             </Button>
-            <p className="tf-login__mode-note">
-              Development sign-in. Production deployments use single sign-on.
-            </p>
+            <p className="tf-login__mode-note">{t("login.devNote")}</p>
           </>
         )}
       </form>

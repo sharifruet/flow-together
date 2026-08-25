@@ -42,6 +42,18 @@ Same as the other modules: `dev`, `build`, `test`, `lint`, `typecheck`, `e2e`.
 endpoint". The info collection also returns **keys only**, so reading the values costs one
 request per key; `UserProfileApi.listInfo` does that so callers get what they asked for.
 
+## Answering a data subject request
+
+**Export data** on any user produces a JSON file of what the *identity store* holds: the
+user record, group memberships, privileges and custom info (§13.7). It is offered even in
+a read-only deployment — reading what is held about someone is not a mutation.
+
+The export names its own scope, and so does this README: **deleting a user is not an
+erasure.** Task history, process and case variables, comments and attachments created by
+that person stay in the engine's own tables. The delete confirmation says so. If you are
+answering an erasure request, export first and handle the engine's records separately —
+that separation is exactly what REQUIREMENTS.md §13.7 flags, and it is not automated here.
+
 ## Read-only (directory-backed) deployments
 
 When identities come from LDAP rather than the engine's own tables, set

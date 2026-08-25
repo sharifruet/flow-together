@@ -21,6 +21,7 @@ import {
   SelectInput,
   TextInput,
   getVisibilityRule,
+  useT,
   useToast,
   withVisibilityRule,
   type FormField,
@@ -46,7 +47,8 @@ export interface FormBuilderProps {
   initialSource: string | null;
   loadError?: string | null;
   onBack: () => void;
-  onSaved: () => void;
+  /** Called after a save or deploy; carries the updated draft where one exists. */
+  onSaved: (draft?: ModelResponse) => void;
 }
 
 export function FormBuilder({
@@ -57,6 +59,7 @@ export function FormBuilder({
   onBack,
   onSaved,
 }: FormBuilderProps) {
+  const t = useT();
   const { push } = useToast();
   const parsed = useMemo(() => parseFormModel(initialSource, model), [initialSource, model]);
   const [edits, setEdits] = useState<{ modelId: string; form: FormModelResponse } | null>(null);
@@ -103,20 +106,20 @@ export function FormBuilder({
       try {
         await modelApi.saveSource(model.id, JSON.stringify(form, null, 2));
         setDirty(false);
-        if (!options.silent) push({ tone: "success", message: "Saved." });
+        if (!options.silent) push({ tone: "success", message: t("editor.saved.toast") });
         onSaved();
       } catch (cause) {
         const apiError = cause instanceof ApiError ? cause : undefined;
         push({
           tone: "error",
-          message: apiError?.message ?? "Could not save this form.",
+          message: apiError?.message ?? t("form.saveFailed"),
           reference: apiError?.correlationId,
         });
       } finally {
         setSaving(false);
       }
     },
-    [modelApi, model.id, form, push, onSaved],
+    [modelApi, model.id, form, push, onSaved, t],
   );
 
   const saveRef = useRef(save);
@@ -141,7 +144,7 @@ export function FormBuilder({
   const current = selected !== null ? fields[selected] : undefined;
 
   return (
-    <section className="tf-panel" aria-label={`Editing ${model.name || model.id}`}>
+    <section className="tf-panel" aria-label={t("editor.editing", { name: model.name || model.id })}>
       <button
         type="button"
         className="tf-back"
@@ -154,11 +157,11 @@ export function FormBuilder({
         <div>
           <h1 className="tf-panel__title">{form.name || model.id}</h1>
           <p className="tf-panel__meta" aria-live="polite">
-            {dirty ? "Unsaved changes" : "Form definition"}
+            {dirty ? t("editor.unsaved") : t("form.definition")}
           </p>
         </div>
         <Button variant="secondary" loading={saving} onClick={() => void save()}>
-          Save
+          {t("action.save")}
         </Button>
       </header>
 
@@ -174,8 +177,8 @@ export function FormBuilder({
       ) : null}
 
       <div className="tf-form-builder">
-        <nav className="tf-palette" aria-label="Field palette">
-          <h2 className="tf-palette__title">Add field</h2>
+        <nav className="tf-palette" aria-label={t("form.palette")}>
+          <h2 className="tf-palette__title">{t("form.addField")}</h2>
           {FIELD_TYPES.map(({ type, label }) => (
             <button
               key={type}
@@ -191,14 +194,14 @@ export function FormBuilder({
 
         <div className="tf-form-canvas">
           <TextInput
-            label="Form key"
+            label={t("form.key")}
             value={form.key ?? ""}
             disabled={saving}
-            hint="Referenced by a user task's form key."
+            hint={t("form.key.hint")}
             onChange={(event) => update({ key: event.target.value })}
           />
           <TextInput
-            label="Form name"
+            label={t("form.name")}
             value={form.name ?? ""}
             disabled={saving}
             onChange={(event) => update({ name: event.target.value })}
@@ -206,7 +209,7 @@ export function FormBuilder({
 
           <h2 className="tf-panel__section-title">Fields ({fields.length})</h2>
           {fields.length === 0 ? (
-            <p className="tf-muted">No fields yet — add one from the palette.</p>
+            <p className="tf-muted">{t("form.noFields")}</p>
           ) : (
             <ul className="tf-form-fields">
               {fields.map((field, index) => (
@@ -231,17 +234,16 @@ export function FormBuilder({
               ))}
             </ul>
           )}
-          <h2 className="tf-panel__section-title">Outcomes ({outcomes.length})</h2>
-          <p className="tf-muted">
-            Named submit buttons. With none, the task shows a single "Complete task"; with
-            outcomes, each becomes its own button and the choice is recorded as a variable.
-          </p>
+          <h2 className="tf-panel__section-title">
+            {t("form.outcomes", { count: outcomes.length })}
+          </h2>
+          <p className="tf-muted">{t("form.outcomes.blurb")}</p>
           {outcomes.length > 0 ? (
             <ul className="tf-form-fields">
               {outcomes.map((outcome, index) => (
                 <li className="tf-outcome-row" key={index}>
                   <TextInput
-                    label={`Outcome ${index + 1}`}
+                    label={t("form.outcome", { index: index + 1 })}
                     value={outcome.name}
                     disabled={saving}
                     onChange={(event) =>
@@ -255,7 +257,7 @@ export function FormBuilder({
                   <button
                     type="button"
                     className="tf-chip-item__remove"
-                    aria-label={`Remove outcome ${index + 1}`}
+                    aria-label={t("form.outcome.remove", { index: index + 1 })}
                     disabled={saving}
                     onClick={() => update({ outcomes: outcomes.filter((_, i) => i !== index) })}
                   >
@@ -272,24 +274,24 @@ export function FormBuilder({
               update({ outcomes: [...outcomes, { name: `Outcome ${outcomes.length + 1}` }] })
             }
           >
-            Add outcome
+            {t("form.outcome.add")}
           </Button>
 
           {outcomes.length > 0 ? (
             <TextInput
-              label="Outcome variable"
+              label={t("form.outcomeVariable")}
               value={form.outcomeVariableName ?? ""}
               disabled={saving}
-              hint="Where the chosen outcome is stored. Defaults to form_<key>_outcome."
+              hint={t("form.outcomeVariable.hint")}
               onChange={(event) => update({ outcomeVariableName: event.target.value })}
             />
           ) : null}
         </div>
 
-        <aside className="tf-properties" aria-label="Field properties">
+        <aside className="tf-properties" aria-label={t("form.fieldProperties")}>
           {!current || selected === null ? (
             <p className="tf-muted tf-properties__empty">
-              Select a field to edit its properties.
+              {t("form.selectField")}
             </p>
           ) : (
             <>
@@ -302,11 +304,11 @@ export function FormBuilder({
                 label="Id"
                 value={current.id}
                 disabled={saving}
-                hint="Becomes the process variable name."
+                hint={t("form.field.id.hint")}
                 onChange={(event) => updateField(selected, { id: event.target.value })}
               />
               <TextInput
-                label="Label"
+                label={t("form.field.label")}
                 value={current.name ?? ""}
                 disabled={saving}
                 onChange={(event) => updateField(selected, { name: event.target.value })}
@@ -315,7 +317,7 @@ export function FormBuilder({
               {!isPresentational(current.type) ? (
                 <>
                   <TextInput
-                    label="Placeholder"
+                    label={t("form.field.placeholder")}
                     value={current.placeholder ?? ""}
                     disabled={saving}
                     onChange={(event) => updateField(selected, { placeholder: event.target.value })}
@@ -329,18 +331,18 @@ export function FormBuilder({
                         updateField(selected, { required: event.target.checked || undefined })
                       }
                     />
-                    Required
+                    {t("action.required")}
                   </label>
                 </>
               ) : null}
 
               {OPTION_TYPES.has(current.type) ? (
                 <section className="tf-properties__section">
-                  <h3 className="tf-properties__section-title">Options</h3>
+                  <h3 className="tf-properties__section-title">{t("form.options")}</h3>
                   {(("options" in current && current.options) || []).map((option, optionIndex) => (
                     <div className="tf-sentries__item" key={optionIndex}>
                       <TextInput
-                        label={`Option ${optionIndex + 1}`}
+                        label={t("form.option", { index: optionIndex + 1 })}
                         value={option.name}
                         disabled={saving}
                         onChange={(event) => {
@@ -352,7 +354,7 @@ export function FormBuilder({
                       <button
                         type="button"
                         className="tf-chip-item__remove"
-                        aria-label={`Remove option ${optionIndex + 1}`}
+                        aria-label={t("form.option.remove", { index: optionIndex + 1 })}
                         disabled={saving}
                         onClick={() => {
                           const options = (("options" in current && current.options) || []).filter(
@@ -376,7 +378,7 @@ export function FormBuilder({
                       updateField(selected, { options } as Partial<FormField>);
                     }}
                   >
-                    Add option
+                    {t("form.option.add")}
                   </Button>
                 </section>
               ) : null}
@@ -387,7 +389,7 @@ export function FormBuilder({
                 property. See visibility.ts.
               */}
               <section className="tf-properties__section">
-                <h3 className="tf-properties__section-title">Show this field</h3>
+                <h3 className="tf-properties__section-title">{t("form.visibility.title")}</h3>
                 {(() => {
                   const rule = getVisibilityRule(current);
                   const candidates = fields.filter(
@@ -396,13 +398,13 @@ export function FormBuilder({
                   return (
                     <>
                       <SelectInput
-                        label="When"
+                        label={t("form.visibility.when")}
                         value={rule ? rule.field : ""}
                         disabled={saving || candidates.length === 0}
                         hint={
                           candidates.length === 0
-                            ? "Add another field first."
-                            : "Leave as Always to show it unconditionally."
+                            ? t("form.visibility.needAnother")
+                            : t("form.visibility.always")
                         }
                         onChange={(event) => {
                           const fieldId = event.target.value;
@@ -415,7 +417,7 @@ export function FormBuilder({
                           );
                         }}
                       >
-                        <option value="">Always</option>
+                        <option value="">{t("form.visibility.alwaysOption")}</option>
                         {candidates.map((f) => (
                           <option key={f.id} value={f.id}>
                             {f.name || f.id}
@@ -426,7 +428,7 @@ export function FormBuilder({
                       {rule ? (
                         <>
                           <SelectInput
-                            label="Condition"
+                            label={t("form.visibility.condition")}
                             value={rule.operator}
                             disabled={saving}
                             onChange={(event) =>
@@ -439,15 +441,15 @@ export function FormBuilder({
                               )
                             }
                           >
-                            <option value="isSet">has any answer</option>
-                            <option value="isEmpty">is empty</option>
-                            <option value="equals">equals</option>
-                            <option value="notEquals">does not equal</option>
+                            <option value="isSet">{t("form.visibility.isSet")}</option>
+                            <option value="isEmpty">{t("form.visibility.isEmpty")}</option>
+                            <option value="equals">{t("form.visibility.equals")}</option>
+                            <option value="notEquals">{t("form.visibility.notEquals")}</option>
                           </SelectInput>
 
                           {rule.operator === "equals" || rule.operator === "notEquals" ? (
                             <TextInput
-                              label="Value"
+                              label={t("form.visibility.value")}
                               value={rule.value ?? ""}
                               disabled={saving}
                               onChange={(event) =>
@@ -471,14 +473,14 @@ export function FormBuilder({
               <section className="tf-properties__section">
                 <div className="tf-row-actions">
                   <Button variant="secondary" disabled={saving || selected === 0} onClick={() => move(selected, -1)}>
-                    Move up
+                    {t("action.moveUp")}
                   </Button>
                   <Button
                     variant="secondary"
                     disabled={saving || selected === fields.length - 1}
                     onClick={() => move(selected, 1)}
                   >
-                    Move down
+                    {t("action.moveDown")}
                   </Button>
                 </div>
                 <Button
@@ -489,7 +491,7 @@ export function FormBuilder({
                     setSelected(null);
                   }}
                 >
-                  Delete field
+                  {t("form.field.delete")}
                 </Button>
               </section>
             </>
@@ -499,10 +501,10 @@ export function FormBuilder({
 
       <ConfirmDialog
         open={confirmLeave}
-        title="Leave without saving?"
-        description={`"${form.name || model.id}" has unsaved changes. Leaving now discards them.`}
-        confirmLabel="Discard changes"
-        cancelLabel="Keep editing"
+        title={t("editor.leave.title")}
+        description={t("editor.leave.description", { name: form.name || model.id })}
+        confirmLabel={t("editor.leave.confirm")}
+        cancelLabel={t("editor.leave.cancel")}
         destructive
         onCancel={() => setConfirmLeave(false)}
         onConfirm={() => {

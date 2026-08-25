@@ -14,6 +14,7 @@ import {
   Pagination,
   formatDateTime,
   useAsync,
+  useI18n,
   type BatchResponse,
   type Column,
   type DecisionHistoryApi,
@@ -28,14 +29,8 @@ const PAGE_SIZE = 25;
 
 type Tab = "engine" | "tables" | "subscriptions" | "batches" | "decisions" | "workers";
 
-const TABS: { id: Tab; label: string }[] = [
-  { id: "engine", label: "Engine" },
-  { id: "tables", label: "Database" },
-  { id: "subscriptions", label: "Event subscriptions" },
-  { id: "batches", label: "Batches" },
-  { id: "decisions", label: "Decisions" },
-  { id: "workers", label: "External workers" },
-];
+/** Order only; each label comes from the catalogue as `system.tab.<id>`. */
+const TABS: Tab[] = ["engine", "tables", "subscriptions", "batches", "decisions", "workers"];
 
 export interface SystemProps {
   systemApi: SystemApi;
@@ -44,28 +39,29 @@ export interface SystemProps {
 }
 
 export function System({ systemApi, decisionHistoryApi, externalWorkerApi }: SystemProps) {
+  const { t } = useI18n();
   const [tab, setTab] = useState<Tab>("engine");
 
   return (
-    <section className="tf-panel" aria-label="System">
+    <section className="tf-panel" aria-label={t("system.label")}>
       <header className="tf-panel__header">
         <div>
-          <h1 className="tf-panel__title">System</h1>
-          <p className="tf-panel__meta">Engine state and diagnostics.</p>
+          <h1 className="tf-panel__title">{t("system.title")}</h1>
+          <p className="tf-panel__meta">{t("system.meta")}</p>
         </div>
       </header>
 
-      <div className="tf-inbox__filters" role="tablist" aria-label="System section">
-        {TABS.map((t) => (
+      <div className="tf-inbox__filters" role="tablist" aria-label={t("system.sectionLabel")}>
+        {TABS.map((id) => (
           <button
-            key={t.id}
+            key={id}
             type="button"
             role="tab"
-            aria-selected={tab === t.id}
-            className={["tf-chip", tab === t.id ? "tf-chip--active" : ""].filter(Boolean).join(" ")}
-            onClick={() => setTab(t.id)}
+            aria-selected={tab === id}
+            className={["tf-chip", tab === id ? "tf-chip--active" : ""].filter(Boolean).join(" ")}
+            onClick={() => setTab(id)}
           >
-            {t.label}
+            {t(`system.tab.${id}`)}
           </button>
         ))}
       </div>
@@ -81,6 +77,7 @@ export function System({ systemApi, decisionHistoryApi, externalWorkerApi }: Sys
 }
 
 function Engine({ systemApi }: { systemApi: SystemApi }) {
+  const { t } = useI18n();
   const engine = useAsync((signal) => systemApi.engine(signal), [systemApi]);
   const properties = useAsync((signal) => systemApi.properties(signal), [systemApi]);
 
@@ -96,16 +93,16 @@ function Engine({ systemApi }: { systemApi: SystemApi }) {
         {(info) => (
           <dl className="tf-facts">
             <div className="tf-facts__item">
-              <dt>Engine</dt>
+              <dt>{t("system.engine.name")}</dt>
               <dd>{info.name || "—"}</dd>
             </div>
             <div className="tf-facts__item">
-              <dt>Version</dt>
+              <dt>{t("system.engine.version")}</dt>
               <dd>{info.version || "—"}</dd>
             </div>
             {info.exception ? (
               <div className="tf-facts__item">
-                <dt>Exception</dt>
+                <dt>{t("system.engine.exception")}</dt>
                 <dd className="tf-danger-text">{info.exception}</dd>
               </div>
             ) : null}
@@ -113,23 +110,73 @@ function Engine({ systemApi }: { systemApi: SystemApi }) {
         )}
       </AsyncBoundary>
 
+      {/*
+        Data retention (REQUIREMENTS.md §13.7): "the UI should make retention policy
+        visible/configurable, not just executable". Visible is what this engine's REST
+        layer allows — history cleanup is engine configuration, with no endpoint to
+        change it — so this surfaces the settings that are readable and says plainly
+        where the rest lives, rather than implying an operator can set policy here.
+      */}
       <section className="tf-panel__section">
-        <h2 className="tf-panel__section-title">Properties</h2>
+        <h2 className="tf-panel__section-title">{t("system.retention.title")}</h2>
+        <p className="tf-panel__meta">{t("system.retention.blurb")}</p>
+        <AsyncBoundary
+          loading={properties.loading}
+          error={properties.error}
+          data={properties.data}
+          onRetry={properties.refetch}
+          isEmpty={(props) => retentionProperties(props).length === 0}
+          empty={
+            <EmptyState
+              title={t("system.retention.empty.title")}
+              description={t("system.retention.empty.description")}
+            />
+          }
+        >
+          {(props) => (
+            <table className="tf-table">
+              <caption className="tf-visually-hidden">{t("system.retention.caption")}</caption>
+              <thead>
+                <tr>
+                  <th scope="col">{t("system.properties.name")}</th>
+                  <th scope="col">{t("system.properties.value")}</th>
+                </tr>
+              </thead>
+              <tbody>
+                {retentionProperties(props).map(([name, value]) => (
+                  <tr key={name}>
+                    <td>{name}</td>
+                    <td className="tf-mono">{value}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          )}
+        </AsyncBoundary>
+      </section>
+
+      <section className="tf-panel__section">
+        <h2 className="tf-panel__section-title">{t("system.properties.title")}</h2>
         <AsyncBoundary
           loading={properties.loading}
           error={properties.error}
           data={properties.data}
           onRetry={properties.refetch}
           isEmpty={(props) => Object.keys(props).length === 0}
-          empty={<EmptyState title="No properties" description="The engine reported none." />}
+          empty={
+            <EmptyState
+              title={t("system.properties.empty.title")}
+              description={t("system.properties.empty.description")}
+            />
+          }
         >
           {(props) => (
             <table className="tf-table">
-              <caption className="tf-visually-hidden">Engine properties</caption>
+              <caption className="tf-visually-hidden">{t("system.properties.caption")}</caption>
               <thead>
                 <tr>
-                  <th scope="col">Name</th>
-                  <th scope="col">Value</th>
+                  <th scope="col">{t("system.properties.name")}</th>
+                  <th scope="col">{t("system.properties.value")}</th>
                 </tr>
               </thead>
               <tbody>
@@ -149,6 +196,7 @@ function Engine({ systemApi }: { systemApi: SystemApi }) {
 }
 
 function Tables({ systemApi }: { systemApi: SystemApi }) {
+  const { t } = useI18n();
   const [selected, setSelected] = useState<string | null>(null);
   const [start, setStart] = useState(0);
 
@@ -170,11 +218,11 @@ function Tables({ systemApi }: { systemApi: SystemApi }) {
             setStart(0);
           }}
         >
-          ← Back to all tables
+          {t("system.tables.back")}
         </button>
         <h2 className="tf-panel__section-title tf-mono">{selected}</h2>
         <p className="tf-panel__meta">
-          Read-only view of the engine's own tables. Nothing here can be edited.
+          {t("system.tables.readOnly")}
         </p>
         <AsyncBoundary
           loading={rows.loading}
@@ -182,7 +230,12 @@ function Tables({ systemApi }: { systemApi: SystemApi }) {
           data={rows.data}
           onRetry={rows.refetch}
           isEmpty={(page) => !page || page.data.length === 0}
-          empty={<EmptyState title="No rows" description="This table is empty." />}
+          empty={
+            <EmptyState
+              title={t("system.tables.rows.empty.title")}
+              description={t("system.tables.rows.empty.description")}
+            />
+          }
         >
           {(page) =>
             page ? (
@@ -233,7 +286,12 @@ function Tables({ systemApi }: { systemApi: SystemApi }) {
       data={tables.data}
       onRetry={tables.refetch}
       isEmpty={(list) => list.length === 0}
-      empty={<EmptyState title="No tables" description="The engine reported no tables." />}
+      empty={
+        <EmptyState
+          title={t("system.tables.empty.title")}
+          description={t("system.tables.empty.description")}
+        />
+      }
     >
       {(list) => (
         <ul className="tf-cards">
@@ -241,7 +299,9 @@ function Tables({ systemApi }: { systemApi: SystemApi }) {
             <li key={table.name}>
               <button type="button" className="tf-card" onClick={() => setSelected(table.name)}>
                 <span className="tf-card__title tf-mono">{table.name}</span>
-                <span className="tf-card__meta">{table.count ?? 0} rows</span>
+                <span className="tf-card__meta">
+                  {t("system.tables.rowCount", { count: table.count ?? 0 })}
+                </span>
               </button>
             </li>
           ))}
@@ -252,6 +312,7 @@ function Tables({ systemApi }: { systemApi: SystemApi }) {
 }
 
 function Subscriptions({ systemApi }: { systemApi: SystemApi }) {
+  const { t, locale } = useI18n();
   const [start, setStart] = useState(0);
   const { data, error, loading, refetch } = useAsync(
     (signal) => systemApi.listEventSubscriptions({ start, size: PAGE_SIZE }, signal),
@@ -262,7 +323,7 @@ function Subscriptions({ systemApi }: { systemApi: SystemApi }) {
     () => [
       {
         key: "event",
-        header: "Event",
+        header: t("system.subscriptions.column.event"),
         render: (sub) => (
           <div className="tf-task-cell">
             <span className="tf-task-cell__name">{sub.eventName || sub.eventType || sub.id}</span>
@@ -270,16 +331,21 @@ function Subscriptions({ systemApi }: { systemApi: SystemApi }) {
           </div>
         ),
       },
-      { key: "activity", header: "Activity", secondary: true, render: (sub) => sub.activityId || "—" },
+      {
+        key: "activity",
+        header: t("system.subscriptions.column.activity"),
+        secondary: true,
+        render: (sub) => sub.activityId || "—",
+      },
       {
         key: "created",
-        header: "Created",
+        header: t("system.subscriptions.column.created"),
         width: "180px",
         secondary: true,
-        render: (sub) => formatDateTime(sub.created ?? undefined),
+        render: (sub) => formatDateTime(sub.created ?? undefined, locale),
       },
     ],
-    [],
+    [locale, t],
   );
 
   return (
@@ -291,15 +357,15 @@ function Subscriptions({ systemApi }: { systemApi: SystemApi }) {
       isEmpty={(page) => page.data.length === 0}
       empty={
         <EmptyState
-          title="No event subscriptions"
-          description="Nothing is currently waiting on a signal or message."
+          title={t("system.subscriptions.empty.title")}
+          description={t("system.subscriptions.empty.description")}
         />
       }
     >
       {(page) => (
         <>
           <DataTable
-            caption="Event subscriptions"
+            caption={t("system.subscriptions.caption")}
             columns={columns}
             rows={page.data}
             rowKey={(sub) => sub.id}
@@ -312,6 +378,7 @@ function Subscriptions({ systemApi }: { systemApi: SystemApi }) {
 }
 
 function Batches({ systemApi }: { systemApi: SystemApi }) {
+  const { t, locale } = useI18n();
   const [start, setStart] = useState(0);
   const { data, error, loading, refetch } = useAsync(
     (signal) => systemApi.listBatches({ start, size: PAGE_SIZE }, signal),
@@ -322,7 +389,7 @@ function Batches({ systemApi }: { systemApi: SystemApi }) {
     () => [
       {
         key: "type",
-        header: "Batch",
+        header: t("system.batches.column.batch"),
         render: (batch) => (
           <div className="tf-task-cell">
             <span className="tf-task-cell__name">{batch.batchType || batch.id}</span>
@@ -332,19 +399,19 @@ function Batches({ systemApi }: { systemApi: SystemApi }) {
       },
       {
         key: "status",
-        header: "Status",
+        header: t("system.batches.column.status"),
         width: "140px",
         render: (batch) => <span className="tf-badge tf-badge--running">{batch.status || "—"}</span>,
       },
       {
         key: "created",
-        header: "Created",
+        header: t("system.batches.column.created"),
         width: "180px",
         secondary: true,
-        render: (batch) => formatDateTime(batch.createTime ?? undefined),
+        render: (batch) => formatDateTime(batch.createTime ?? undefined, locale),
       },
     ],
-    [],
+    [locale, t],
   );
 
   return (
@@ -355,12 +422,20 @@ function Batches({ systemApi }: { systemApi: SystemApi }) {
       onRetry={refetch}
       isEmpty={(page) => page.data.length === 0}
       empty={
-        <EmptyState title="No batches" description="No bulk operations have been run." />
+        <EmptyState
+          title={t("system.batches.empty.title")}
+          description={t("system.batches.empty.description")}
+        />
       }
     >
       {(page) => (
         <>
-          <DataTable caption="Batches" columns={columns} rows={page.data} rowKey={(b) => b.id} />
+          <DataTable
+            caption={t("system.batches.caption")}
+            columns={columns}
+            rows={page.data}
+            rowKey={(b) => b.id}
+          />
           <Pagination start={page.start} size={page.size || PAGE_SIZE} total={page.total} onChange={setStart} />
         </>
       )}
@@ -369,6 +444,7 @@ function Batches({ systemApi }: { systemApi: SystemApi }) {
 }
 
 function Decisions({ api }: { api: DecisionHistoryApi }) {
+  const { t, locale } = useI18n();
   const [start, setStart] = useState(0);
   const [failedOnly, setFailedOnly] = useState(false);
   const { data, error, loading, refetch } = useAsync(
@@ -380,7 +456,7 @@ function Decisions({ api }: { api: DecisionHistoryApi }) {
     () => [
       {
         key: "decision",
-        header: "Decision",
+        header: t("system.decisions.column.decision"),
         render: (row) => (
           <div className="tf-task-cell">
             <span className="tf-task-cell__name">{row.decisionName || row.decisionKey || row.id}</span>
@@ -393,24 +469,24 @@ function Decisions({ api }: { api: DecisionHistoryApi }) {
       },
       {
         key: "outcome",
-        header: "Outcome",
+        header: t("system.decisions.column.outcome"),
         width: "120px",
         render: (row) =>
           row.failed ? (
-            <span className="tf-badge tf-badge--danger">Failed</span>
+            <span className="tf-badge tf-badge--danger">{t("system.decisions.failed")}</span>
           ) : (
             <span className="tf-badge tf-badge--done">OK</span>
           ),
       },
       {
         key: "when",
-        header: "Executed",
+        header: t("system.decisions.column.executed"),
         width: "180px",
         secondary: true,
-        render: (row) => formatDateTime(row.startTime ?? undefined),
+        render: (row) => formatDateTime(row.startTime ?? undefined, locale),
       },
     ],
-    [],
+    [locale, t],
   );
 
   return (
@@ -425,7 +501,7 @@ function Decisions({ api }: { api: DecisionHistoryApi }) {
               setStart(0);
             }}
           />
-          Failed only
+          {t("jobs.failedOnly")}
         </label>
       </div>
       <AsyncBoundary
@@ -436,15 +512,15 @@ function Decisions({ api }: { api: DecisionHistoryApi }) {
         isEmpty={(page) => page.data.length === 0}
         empty={
           <EmptyState
-            title="No decision executions"
-            description="No DMN decisions have been evaluated, or the decision engine isn't deployed."
+            title={t("system.decisions.empty.title")}
+            description={t("system.decisions.empty.description")}
           />
         }
       >
         {(page) => (
           <>
             <DataTable
-              caption="Decision executions"
+              caption={t("system.decisions.caption")}
               columns={columns}
               rows={page.data}
               rowKey={(row) => row.id}
@@ -458,6 +534,7 @@ function Decisions({ api }: { api: DecisionHistoryApi }) {
 }
 
 function Workers({ api }: { api: ExternalWorkerApi }) {
+  const { t, locale } = useI18n();
   const [start, setStart] = useState(0);
   const { data, error, loading, refetch } = useAsync(
     (signal) => api.list({ start, size: PAGE_SIZE }, signal),
@@ -468,7 +545,7 @@ function Workers({ api }: { api: ExternalWorkerApi }) {
     () => [
       {
         key: "job",
-        header: "Job",
+        header: t("system.workers.column.job"),
         render: (job) => (
           <div className="tf-task-cell">
             <span className="tf-task-cell__name">{job.elementName || job.elementId || job.id}</span>
@@ -478,26 +555,30 @@ function Workers({ api }: { api: ExternalWorkerApi }) {
       },
       {
         key: "lock",
-        header: "Lock",
+        header: t("system.workers.column.lock"),
         width: "160px",
         render: (job) =>
           job.lockOwner ? (
-            <span title={`Until ${formatDateTime(job.lockExpirationTime ?? undefined)}`}>
+            <span
+              title={t("system.workers.lockedUntil", {
+                when: formatDateTime(job.lockExpirationTime ?? undefined, locale),
+              })}
+            >
               {job.lockOwner}
             </span>
           ) : (
-            <span className="tf-muted">Available</span>
+            <span className="tf-muted">{t("system.workers.available")}</span>
           ),
       },
       {
         key: "retries",
-        header: "Retries",
+        header: t("system.workers.column.retries"),
         width: "90px",
         secondary: true,
         render: (job) => job.retries ?? "—",
       },
     ],
-    [],
+    [locale, t],
   );
 
   return (
@@ -509,15 +590,15 @@ function Workers({ api }: { api: ExternalWorkerApi }) {
       isEmpty={(page) => page.data.length === 0}
       empty={
         <EmptyState
-          title="No external worker jobs"
-          description="Nothing is waiting to be picked up by an external worker."
+          title={t("system.workers.empty.title")}
+          description={t("system.workers.empty.description")}
         />
       }
     >
       {(page) => (
         <>
           <DataTable
-            caption="External worker jobs"
+            caption={t("system.workers.caption")}
             columns={columns}
             rows={page.data}
             rowKey={(job) => job.id}
@@ -526,6 +607,19 @@ function Workers({ api }: { api: ExternalWorkerApi }) {
         </>
       )}
     </AsyncBoundary>
+  );
+}
+
+/**
+ * The engine properties that describe how long data is kept. Matched by name because
+ * the engine exposes properties as a flat map with no schema — a deployment that names
+ * things differently simply shows nothing here, which is the honest outcome.
+ */
+export function retentionProperties(properties: Record<string, string>): [string, string][] {
+  // Deliberately not matching a bare "ttl": it catches `cache.ttl` and similar, and a
+  // retention table padded with unrelated settings is harder to trust than a short one.
+  return Object.entries(properties).filter(([name]) =>
+    /history|cleanup|retention/i.test(name),
   );
 }
 

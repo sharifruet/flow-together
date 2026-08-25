@@ -390,3 +390,81 @@ a.tf-menu__item:hover {
 .tf-form__upload-state--error {
   color: var(--tf-danger);
 }
+
+/* Saved filters (§14.4) and the filter bar they capture. */
+.tf-saved-views {
+  display: flex;
+  align-items: center;
+  gap: var(--tf-space-2);
+  flex-wrap: wrap;
+}
+.tf-saved-views__name {
+  display: flex;
+  align-items: center;
+  gap: var(--tf-space-2);
+}
+.tf-saved-views__pick .tf-select {
+  min-width: 12rem;
+}
+
+.tf-filter-bar {
+  display: flex;
+  align-items: flex-end;
+  gap: var(--tf-space-3);
+  flex-wrap: wrap;
+  padding: var(--tf-space-2) 0;
+}
+.tf-filter-bar__field {
+  display: flex;
+  flex-direction: column;
+  gap: var(--tf-space-1);
+  min-width: 10rem;
+}
+.tf-filter-bar__label {
+  font-size: 0.75rem;
+  font-weight: 600;
+  letter-spacing: 0.02em;
+  text-transform: uppercase;
+  color: var(--tf-text-muted);
+}
+.tf-filter-bar__note {
+  font-size: 0.75rem;
+  color: var(--tf-text-muted);
+  flex-basis: 100%;
+}
+
+/* Touch targets stay finger-sized on tablet, rather than desktop density squeezed
+   onto touch (§14.6). */
+@media (pointer: coarse) {
+  .tf-filter-bar .tf-input,
+  .tf-saved-views .tf-input,
+  .tf-saved-views .tf-button {
+    min-height: 44px;
+  }
+}
+
+/* Keyboard shortcut list (§14.4). */
+.tf-shortcuts {
+  display: grid;
+  gap: var(--tf-space-2);
+  margin: var(--tf-space-3) 0;
+}
+.tf-shortcuts__row {
+  display: grid;
+  grid-template-columns: 4.5rem 1fr;
+  align-items: baseline;
+  gap: var(--tf-space-3);
+}
+.tf-kbd {
+  display: inline-block;
+  min-width: 1.75rem;
+  padding: 0.125rem 0.4rem;
+  border: 1px solid var(--tf-border);
+  border-bottom-width: 2px;
+  border-radius: var(--tf-radius-sm);
+  background: var(--tf-bg-raised);
+  font-family: var(--tf-font-mono);
+  font-size: 0.8125rem;
+  text-align: center;
+  color: var(--tf-text);
+}

@@ -14,6 +14,7 @@ import {
   ConfirmDialog,
   TextInput,
   formatDateTime,
+  useI18n,
   useToast,
   type AttachmentResponse,
   type TaskApi,
@@ -37,6 +38,7 @@ export function Attachments({
   disabled = false,
   onChanged,
 }: AttachmentsProps) {
+  const { t, locale } = useI18n();
   const { push } = useToast();
   const fileInput = useRef<HTMLInputElement>(null);
   const [busy, setBusy] = useState(false);
@@ -56,7 +58,7 @@ export function Attachments({
       const apiError = cause instanceof ApiError ? cause : undefined;
       push({
         tone: "error",
-        message: apiError?.message ?? "That attachment action failed.",
+        message: apiError?.message ?? t("attachments.failed"),
         reference: apiError?.correlationId,
       });
     } finally {
@@ -69,12 +71,15 @@ export function Attachments({
     if (file.size > MAX_UPLOAD_BYTES) {
       push({
         tone: "error",
-        message: `"${file.name}" is larger than the ${formatBytes(MAX_UPLOAD_BYTES)} upload limit.`,
+        message: t("attachments.tooLarge", {
+          name: file.name,
+          limit: formatBytes(MAX_UPLOAD_BYTES),
+        }),
       });
       resetFileInput();
       return;
     }
-    await run(`"${file.name}" attached.`, async () => {
+    await run(t("attachments.attached", { name: file.name }), async () => {
       await taskApi.uploadAttachment(taskId, file);
       resetFileInput();
     });
@@ -87,12 +92,12 @@ export function Attachments({
   async function submitLink() {
     const name = linkName.trim();
     const url = linkUrl.trim();
-    if (!name) return setLinkError("Give the link a name.");
+    if (!name) return setLinkError(t("attachments.needName"));
     if (!isSafeHttpUrl(url)) {
-      return setLinkError("Enter a valid http(s) URL.");
+      return setLinkError(t("attachments.needUrl"));
     }
     setLinkError(undefined);
-    await run(`"${name}" linked.`, async () => {
+    await run(t("attachments.linked", { name }), async () => {
       await taskApi.addAttachmentLink(taskId, { name, externalUrl: url, type: "url" });
       setLinkName("");
       setLinkUrl("");
@@ -103,7 +108,7 @@ export function Attachments({
   return (
     <div className="tf-attachments">
       {attachments.length === 0 ? (
-        <p className="tf-muted">No attachments.</p>
+        <p className="tf-muted">{t("attachments.none")}</p>
       ) : (
         <ul className="tf-attachments__list">
           {attachments.map((attachment) => (
@@ -126,8 +131,8 @@ export function Attachments({
                 </a>
                 <span className="tf-attachments__meta">
                   {attachment.userId ? `${attachment.userId} · ` : ""}
-                  {formatDateTime(attachment.time ?? undefined)}
-                  {attachment.externalUrl ? " · link" : ""}
+                  {formatDateTime(attachment.time ?? undefined, locale)}
+                  {attachment.externalUrl ? ` · ${t("attachments.link")}` : ""}
                 </span>
                 {attachment.description ? (
                   <span className="tf-attachments__description">{attachment.description}</span>
@@ -139,7 +144,7 @@ export function Attachments({
                   className="tf-attachments__remove"
                   disabled={busy}
                   onClick={() => setPendingDelete(attachment)}
-                  aria-label={`Remove attachment ${attachment.name}`}
+                  aria-label={t("attachments.remove", { name: attachment.name })}
                 >
                   ×
                 </button>
@@ -164,14 +169,14 @@ export function Attachments({
             disabled={busy}
             onClick={() => fileInput.current?.click()}
           >
-            Upload file
+            {t("attachments.upload")}
           </Button>
           <Button
             variant="ghost"
             disabled={busy}
             onClick={() => setMode((current) => (current === "link" ? "none" : "link"))}
           >
-            {mode === "link" ? "Cancel link" : "Add link"}
+            {mode === "link" ? t("attachments.cancelLink") : t("attachments.addLink")}
           </Button>
         </div>
       ) : null}
@@ -179,14 +184,14 @@ export function Attachments({
       {mode === "link" ? (
         <div className="tf-attachments__link-form">
           <TextInput
-            label="Link name"
+            label={t("attachments.linkName")}
             value={linkName}
             required
             disabled={busy}
             onChange={(event) => setLinkName(event.target.value)}
           />
           <TextInput
-            label="URL"
+            label={t("attachments.url")}
             type="url"
             inputMode="url"
             placeholder="https://…"
@@ -197,16 +202,18 @@ export function Attachments({
             onChange={(event) => setLinkUrl(event.target.value)}
           />
           <Button loading={busy} onClick={() => void submitLink()}>
-            Add link
+            {t("attachments.addLink")}
           </Button>
         </div>
       ) : null}
 
       <ConfirmDialog
         open={pendingDelete !== null}
-        title="Remove this attachment?"
-        description={`"${pendingDelete?.name ?? ""}" will be removed from this task. This can't be undone.`}
-        confirmLabel="Remove"
+        title={t("attachments.confirmRemove.title")}
+        description={t("attachments.confirmRemove.description", {
+          name: pendingDelete?.name ?? "",
+        })}
+        confirmLabel={t("attachments.confirmRemove.confirm")}
         destructive
         busy={busy}
         onCancel={() => setPendingDelete(null)}
@@ -214,7 +221,7 @@ export function Attachments({
           const target = pendingDelete;
           setPendingDelete(null);
           if (!target) return;
-          void run(`"${target.name}" removed.`, () =>
+          void run(t("attachments.removed", { name: target.name }), () =>
             taskApi.deleteAttachment(taskId, target.id),
           );
         }}

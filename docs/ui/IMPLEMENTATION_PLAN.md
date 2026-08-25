@@ -1,6 +1,7 @@
 # TogetherFlow — Implementation Roadmap
 
 Status: Draft v1
+Current state: see [STATUS.md](STATUS.md).
 Companion to: [REQUIREMENTS.md](./REQUIREMENTS.md) — this document sequences that scope into phases; it does not restate the requirements. Section references (§) below point into REQUIREMENTS.md unless marked otherwise.
 
 Roadmap-level only: each phase lists objective, scope, dependencies, and exit criteria — not task-by-task engineering breakdown or calendar estimates (this repo's velocity/team size is unknown, so relative sizing is used instead of dates).
@@ -170,6 +171,92 @@ rather than by reading code:
 **Verification status**: every integration above is exercised against a running engine
 except the SharePoint provider, which needs an Azure tenant that does not exist here — the
 gateway README states this plainly rather than implying parity.
+
+## Cross-cutting pass — closing the NFR gaps Phases 1–6 left
+
+**Why this exists.** A second audit, this time against §8 and §13/§14 rather than §7,
+found the same pattern the completion pass above found in the functional scope: the
+per-phase "Production readiness / UX quality" callouts had been treated as aspirational.
+Risk 3 in the summary below names this exactly — "the single biggest way this roadmap
+could quietly stop being production-grade" — and it happened.
+
+**Built:**
+
+- **i18n (§8)** — the largest gap, and the one the plan explicitly warned would be
+  expensive to defer. There was no i18n layer at all; every string in five modules was
+  inline. An in-house layer now lives in `togetherflow-common`
+  ([ADR 0013](adr/0013-in-house-i18n.md)) and every module's strings are externalized,
+  with dates and relative times following the active locale. **Only `en` ships** — the
+  machinery is complete, nothing is translated.
+- **Resilience and error tracking (§13.2, §13.4)** — the API client had neither a timeout
+  nor a retry, so a hung connection was an endless spinner; and a single render throw
+  unmounted the app, leaving a blank page. Both are now built, along with a React error
+  boundary and a transport-agnostic error sink
+  ([ADR 0014](adr/0014-resilience-and-error-reporting.md)).
+- **The shell was four copies (§7.5, §14.2)** — `LoginScreen.tsx` was byte-identical in
+  all four apps and `AppShell.tsx` near-identical, which is exactly what §7.5 forbids
+  ("apply this once, so no individual app can drift"). Both now live in
+  `togetherflow-common` as `LoginScreen` and `AppFrame`, with `AppRoot` owning the
+  provider stack each app's `main.tsx` had duplicated.
+- **§7.1 inbox filters** — process definition, due-date band and priority band were
+  specified and missing. Built, along with **saved filter sets** (§14.4), which were
+  absent everywhere — in Work's inbox and in Control's instance and job queries, which is
+  both places the requirement names.
+- **Keyboard shortcuts (§14.4)** — the requirement names "claim/complete/next-task in
+  Work, and … common Control actions" specifically. Work had section navigation only and
+  Control had nothing. Both now register bindings through a shared registry, so the `?`
+  help dialog is generated from the handlers themselves rather than maintained beside them
+  and left to go stale.
+- **Core Web Vitals (§13.5)** — LCP, CLS, INP and TTFB, sampled from real sessions and
+  reported through the same sink as errors. Field data, not a lab measurement.
+- **Modeller property coverage (§7.4.2, §7.4.3)** — §7.4.2 names execution and service
+  listeners and "extension elements the engine already supports"; none of the nested ones
+  were editable, so a citizen developer authoring a real process had to leave and hand-edit
+  XML. Listeners, multi-instance and boundary-event/timer configuration are now editable,
+  and CMMN gained exit criteria — which the model layer had round-tripped all along with
+  nothing able to author one.
+- **The IDM spec gap (§8)** — flagged in the requirements as Phase 1 work and never done.
+  A hand-authored OpenAPI spec now covers `flowable-idm-rest` and is wired into the same
+  codegen and contract-drift check as every other engine, so Identity is no longer the one
+  app with no protection against backend drift.
+- **Deployment (§13.2, §13.3)** — there were no Kubernetes manifests for any UI module and
+  the release workflow built and signed **one of four** images. All five modules now have
+  manifests with liveness/readiness probes and a read-only root filesystem, the release
+  workflow covers every app plus the attachment gateway, and the gateway has a Dockerfile
+  at all.
+- **Enforcement (§13.5, §13.6)** — bundle budgets and axe-core accessibility checks now
+  run in CI, and the golden-path e2e suites named in §8 exist for all four apps rather
+  than only Work.
+- **Compliance (§13.7)** — retention is visible in Control, Identity can export what the
+  identity store holds about a person, and the delete confirmation states plainly that
+  deleting a user is not an erasure.
+- **Component gallery (§14.2)** — the design system had accessibility tests but no
+  documented state gallery. Built as a small in-house page rather than Storybook, with
+  coverage enforced against the filesystem so a new shared component cannot ship
+  undocumented. Token values are read from the live stylesheet rather than copied.
+- **Model version history (§7.4.1)** — Design wrote `version: 1` on every draft forever, so
+  the requirement was unmet and the model table's version column was dead data. Built on
+  the engine's native model versioning; a version is cut on deploy and on demand, and
+  restoring never rewrites history.
+- **Documentation (§13.8)** — an operator runbook ([OPERATIONS.md](OPERATIONS.md)), a
+  README for `togetherflow-common`, and ADRs for the decisions these passes made.
+
+**Still open after this pass** — stated rather than quietly carried:
+
+- **Visual regression still cannot fail a build.** The job now runs in the same container
+  the baselines should be generated in, but the committed baselines are darwin-generated;
+  regenerating them in that container needs a working Docker daemon. The workflow names
+  the exact command and the line to delete.
+- **Visual coverage is Work-only.** §14.5 asks for the component library and each app's
+  key screens.
+- **Load testing (§13.5)** — vitals now measure what users experience in the field, but
+  nothing has been run against realistic multi-year history volume, which is the separate
+  thing §13.5 asks for.
+- **No Helm chart entries** (§13.3). The chart family lives on the `flowable-helm` branch,
+  under a directory that does not exist on `main`.
+- **The new e2e suites have not been run against a real engine** — they parse and collect,
+  but no Docker daemon was available to stand one up. Work's suite is the only one with a
+  green run behind it.
 
 ## Phase 7 — Production Readiness & Quality Gate
 

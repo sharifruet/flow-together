@@ -5,6 +5,7 @@
  */
 
 import type { ReactNode } from "react";
+import { useT } from "../i18n/I18nContext";
 import { Button } from "./Button";
 
 export interface Column<T> {
@@ -99,6 +100,7 @@ export interface PaginationProps {
 }
 
 export function Pagination({ start, size, total, onChange }: PaginationProps) {
+  const t = useT();
   if (total === 0) return null;
   const first = start + 1;
   const last = Math.min(start + size, total);
@@ -106,9 +108,9 @@ export function Pagination({ start, size, total, onChange }: PaginationProps) {
   const hasNext = last < total;
 
   return (
-    <nav className="tf-pagination" aria-label="Pagination">
+    <nav className="tf-pagination" aria-label={t("pagination.label")}>
       <p className="tf-pagination__status" aria-live="polite">
-        {first}–{last} of {total}
+        {t("pagination.status", { first, last, total })}
       </p>
       <div className="tf-pagination__controls">
         <Button
@@ -116,10 +118,10 @@ export function Pagination({ start, size, total, onChange }: PaginationProps) {
           onClick={() => onChange(Math.max(0, start - size))}
           disabled={!hasPrevious}
         >
-          Previous
+          {t("pagination.previous")}
         </Button>
         <Button variant="secondary" onClick={() => onChange(start + size)} disabled={!hasNext}>
-          Next
+          {t("pagination.next")}
         </Button>
       </div>
     </nav>

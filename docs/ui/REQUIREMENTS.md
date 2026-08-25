@@ -2,6 +2,7 @@
 
 Status: Draft v1
 Owner: TBD
+Current state: see [STATUS.md](STATUS.md) — what is built, what is verified, and what is not.
 Scope: net-new React front end(s), branded **TogetherFlow**, for this repository's engines (BPMN, CMMN, DMN, App, IDM, Event Registry)
 
 ## 1. Purpose
@@ -65,13 +66,13 @@ Endpoint names below are the actual resource classes found in this repo (§5), n
 
 ### 7.1 TogetherFlow Work
 
-- **Task inbox**: list tasks assigned to me / my groups / unassigned-claimable, backed by `TaskQueryResource` (BPMN) and `TaskQueryResource` (CMMN). Filter by process/case definition, due date, priority, involved user (`TaskIdentityLinkCollectionResource`).
+- **Task inbox**: list tasks assigned to me / my groups / unassigned-claimable, backed by `TaskQueryResource` (BPMN) and `TaskQueryResource` (CMMN). Filter by process definition, due date (overdue / today / this week / none), priority band, and involved user (`TaskIdentityLinkCollectionResource`); filter sets can be saved and reapplied (§14.4). Case-definition filtering is not offered: the shared task table exposes `processDefinitionKey` but no equivalent scope filter through this repo's query resource.
 - **Task detail**: view/edit task variables (`TaskVariableCollectionResource`, `TaskVariableDataResource`), comments (`TaskCommentCollectionResource`), attachments (`TaskAttachmentCollectionResource` — storage backend is pluggable, see §7.6), identity links (involved people/groups), sub-tasks (`TaskSubTaskCollectionResource`), audit log (`HistoricTaskLogCollectionResource`).
 - **Task actions**: claim, unclaim, assign, delegate, complete, complete-with-form-data — all via `TaskResource`/`TaskBaseResource`.
 - **Case work**: case instance list/detail via `CaseInstanceQueryResource`/`CaseInstanceResource`, active plan items via `PlanItemInstanceCollectionResource`, milestones via history equivalents.
 - **Start new work**: browse startable process definitions/case definitions (`ProcessDefinitionCollectionResource`, `CaseDefinitionCollectionResource`) filtered by what the current user is authorized to start, start with initial variables.
 - **My history**: completed tasks and instances I was involved in, via `HistoricTaskInstanceQueryResource` / `HistoricProcessInstanceQueryResource` / `HistoricCaseInstanceQueryResource`.
-- **Forms**: task forms render natively from the engine's own form model, fetched via `GET /runtime/tasks/{taskId}/form` (and `/repository/process-definitions/{id}/start-form` for start forms). The typed variable grid remains as a fallback for tasks with no form, or when the form model cannot be loaded. See [ADR 0007](adr/0007-flowable-native-form-renderer.md); `upload` fields and expression-driven option lists are not yet supported.
+- **Forms**: task forms render natively from the engine's own form model, fetched via `GET /runtime/tasks/{taskId}/form` (and `/repository/process-definitions/{id}/start-form` for start forms). The typed variable grid remains as a fallback for tasks with no form, or when the form model cannot be loaded. See [ADR 0007](adr/0007-flowable-native-form-renderer.md). `upload` fields are supported on a task, where the attachment endpoint gives the file somewhere to go; a start form has no such endpoint and says so rather than showing a control that cannot work. Expression-driven option lists arrive unresolved from the engine and fall back to a free-text input.
 
 ### 7.2 TogetherFlow Control
 
@@ -107,7 +108,7 @@ Design is the authoring surface for every model type this repo's engines can exe
 
 - Single library view listing all draft models (`ModelCollectionResource`) plus, where a type has no draft repository (CMMN/DMN/Form/Event — see §7.4.6), the models found inside existing deployments.
 - Filter/search by type (process, case, decision, form, channel, event, app), name, key, creator, last-modified.
-- Thumbnail preview, version history, "duplicate", "rename", "delete" (draft only — deployed models are immutable, superseded by a new version instead).
+- Thumbnail preview, version history, "duplicate", "rename", "delete" (draft only — deployed models are immutable, superseded by a new version instead). **Version history is built** on the engine's own model versioning (`version` / `latestVersion` on `ModelCollectionResource`) rather than a side table: a version is cut on deploy and on demand, the highest version is the working draft, and restoring an older one cuts a version from the current contents first so nothing is lost. Diffing two versions is deliberately absent — a real BPMN diff is a graph comparison, and a text diff of serialised XML would mostly report attribute reordering.
 - Import existing BPMN/CMMN/DMN XML or form/event JSON as a new draft; export any model back to its native file format.
 
 #### 7.4.2 BPMN process modeler
@@ -167,9 +168,9 @@ Grounded in the actual engine model: `Attachment` (`flowable-engine`'s `org.flow
 
 ## 8. Non-Functional Requirements
 
-- **Typed API client**: generate TypeScript clients from the existing OpenAPI specs in `docs/public-api/references/openapi/{process,cmmn,decision}` and the Swagger specs for `app`; hand-write a thin typed client for `flowable-idm-rest` since no spec is currently published for it (flagged as a gap — Phase 1 should add one under `docs/public-api`, mirroring the existing generator).
+- **Typed API client**: generate TypeScript clients from the existing OpenAPI specs in `docs/public-api/references/openapi/{process,cmmn,decision}` and the Swagger specs for `app`; `flowable-idm-rest` is not covered by the engine's own spec generation, so a spec was hand-authored at `docs/public-api/references/openapi/idm/flowable-oas-idm.yaml` and wired into the same codegen and contract-drift check as every other engine. It is derived by reading the resource classes and must be kept in step with them — the conformance assertions in `contract.test-d.ts` fail the build if the client and the spec disagree.
 - **Auth**: OIDC Authorization Code + PKCE against a public client, tokens held in memory with silent renewal (ADR 0006). HTTP Basic remains available for local development only and refuses to run over plain HTTP outside loopback. The API client consumes an injected header callback, so the mechanism is swappable without touching feature code.
-- **i18n**: all user-facing strings externalized from day one (legacy apps supported translation packs; don't regress).
+- **i18n**: all user-facing strings externalized (legacy apps supported translation packs; don't regress). Built as an in-house layer in `togetherflow-common` — see [ADR 0013](adr/0013-in-house-i18n.md) — with one catalogue per module, merged at the root. Every module's strings are externalized and dates follow the active locale. **Only `en` ships**: the machinery is complete and adding a language is additive, but nothing is translated yet. This was *not* done from day one, contrary to what this bullet asked for; it was retrofitted after Phase 6, at the cost the plan predicted.
 - **Accessibility**: WCAG 2.1 AA as a baseline for the Work app in particular, since it's used by non-technical business users all day.
 - **Responsiveness**: Work app must be usable on tablet width (task triage on the go); Control/Identity/Design are desktop-first (data-dense tables/diagrams).
 - **Performance**: task/instance lists must page/virtualize server-side (all list resources already support `start`/`size`/sort query params) — never load unbounded result sets client-side.
@@ -217,7 +218,7 @@ Suggested stack for `togetherflow-common` (open to revision): React 18 + TypeScr
 6. ~~**CMMN canvas strategy**~~ — **Resolved.** A custom graphical canvas was chosen and built (hand-written SVG); `cmmn-js` was evaluated and rejected as six years unmaintained and incompatible with the diagram-js generation already in use. See [ADR 0009](adr/0009-cmmn-canvas.md).
 7. ~~**Form/Event draft-model repository**~~ — **Resolved.** Authoring is client-side; drafts live in the existing generic model repository (`/repository/models`, categories `togetherflow:form` and `togetherflow:event`), so no backend module was needed. Probing a running engine settled it: there is no form REST module and the stock image does not initialise a form engine, while the event registry REST surface is mounted and accepts one `.event`/`.channel` per call. Forms therefore deploy inside an app; events deploy directly. See [ADR 0010](adr/0010-form-and-event-authoring.md).
 8. **Model library scope** (§7.4.1): is a single unified "Design" library across all model types the right IA, or should each model type get its own top-level nav item (closer to the legacy Modeler app's tabbed layout)?
-9. **Tenant model** (§8): does a single logged-in user ever need access to more than one tenant (requiring a switcher), or is tenant fixed per login/deployment (simpler — no switcher, just a filter baked into the session)? Confirm before Phase 1 designs the shell's session/state model, since retrofitting is costly.
+9. ~~**Tenant model**~~ — **Resolved in practice.** A switcher was built and tenant context threads through every query from Phase 1, so the more expensive of the two options is the one in place and nothing needs retrofitting. See [ADR 0004](adr/0004-tenant-context-from-day-one.md). Still worth ratifying that a multi-tenant switcher is wanted at all, since a fixed-per-login deployment could hide it.
 10. ~~**"Local" attachment storage — DB or filesystem?**~~ — **Resolved in practice.** `db` remains the default and needs no gateway. The `filesystem` provider is now built and verified end to end in `togetherflow-attachment-gateway`, so either meaning of "local" is available; choosing it is deployment configuration, not a code change.
 11. **SharePoint auth model** (§7.6): **app-only is what was built** (client credentials, one service identity for every upload), because it is far simpler and needs no second identity provider in the shell. Still open as a *decision to ratify*: SharePoint sees the gateway rather than the end user, which may not satisfy an audit requirement. Delegated auth remains the larger alternative. Note also that the SharePoint provider is the one integration in this repo **not** verified against the real service — see the gateway README.
 12. **SharePoint target scope**: one fixed site/document library for the whole deployment, or configurable per tenant (ties into Open Question 9)? Affects the config schema in §7.6.
@@ -251,7 +252,7 @@ Full phase-by-phase detail, dependencies, and exit criteria live in [IMPLEMENTAT
 
 ### 13.2 Observability
 
-- **Frontend error tracking**: unhandled exceptions and API failures captured with enough context (route, user role, request id) to debug without asking the user to reproduce it — not just a browser console log.
+- **Frontend error tracking** — *built, see [ADR 0014](adr/0014-resilience-and-error-reporting.md)*: unhandled exceptions and API failures captured with enough context (route, user role, request id) to debug without asking the user to reproduce it — not just a browser console log.
 - **Correlation with backend**: propagate a request/correlation id from each UI action through to the REST call so a Control-observed failure and a browser-observed failure can be tied to the same trace.
 - **Health/readiness probes**: each deployable UI module (or its serving container) exposes what a k8s liveness/readiness probe needs, consistent with how `flowable-rest` is already probed in `k8s/resources/flowable-rest.yaml` — new manifests for the UI apps should follow that existing shape, not invent a new one.
 - **Structured logging** from `togetherflow-attachment-gateway` (the one module with real server-side logic) — request/response logging with secrets redacted, not raw dumps.
@@ -264,7 +265,7 @@ Full phase-by-phase detail, dependencies, and exit criteria live in [IMPLEMENTAT
 
 ### 13.4 Resilience
 
-- **Network resilience**: retry-with-backoff on transient API failures (not on failed business operations — don't retry a rejected task-completion), request timeouts surfaced to the user rather than an indefinite spinner, and graceful degradation when the attachment gateway (§7.6) or an individual engine's REST module is unavailable — the rest of the app should stay usable (e.g. Work should still show tasks even if the attachment subsystem is down).
+- **Network resilience** — *built, see [ADR 0014](adr/0014-resilience-and-error-reporting.md)*: retry-with-backoff on transient API failures (not on failed business operations — don't retry a rejected task-completion), request timeouts surfaced to the user rather than an indefinite spinner, and graceful degradation when the attachment gateway (§7.6) or an individual engine's REST module is unavailable — the rest of the app should stay usable (e.g. Work should still show tasks even if the attachment subsystem is down).
 - **Statelessness**: every deployable UI module (including `togetherflow-attachment-gateway`) must be safely horizontally scalable behind the existing load-balancer pattern (`docker/rest-loadbalancer-postgres.sh` / `docker/config/loadbalancer-rest-postgres.yml`) — no in-memory session state that breaks under multiple replicas.
 
 ### 13.5 Performance & Scale — Verified, Not Just Designed
@@ -306,7 +307,7 @@ Every screen delivered in any phase (§12/IMPLEMENTATION_PLAN.md) must handle **
 
 ### 14.2 Design system maturity
 
-- A real, documented shared component library in `togetherflow-common` (Storybook or equivalent), not just a grab-bag of one-off components copied between apps — every component documents its own default/hover/focus/active/disabled/loading/error visual states.
+- A real, documented shared component library in `togetherflow-common` (Storybook or equivalent), not just a grab-bag of one-off components copied between apps — every component documents its own default/hover/focus/active/disabled/loading/error visual states. **Built** as a small in-house gallery (`npm run gallery` in `togetherflow-common`) rather than Storybook, on the same reasoning as [ADR 0001](adr/0001-in-house-design-system.md); coverage is enforced against the filesystem, so a new shared component fails the build until it is documented. `hover`/`active`/`focus` are marked interactive rather than faked — they are CSS pseudo-classes, and rendering them statically would mean duplicating the stylesheet onto gallery-only classes that then drift.
 - Design tokens (spacing scale, typography scale, color system, elevation) defined once and consumed everywhere, so Work/Control/Identity/Design read as one product family rather than four separately-styled apps — directly relevant to Open Question 1 (§11.1)'s component-library decision.
 - **Color system seeded from the actual brand logo** (`logo.png`, §7.5), not invented independently of it — extracted from the source file:
 

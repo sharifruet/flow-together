@@ -27,11 +27,13 @@ import {
   availablePlanItemActions,
   formatDateTime,
   useAsync,
+  useI18n,
   useToast,
   type CaseApi,
   type CaseInstanceResponse,
   type PlanItemAction,
   type PlanItemInstanceResponse,
+  type TFunction,
 } from "@togetherflow/common";
 
 export interface CaseDetailProps {
@@ -41,14 +43,16 @@ export interface CaseDetailProps {
   onChanged: () => void;
 }
 
-const ACTION_LABELS: Record<PlanItemAction, string> = {
-  start: "Start",
-  enable: "Enable",
-  disable: "Skip",
-  trigger: "Trigger",
+/** Message-key suffix per action; the copy itself lives in the catalogue. */
+const ACTION_KEYS: Record<PlanItemAction, string> = {
+  start: "case.action.start",
+  enable: "case.action.enable",
+  disable: "case.action.disable",
+  trigger: "case.action.trigger",
 };
 
 export function CaseDetail({ caseApi, instance, onClose, onChanged }: CaseDetailProps) {
+  const { t, locale } = useI18n();
   const { push } = useToast();
   const [busyItem, setBusyItem] = useState<string | null>(null);
   const [confirmTerminate, setConfirmTerminate] = useState(false);
@@ -87,13 +91,19 @@ export function CaseDetail({ caseApi, instance, onClose, onChanged }: CaseDetail
     setBusyItem(item.id);
     try {
       await caseApi.performPlanItemAction(item.id, action);
-      push({ tone: "success", message: `${ACTION_LABELS[action]}: ${item.name ?? "plan item"}.` });
+      push({
+        tone: "success",
+        message: t("case.action.done", {
+          action: t(ACTION_KEYS[action]),
+          name: item.name ?? t("case.action.fallbackItem"),
+        }),
+      });
       refreshAll();
     } catch (cause) {
       const apiError = cause instanceof ApiError ? cause : undefined;
       push({
         tone: "error",
-        message: apiError?.message ?? `Could not ${action} this plan item.`,
+        message: apiError?.message ?? t("case.action.failed", { action }),
         reference: apiError?.correlationId,
       });
     } finally {
@@ -106,14 +116,14 @@ export function CaseDetail({ caseApi, instance, onClose, onChanged }: CaseDetail
     setTerminating(true);
     try {
       await caseApi.terminate(caseId);
-      push({ tone: "success", message: "Case terminated." });
+      push({ tone: "success", message: t("case.terminate.done") });
       onClose();
       onChanged();
     } catch (cause) {
       const apiError = cause instanceof ApiError ? cause : undefined;
       push({
         tone: "error",
-        message: apiError?.message ?? "Could not terminate this case.",
+        message: apiError?.message ?? t("case.terminate.failed"),
         reference: apiError?.correlationId,
       });
     } finally {
@@ -126,39 +136,46 @@ export function CaseDetail({ caseApi, instance, onClose, onChanged }: CaseDetail
 
   if (!instance) {
     return (
-      <section className="tf-detail tf-detail--empty" aria-label="Case detail">
-        <p className="tf-detail__empty-title">No case selected</p>
-        <p className="tf-detail__empty-hint">Choose a case from the list to see its progress.</p>
+      <section className="tf-detail tf-detail--empty" aria-label={t("case.detail.label")}>
+        <p className="tf-detail__empty-title">{t("case.detail.none.title")}</p>
+        <p className="tf-detail__empty-hint">{t("case.detail.none.hint")}</p>
       </section>
     );
   }
 
   return (
-    <section className="tf-detail" aria-label={`Case ${instance.name ?? instance.id}`}>
+    <section
+      className="tf-detail"
+      aria-label={t("case.detail.for", { name: instance.name ?? instance.id })}
+    >
       <header className="tf-detail__header">
         <div>
           <h2 className="tf-detail__title">
-            {instance.name || instance.caseDefinitionName || "Case"}
+            {instance.name || instance.caseDefinitionName || t("case.detail.fallbackName")}
           </h2>
           <p className="tf-detail__meta">
-            {instance.businessKey ? `Ref ${instance.businessKey} · ` : ""}
-            Started {formatDateTime(instance.startTime)}
-            {instance.startUserId ? ` by ${instance.startUserId}` : ""}
-            {ended ? ` · Ended ${formatDateTime(instance.endTime ?? undefined)}` : ""}
+            {instance.businessKey
+              ? `${t("cases.ref", { businessKey: instance.businessKey })} · `
+              : ""}
+            {t("case.meta.started", { when: formatDateTime(instance.startTime, locale) })}
+            {instance.startUserId ? t("case.meta.by", { userId: instance.startUserId }) : ""}
+            {ended
+              ? ` · ${t("case.meta.ended", {
+                  when: formatDateTime(instance.endTime ?? undefined, locale),
+                })}`
+              : ""}
           </p>
         </div>
-        <button type="button" className="tf-detail__close" onClick={onClose} aria-label="Close case detail">
+        <button type="button" className="tf-detail__close" onClick={onClose} aria-label={t("case.detail.close")}>
           ×
         </button>
       </header>
 
       {/* Progress: stages and milestones, in the order the engine reports them. */}
       <section className="tf-detail__section">
-        <h3 className="tf-detail__section-title">Progress</h3>
+        <h3 className="tf-detail__section-title">{t("case.section.progress")}</h3>
         {ended ? (
-          <p className="tf-muted">
-            This case has finished. Its live progress is no longer tracked.
-          </p>
+          <p className="tf-muted">{t("case.progress.finished")}</p>
         ) : (
           <AsyncBoundary
             loading={stages.loading}
@@ -167,7 +184,7 @@ export function CaseDetail({ caseApi, instance, onClose, onChanged }: CaseDetail
             onRetry={stages.refetch}
             skeletonRows={2}
             isEmpty={(rows) => rows.length === 0}
-            empty={<p className="tf-muted">This case defines no stages or milestones.</p>}
+            empty={<p className="tf-muted">{t("case.progress.none")}</p>}
           >
             {(rows) => (
               <ol className="tf-stages">
@@ -186,10 +203,12 @@ export function CaseDetail({ caseApi, instance, onClose, onChanged }: CaseDetail
                     <span className="tf-stages__name">{stage.name || stage.id}</span>
                     <span className="tf-stages__state">
                       {stage.ended
-                        ? `Reached ${formatDateTime(stage.endTime ?? undefined)}`
+                        ? t("case.progress.reached", {
+                            when: formatDateTime(stage.endTime ?? undefined, locale),
+                          })
                         : stage.current
-                          ? "In progress"
-                          : "Not yet reached"}
+                          ? t("case.progress.inProgress")
+                          : t("case.progress.notReached")}
                     </span>
                   </li>
                 ))}
@@ -201,9 +220,9 @@ export function CaseDetail({ caseApi, instance, onClose, onChanged }: CaseDetail
 
       {/* Plan items, nested by stage. */}
       <section className="tf-detail__section">
-        <h3 className="tf-detail__section-title">Plan items</h3>
+        <h3 className="tf-detail__section-title">{t("case.section.planItems")}</h3>
         {ended ? (
-          <p className="tf-muted">Plan items are only tracked while a case is running.</p>
+          <p className="tf-muted">{t("case.planItems.historyOnly")}</p>
         ) : (
           <AsyncBoundary
             loading={planItems.loading}
@@ -212,13 +231,14 @@ export function CaseDetail({ caseApi, instance, onClose, onChanged }: CaseDetail
             onRetry={planItems.refetch}
             skeletonRows={3}
             isEmpty={(nodes) => nodes.length === 0}
-            empty={<p className="tf-muted">Nothing is active in this case right now.</p>}
+            empty={<p className="tf-muted">{t("case.planItems.none")}</p>}
           >
             {(nodes) => (
               <PlanItemList
                 nodes={nodes}
                 busyItem={busyItem}
                 onAction={runAction}
+                t={t}
               />
             )}
           </AsyncBoundary>
@@ -226,7 +246,7 @@ export function CaseDetail({ caseApi, instance, onClose, onChanged }: CaseDetail
       </section>
 
       <section className="tf-detail__section">
-        <h3 className="tf-detail__section-title">Case data</h3>
+        <h3 className="tf-detail__section-title">{t("case.section.data")}</h3>
         <AsyncBoundary
           loading={variables.loading}
           error={variables.error}
@@ -234,7 +254,7 @@ export function CaseDetail({ caseApi, instance, onClose, onChanged }: CaseDetail
           onRetry={variables.refetch}
             skeletonRows={2}
           isEmpty={(rows) => rows.length === 0}
-          empty={<p className="tf-muted">This case carries no data.</p>}
+          empty={<p className="tf-muted">{t("case.data.none")}</p>}
         >
           {(rows) => (
             <dl className="tf-variables">
@@ -256,16 +276,18 @@ export function CaseDetail({ caseApi, instance, onClose, onChanged }: CaseDetail
       {!ended ? (
         <footer className="tf-detail__actions">
           <Button variant="danger" onClick={() => setConfirmTerminate(true)}>
-            Terminate case
+            {t("case.terminate.confirm")}
           </Button>
         </footer>
       ) : null}
 
       <ConfirmDialog
         open={confirmTerminate}
-        title="Terminate this case?"
-        description={`"${instance.name || instance.caseDefinitionName || instance.id}" will stop immediately and its open tasks will be cancelled. Its history is kept.`}
-        confirmLabel="Terminate case"
+        title={t("case.terminate.confirmTitle")}
+        description={t("case.terminate.confirmDescription", {
+          name: instance.name || instance.caseDefinitionName || instance.id,
+        })}
+        confirmLabel={t("case.terminate.confirm")}
         destructive
         busy={terminating}
         onCancel={() => setConfirmTerminate(false)}
@@ -307,11 +329,14 @@ function PlanItemList({
   nodes,
   busyItem,
   onAction,
+  t,
   depth = 0,
 }: {
   nodes: PlanItemNode[];
   busyItem: string | null;
   onAction: (item: PlanItemInstanceResponse, action: PlanItemAction) => void;
+  /** Threaded down rather than hooked: this renders recursively, not once. */
+  t: TFunction;
   depth?: number;
 }) {
   return (
@@ -333,7 +358,7 @@ function PlanItemList({
               <span className={planItemBadgeClass(item.state)}>{item.state ?? "unknown"}</span>
               <span className="tf-planitems__actions">
                 {isOpenTask ? (
-                  <span className="tf-planitems__hint">Open it from Tasks</span>
+                  <span className="tf-planitems__hint">{t("case.planItems.openFromTasks")}</span>
                 ) : null}
                 {actions.map((action) => (
                   <Button
@@ -342,7 +367,7 @@ function PlanItemList({
                     loading={busyItem === item.id}
                     onClick={() => onAction(item, action)}
                   >
-                    {ACTION_LABELS[action]}
+                    {t(ACTION_KEYS[action])}
                   </Button>
                 ))}
               </span>
@@ -352,6 +377,7 @@ function PlanItemList({
                 nodes={children}
                 busyItem={busyItem}
                 onAction={onAction}
+                t={t}
                 depth={depth + 1}
               />
             ) : null}

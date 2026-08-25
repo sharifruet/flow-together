@@ -8,10 +8,13 @@ import {
   EmptyState,
   NoResultsState,
   Pagination,
+  SavedViews,
   displayValue,
   formatDateTime,
   useAsync,
+  useI18n,
   useDebouncedValue,
+  useSavedViews,
   useToast,
   type ActivityInstanceResponse,
   type Column,
@@ -25,22 +28,42 @@ export interface InstancesProps {
   instanceApi: InstanceApi;
 }
 
+/** What a saved view captures (§14.4) — everything except which page you were on. */
+export interface InstancesView {
+  search: string;
+  suspendedOnly: boolean;
+}
+
+const DEFAULT_VIEW: InstancesView = { search: "", suspendedOnly: false };
+
 export function Instances({ instanceApi }: InstancesProps) {
+  const { t, locale } = useI18n();
   const [selected, setSelected] = useState<ProcessInstanceResponse | null>(null);
   const [start, setStart] = useState(0);
-  const [search, setSearch] = useState("");
-  const debounced = useDebouncedValue(search).trim();
-  const [suspendedOnly, setSuspendedOnly] = useState(false);
+  const [view, setView] = useState<InstancesView>(DEFAULT_VIEW);
+  const debounced = useDebouncedValue(view.search).trim();
   const [reloadToken, setReloadToken] = useState(0);
+  const savedViews = useSavedViews<InstancesView>("control.instances");
+
+  /** Any change to the filters invalidates the page the user was on. */
+  const update = useCallback((patch: Partial<InstancesView>) => {
+    setView((current) => ({ ...current, ...patch }));
+    setStart(0);
+  }, []);
+
+  const applyView = useCallback((next: InstancesView) => {
+    setView(next);
+    setStart(0);
+  }, []);
 
   const query = useMemo(
     () => ({
       start,
       size: PAGE_SIZE,
       ...(debounced ? { processInstanceNameLikeIgnoreCase: `%${debounced}%` } : {}),
-      ...(suspendedOnly ? { suspended: true } : {}),
+      ...(view.suspendedOnly ? { suspended: true } : {}),
     }),
-    [start, debounced, suspendedOnly],
+    [start, debounced, view.suspendedOnly],
   );
 
   const { data, error, loading, refetch } = useAsync(
@@ -52,7 +75,7 @@ export function Instances({ instanceApi }: InstancesProps) {
     () => [
       {
         key: "name",
-        header: "Instance",
+        header: t("instances.column.instance"),
         render: (instance) => (
           <div className="tf-task-cell">
             <span className="tf-task-cell__name">
@@ -67,24 +90,24 @@ export function Instances({ instanceApi }: InstancesProps) {
       },
       {
         key: "status",
-        header: "Status",
+        header: t("instances.column.status"),
         width: "120px",
         render: (instance) =>
           instance.suspended ? (
-            <span className="tf-badge tf-badge--warning">Suspended</span>
+            <span className="tf-badge tf-badge--warning">{t("instances.status.suspended")}</span>
           ) : (
-            <span className="tf-badge tf-badge--running">Running</span>
+            <span className="tf-badge tf-badge--running">{t("instances.status.running")}</span>
           ),
       },
       {
         key: "started",
-        header: "Started",
+        header: t("instances.column.started"),
         width: "180px",
         secondary: true,
-        render: (instance) => formatDateTime(instance.startTime),
+        render: (instance) => formatDateTime(instance.startTime, locale),
       },
     ],
-    [],
+    [t, locale],
   );
 
   if (selected) {
@@ -103,43 +126,52 @@ export function Instances({ instanceApi }: InstancesProps) {
   }
 
   return (
-    <section className="tf-panel" aria-label="Process instances">
+    <section className="tf-panel" aria-label={t("instances.label")}>
       <header className="tf-panel__header">
         <div>
-          <h1 className="tf-panel__title">Process instances</h1>
-          <p className="tf-panel__meta">Running work, and what it's waiting on.</p>
+          <h1 className="tf-panel__title">{t("instances.title")}</h1>
+          <p className="tf-panel__meta">{t("instances.meta")}</p>
         </div>
       </header>
 
       <div className="tf-toolbar">
         <div className="tf-panel__search">
           <label className="tf-visually-hidden" htmlFor="tf-instance-search">
-            Search instances by name
+            {t("instances.searchLabel")}
           </label>
           <input
             id="tf-instance-search"
             className="tf-input"
             type="search"
-            placeholder="Search by name…"
-            value={search}
-            onChange={(event) => {
-              setSearch(event.target.value);
-              setStart(0);
-            }}
+            placeholder={t("instances.search")}
+            value={view.search}
+            onChange={(event) => update({ search: event.target.value })}
           />
         </div>
         <label className="tf-checkbox">
           <input
             type="checkbox"
-            checked={suspendedOnly}
-            onChange={(event) => {
-              setSuspendedOnly(event.target.checked);
-              setStart(0);
-            }}
+            checked={view.suspendedOnly}
+            onChange={(event) => update({ suspendedOnly: event.target.checked })}
           />
-          Suspended only
+          {t("instances.suspendedOnly")}
         </label>
+        {/*
+          Saved filters (§14.4). Control is the app the requirement argues hardest for —
+          an operator returning to the same "suspended, named like X" query every morning
+          should not have to rebuild it every morning.
+        */}
+        <SavedViews
+          views={savedViews.views}
+          current={view}
+          onApply={applyView}
+          onSave={savedViews.save}
+          onRemove={savedViews.remove}
+        />
       </div>
+      {savedViews.views.length > 0 ? (
+        <p className="tf-filter-bar__note">{t("savedViews.note")}</p>
+      ) : null}
 
       <AsyncBoundary
         loading={loading}
@@ -148,18 +180,12 @@ export function Instances({ instanceApi }: InstancesProps) {
         onRetry={refetch}
         isEmpty={(page) => page.data.length === 0}
         empty={
-          debounced || suspendedOnly ? (
-            <NoResultsState
-              onClear={() => {
-                setSearch("");
-                setSuspendedOnly(false);
-                setStart(0);
-              }}
-            />
+          debounced || view.suspendedOnly ? (
+            <NoResultsState onClear={() => applyView(DEFAULT_VIEW)} />
           ) : (
             <EmptyState
-              title="No running instances"
-              description="Nothing is currently in flight. Completed work lives in history."
+              title={t("instances.empty.title")}
+              description={t("instances.empty.description")}
             />
           )
         }
@@ -167,7 +193,7 @@ export function Instances({ instanceApi }: InstancesProps) {
         {(page) => (
           <>
             <DataTable
-              caption="Process instances"
+              caption={t("instances.caption")}
               columns={columns}
               rows={page.data}
               rowKey={(instance) => instance.id}
@@ -195,6 +221,7 @@ interface DetailProps {
 }
 
 function InstanceDetail({ instanceApi, instanceId, onBack, onChanged, onDeleted }: DetailProps) {
+  const { t, locale } = useI18n();
   const { push } = useToast();
   const [busy, setBusy] = useState(false);
   const [reloadToken, setReloadToken] = useState(0);
@@ -227,18 +254,18 @@ function InstanceDetail({ instanceApi, instanceId, onBack, onChanged, onDeleted 
         const apiError = cause instanceof ApiError ? cause : undefined;
         push({
           tone: "error",
-          message: apiError?.message ?? "That action could not be completed.",
+          message: apiError?.message ?? t("action.failed"),
           reference: apiError?.correlationId,
         });
       } finally {
         setBusy(false);
       }
     },
-    [push],
+    [push, t],
   );
 
   return (
-    <section className="tf-panel" aria-label="Instance detail">
+    <section className="tf-panel" aria-label={t("instances.detail.label")}>
       <button type="button" className="tf-back" onClick={onBack}>
         ← Back to all instances
       </button>
@@ -269,7 +296,9 @@ function InstanceDetail({ instanceApi, instanceId, onBack, onChanged, onDeleted 
                   loading={busy}
                   onClick={() =>
                     void run(
-                      instance.suspended ? "Instance activated." : "Instance suspended.",
+                      instance.suspended
+                        ? t("instances.activated")
+                        : t("instances.suspended"),
                       () => instanceApi.setSuspended(instance.id, !instance.suspended),
                       () => {
                         setReloadToken((t) => t + 1);
@@ -278,23 +307,31 @@ function InstanceDetail({ instanceApi, instanceId, onBack, onChanged, onDeleted 
                     )
                   }
                 >
-                  {instance.suspended ? "Activate" : "Suspend"}
+                  {instance.suspended
+                    ? t("instances.action.activate")
+                    : t("instances.action.suspend")}
                 </Button>
                 <Button variant="danger" loading={busy} onClick={() => setConfirmDelete(true)}>
-                  Delete
+                  {t("action.delete")}
                 </Button>
               </div>
             </header>
 
             <dl className="tf-facts">
-              <Fact label="Started" value={formatDateTime(instance.startTime)} />
-              <Fact label="Started by" value={instance.startUserId || "—"} />
-              <Fact label="Definition" value={instance.processDefinitionId || "—"} />
-              <Fact label="Current activity" value={instance.activityId || "—"} />
+              <Fact
+                label={t("instances.fact.started")}
+                value={formatDateTime(instance.startTime, locale)}
+              />
+              <Fact label={t("instances.fact.startedBy")} value={instance.startUserId || "—"} />
+              <Fact
+                label={t("instances.fact.definition")}
+                value={instance.processDefinitionId || "—"}
+              />
+              <Fact label={t("instances.fact.activity")} value={instance.activityId || "—"} />
             </dl>
 
             <section className="tf-panel__section">
-              <h2 className="tf-panel__section-title">Diagram</h2>
+              <h2 className="tf-panel__section-title">{t("instances.diagram")}</h2>
               {diagramFailed ? (
                 <p className="tf-muted">
                   No diagram is available for this instance — the deployment may not include
@@ -304,7 +341,7 @@ function InstanceDetail({ instanceApi, instanceId, onBack, onChanged, onDeleted 
                 <img
                   className="tf-diagram"
                   src={instanceApi.diagramUrl(instance.id)}
-                  alt={`Process diagram for instance ${instance.id}`}
+                  alt={t("instances.diagram.alt", { id: instance.id })}
                   onError={() => setDiagramFailed(true)}
                 />
               )}
@@ -315,7 +352,7 @@ function InstanceDetail({ instanceApi, instanceId, onBack, onChanged, onDeleted 
                 Active activities ({activities.length})
               </h2>
               {activities.length === 0 ? (
-                <p className="tf-muted">No activity instances recorded.</p>
+                <p className="tf-muted">{t("instances.activities.none")}</p>
               ) : (
                 <ul className="tf-activities">
                   {activities.map((activity) => (
@@ -324,7 +361,10 @@ function InstanceDetail({ instanceApi, instanceId, onBack, onChanged, onDeleted 
                         {activity.activityName || activity.activityId}
                       </span>
                       <span className="tf-activities__meta">
-                        {activity.activityType} · started {formatDateTime(activity.startTime ?? undefined)}
+                        {activity.activityType} ·{" "}
+                        {t("instances.activityStarted", {
+                          when: formatDateTime(activity.startTime ?? undefined, locale),
+                        })}
                         {activity.endTime ? " · ended" : " · in progress"}
                       </span>
                     </li>
@@ -336,15 +376,17 @@ function InstanceDetail({ instanceApi, instanceId, onBack, onChanged, onDeleted 
             <section className="tf-panel__section">
               <h2 className="tf-panel__section-title">Variables ({variables.length})</h2>
               {variables.length === 0 ? (
-                <p className="tf-muted">No variables set.</p>
+                <p className="tf-muted">{t("instances.variables.none")}</p>
               ) : (
                 <table className="tf-table">
-                  <caption className="tf-visually-hidden">Instance variables</caption>
+                  <caption className="tf-visually-hidden">
+                    {t("instances.variables.caption")}
+                  </caption>
                   <thead>
                     <tr>
-                      <th scope="col">Name</th>
-                      <th scope="col">Type</th>
-                      <th scope="col">Value</th>
+                      <th scope="col">{t("instances.variables.name")}</th>
+                      <th scope="col">{t("instances.variables.type")}</th>
+                      <th scope="col">{t("instances.variables.value")}</th>
                     </tr>
                   </thead>
                   <tbody>
@@ -362,17 +404,19 @@ function InstanceDetail({ instanceApi, instanceId, onBack, onChanged, onDeleted 
 
             <ConfirmDialog
               open={confirmDelete}
-              title="Delete this instance?"
-              description={`Instance "${instance.name || instance.id}" will be deleted along with its tasks and variables. Work in progress is lost and cannot be recovered.`}
-              confirmLabel="Delete instance"
+              title={t("instances.delete.title")}
+              description={t("instances.delete.description", {
+                name: instance.name || instance.id,
+              })}
+              confirmLabel={t("instances.delete.confirm")}
               destructive
               busy={busy}
               onCancel={() => setConfirmDelete(false)}
               onConfirm={() => {
                 setConfirmDelete(false);
                 void run(
-                  "Instance deleted.",
-                  () => instanceApi.delete(instance.id, "Deleted from TogetherFlow Control"),
+                  t("instances.deleted"),
+                  () => instanceApi.delete(instance.id, t("instances.deleteReason")),
                   onDeleted,
                 );
               }}

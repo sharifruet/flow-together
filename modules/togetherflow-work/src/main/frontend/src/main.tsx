@@ -1,9 +1,10 @@
 import { StrictMode } from "react";
 import { createRoot } from "react-dom/client";
-import { AuthProvider, TenantProvider, readRuntimeConfig } from "@togetherflow/common";
+import { AppRoot, readRuntimeConfig } from "@togetherflow/common";
 import "@togetherflow/common/theme.css";
 import "./styles/work.css";
 import { WorkApp } from "./App";
+import { workMessages } from "./i18n/messages";
 
 const root = createRoot(document.getElementById("root")!);
 
@@ -11,24 +12,22 @@ try {
   const config = readRuntimeConfig();
   root.render(
     <StrictMode>
-      <AuthProvider
-        baseUrl={config.apiBase}
-        mode={config.auth.mode}
-        oidc={config.auth.oidc}
-      >
-        <TenantProvider>
-          <WorkApp
-            apps={config.apps}
-            baseUrl={config.apiBase}
-            cmmnBase={config.cmmnBase}
-            attachmentGateway={config.attachmentGateway}
-          />
-        </TenantProvider>
-      </AuthProvider>
+      <AppRoot app="work" config={config} messages={workMessages}>
+        <WorkApp
+          apps={config.apps}
+          baseUrl={config.apiBase}
+          cmmnBase={config.cmmnBase}
+          attachmentGateway={config.attachmentGateway}
+        />
+      </AppRoot>
     </StrictMode>,
   );
 } catch (error) {
-  // A misconfigured deployment must say so plainly rather than render a blank page.
+  /*
+   * A misconfigured deployment must say so plainly rather than render a blank page.
+   * This copy is deliberately not translated: the failure here is that configuration
+   * could not be read at all, so there is no locale to trust yet.
+   */
   console.error(error);
   root.render(
     <main className="tf-login">

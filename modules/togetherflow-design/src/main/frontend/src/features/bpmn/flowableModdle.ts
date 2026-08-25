@@ -67,6 +67,21 @@ export const flowableModdleDescriptor = {
       ],
     },
     {
+      /**
+       * Flowable's own additions to standard BPMN multi-instance. `isSequential`,
+       * `loopCardinality` and `completionCondition` are standard and need no declaration;
+       * these three are not, and without them a multi-instance task loses the collection
+       * it iterates on the first save.
+       */
+      name: "MultiInstanceLoopCharacteristics",
+      extends: ["bpmn:MultiInstanceLoopCharacteristics"],
+      properties: [
+        { name: "collection", isAttr: true, type: "String" },
+        { name: "elementVariable", isAttr: true, type: "String" },
+        { name: "elementIndexVariable", isAttr: true, type: "String" },
+      ],
+    },
+    {
       name: "Process",
       extends: ["bpmn:Process"],
       properties: [

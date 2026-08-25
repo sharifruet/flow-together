@@ -14,6 +14,7 @@ import {
   EmptyState,
   TextInput,
   useAsync,
+  useT,
   useToast,
   userDisplayName,
   type IdmApi,
@@ -26,6 +27,7 @@ export interface PrivilegesProps {
 }
 
 export function Privileges({ idm, readOnly }: PrivilegesProps) {
+  const t = useT();
   const [selectedId, setSelectedId] = useState<string | null>(null);
 
   const list = useAsync((signal) => idm.listPrivileges({}, signal), [idm]);
@@ -42,14 +44,11 @@ export function Privileges({ idm, readOnly }: PrivilegesProps) {
   }
 
   return (
-    <section className="tf-panel" aria-label="Privileges">
+    <section className="tf-panel" aria-label={t("privileges.label")}>
       <header className="tf-panel__header">
         <div>
-          <h1 className="tf-panel__title">Privileges</h1>
-          <p className="tf-panel__meta">
-            What users and groups are allowed to do. Privileges are defined by the
-            deployment; grant and revoke them here.
-          </p>
+          <h1 className="tf-panel__title">{t("privileges.title")}</h1>
+          <p className="tf-panel__meta">{t("privileges.meta")}</p>
         </div>
       </header>
 
@@ -61,8 +60,8 @@ export function Privileges({ idm, readOnly }: PrivilegesProps) {
         isEmpty={(page) => page.data.length === 0}
         empty={
           <EmptyState
-            title="No privileges defined"
-            description="This deployment defines no privileges, so there is nothing to grant."
+            title={t("privileges.empty.title")}
+            description={t("privileges.empty.description")}
           />
         }
       >
@@ -95,6 +94,7 @@ interface DetailProps {
 }
 
 function PrivilegeDetail({ idm, privilegeId, readOnly, onBack }: DetailProps) {
+  const t = useT();
   const { push } = useToast();
   const [busy, setBusy] = useState(false);
   const [reloadToken, setReloadToken] = useState(0);
@@ -120,26 +120,27 @@ function PrivilegeDetail({ idm, privilegeId, readOnly, onBack }: DetailProps) {
         const apiError = cause instanceof ApiError ? cause : undefined;
         push({
           tone: "error",
-          message: apiError?.message ?? "That action could not be completed.",
+          message: apiError?.message ?? t("action.failed"),
           reference: apiError?.correlationId,
         });
       } finally {
         setBusy(false);
       }
     },
-    [push],
+    [push, t],
   );
 
   const confirmDescription = useMemo(() => {
     if (!pendingRevoke) return "";
-    const who = pendingRevoke.kind === "user" ? "user" : "group";
-    return `"${pendingRevoke.label}" (${who}) will lose this privilege immediately, along with whatever access it grants.`;
-  }, [pendingRevoke]);
+    return t(`privileges.revoke.description.${pendingRevoke.kind}`, {
+      label: pendingRevoke.label,
+    });
+  }, [pendingRevoke, t]);
 
   return (
-    <section className="tf-panel" aria-label="Privilege detail">
+    <section className="tf-panel" aria-label={t("privileges.detail.label")}>
       <button type="button" className="tf-back" onClick={onBack}>
-        ← Back to all privileges
+        {t("privileges.back")}
       </button>
 
       <AsyncBoundary
@@ -168,27 +169,27 @@ function PrivilegeDetail({ idm, privilegeId, readOnly, onBack }: DetailProps) {
                     event.preventDefault();
                     const userId = newUser.trim();
                     if (!userId) return;
-                    void run(`Granted to "${userId}".`, async () => {
+                    void run(t("privileges.granted", { id: userId }), async () => {
                       await idm.grantPrivilegeToUser(privilege.id, userId);
                       setNewUser("");
                     });
                   }}
                 >
                   <TextInput
-                    label="Grant to user"
-                    placeholder="User id"
+                    label={t("privileges.grantToUser")}
+                    placeholder={t("privileges.userIdPlaceholder")}
                     value={newUser}
                     disabled={busy}
                     onChange={(event) => setNewUser(event.target.value)}
                   />
                   <Button type="submit" loading={busy} disabled={!newUser.trim()}>
-                    Grant
+                    {t("action.grant")}
                   </Button>
                 </form>
               ) : null}
 
               {(privilege.users ?? []).length === 0 ? (
-                <p className="tf-muted">No users have this privilege.</p>
+                <p className="tf-muted">{t("privileges.noUsers")}</p>
               ) : (
                 <ul className="tf-chips">
                   {(privilege.users ?? []).map((user) => (
@@ -198,7 +199,7 @@ function PrivilegeDetail({ idm, privilegeId, readOnly, onBack }: DetailProps) {
                         <button
                           type="button"
                           className="tf-chip-item__remove"
-                          aria-label={`Revoke from ${user.id}`}
+                          aria-label={t("privileges.revokeFrom", { id: user.id })}
                           disabled={busy}
                           onClick={() =>
                             setPendingRevoke({
@@ -228,27 +229,27 @@ function PrivilegeDetail({ idm, privilegeId, readOnly, onBack }: DetailProps) {
                     event.preventDefault();
                     const groupId = newGroup.trim();
                     if (!groupId) return;
-                    void run(`Granted to "${groupId}".`, async () => {
+                    void run(t("privileges.granted", { id: groupId }), async () => {
                       await idm.grantPrivilegeToGroup(privilege.id, groupId);
                       setNewGroup("");
                     });
                   }}
                 >
                   <TextInput
-                    label="Grant to group"
-                    placeholder="Group id"
+                    label={t("privileges.grantToGroup")}
+                    placeholder={t("privileges.groupIdPlaceholder")}
                     value={newGroup}
                     disabled={busy}
                     onChange={(event) => setNewGroup(event.target.value)}
                   />
                   <Button type="submit" loading={busy} disabled={!newGroup.trim()}>
-                    Grant
+                    {t("action.grant")}
                   </Button>
                 </form>
               ) : null}
 
               {(privilege.groups ?? []).length === 0 ? (
-                <p className="tf-muted">No groups have this privilege.</p>
+                <p className="tf-muted">{t("privileges.noGroups")}</p>
               ) : (
                 <ul className="tf-chips">
                   {(privilege.groups ?? []).map((group) => (
@@ -258,7 +259,7 @@ function PrivilegeDetail({ idm, privilegeId, readOnly, onBack }: DetailProps) {
                         <button
                           type="button"
                           className="tf-chip-item__remove"
-                          aria-label={`Revoke from ${group.id}`}
+                          aria-label={t("privileges.revokeFrom", { id: group.id })}
                           disabled={busy}
                           onClick={() =>
                             setPendingRevoke({
@@ -279,9 +280,9 @@ function PrivilegeDetail({ idm, privilegeId, readOnly, onBack }: DetailProps) {
 
             <ConfirmDialog
               open={pendingRevoke !== null}
-              title="Revoke this privilege?"
+              title={t("privileges.revoke.title")}
               description={confirmDescription}
-              confirmLabel="Revoke"
+              confirmLabel={t("privileges.revoke.confirm")}
               destructive
               busy={busy}
               onCancel={() => setPendingRevoke(null)}
@@ -289,7 +290,7 @@ function PrivilegeDetail({ idm, privilegeId, readOnly, onBack }: DetailProps) {
                 const target = pendingRevoke;
                 setPendingRevoke(null);
                 if (!target) return;
-                void run(`Revoked from "${target.label}".`, () =>
+                void run(t("privileges.revoked", { label: target.label }), () =>
                   target.kind === "user"
                     ? idm.revokePrivilegeFromUser(privilege.id, target.id)
                     : idm.revokePrivilegeFromGroup(privilege.id, target.id),
