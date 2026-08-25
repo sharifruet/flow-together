@@ -17,7 +17,12 @@ try {
         oidc={config.auth.oidc}
       >
         <TenantProvider>
-          <WorkApp baseUrl={config.apiBase} cmmnBase={config.cmmnBase} />
+          <WorkApp
+            apps={config.apps}
+            baseUrl={config.apiBase}
+            cmmnBase={config.cmmnBase}
+            attachmentGateway={config.attachmentGateway}
+          />
         </TenantProvider>
       </AuthProvider>
     </StrictMode>,

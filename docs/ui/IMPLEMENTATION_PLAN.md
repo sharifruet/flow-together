@@ -121,6 +121,56 @@ Nothing in Phase 1 should start until these are resolved; all are already logged
 
 **Outcome (built)**: form builder (palette / field list / properties, authoring Flowable's own `SimpleFormModel` JSON so Phase 2's renderer consumes it untranslated) and Event Registry editor (event payload with correlation parameter, plus inbound/outbound channel), both with autosave, unsaved-change guards and per-screen states per §14. Verified against a live engine end to end: an event and a channel authored in the UI deploy to the registry and the draft reopens intact. Doing so surfaced a defect in shared code — the API client sniffed response bodies, so a JSON draft came back parsed rather than as text and **every app, form and event draft reopened blank**; `ModelApi.getSource` now reads with an explicit `responseType: "text"`, pinned by a regression test. The attachment gateway was **not** built: `db` storage has been sufficient, and the phase explicitly allows dropping it at no cost.
 
+## Completion pass — closing the gaps Phases 1–6 left
+
+**Why this exists.** After Phase 6 an audit against §7 found that several requirements had
+been recorded as done when only part of them was, and one whole model type had an editor
+with no runtime. This pass closed those gaps. It is listed after Phase 6 because that is
+when it happened, not because it was planned — the honest lesson is that "phase complete"
+was being judged against the phase's own callouts rather than against §7.
+
+**Built:**
+
+- **Case runtime (§7.1, §7.2)** — the largest gap. CMMN could be modelled and deployed but
+  then vanished from the product. Work now has a Cases view (list, plan items nested under
+  their stage, stage/milestone progress, case data, terminate), starting a case, cases in
+  My history, and a marker on case tasks. Control has case instances with an operator's
+  inspector, terminate and delete. See
+  [ADR 0011](adr/0011-case-runtime-and-audience-scoped-actions.md).
+- **Control: Definitions (§7.2)** — suspend/activate process definitions with a cascade
+  choice, authorized starters for processes *and* cases, signal broadcast. All three had
+  REST wrappers and no screen.
+- **Control: Event registry (§7.2)** — deployed event and channel definitions with their
+  live source, and sending an event. Probing established that
+  `EventInstanceCollectionResource` is POST-only, so a "received events" feed does not
+  exist to build.
+- **Work: task detail (§7.1)** — identity links, sub-tasks, audit trail, delegate and
+  hand-back; form outcomes; upload fields wired to the attachment endpoint.
+- **Identity (§7.3)** — profile pictures and custom user info. Found to live on the
+  *process* API under `/identity/…`, not IDM.
+- **Shell (§7.5)** — a working app switcher (driven by configured sibling URLs rather than
+  a permanent "coming soon"), a light/dark/system control, self-service password change,
+  and a tight-cropped SVG icon mark as the favicon in place of the illegible wordmark PNG.
+- **Design (§7.4)** — model import/export, a read-only XML view, client-side pre-deploy
+  checks, CMMN zoom/pan/multi-select/connection-drawing, published app versions, and form
+  outcomes plus conditional visibility
+  ([ADR 0012](adr/0012-conditional-field-visibility.md)).
+- **`togetherflow-attachment-gateway` (§7.6)** — filesystem and SharePoint providers,
+  previously dropped. The Work app switches to it by configuration alone.
+
+**Defects this pass surfaced**, all found by running against a real engine or browser
+rather than by reading code:
+
+- Reading `log.data.length` off an unexpected response shape took down the entire task
+  panel — a task became unworkable because its audit trail was odd.
+- The visual-regression baselines were expiring on their own, because the fixtures carried
+  absolute dates but the UI renders them relatively.
+- Two module READMEs claimed features that shipped phases ago were unbuilt.
+
+**Verification status**: every integration above is exercised against a running engine
+except the SharePoint provider, which needs an Azure tenant that does not exist here — the
+gateway README states this plainly rather than implying parity.
+
 ## Phase 7 — Production Readiness & Quality Gate
 
 **Objective**: verify, end to end and under realistic conditions, that everything built in Phases 1–6 actually meets §13 and §14 — not just that each phase's own callouts were addressed locally. This phase exists because some things genuinely can't be verified until the system is feature-complete (a security review of how apps interact, a load test against the full surface, a usability study spanning a full persona's real workflow across apps) — it is a gate, not where hardening or polish begin.

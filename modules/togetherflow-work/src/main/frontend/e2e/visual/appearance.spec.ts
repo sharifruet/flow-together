@@ -58,6 +58,13 @@ async function stubApi(page: Page) {
       return json([{ id: "a1", name: "invoice-scan.pdf", userId: "bob", contentUrl: "x", time: "2026-08-21T09:00:00Z" }]);
     }
     if (/\/runtime\/tasks\/[^/]+\/comments/.test(url)) return json([]);
+    if (/\/runtime\/tasks\/[^/]+\/subtasks/.test(url)) return json([]);
+    if (/\/runtime\/tasks\/[^/]+\/identitylinks/.test(url)) {
+      return json([{ user: "alice", group: null, type: "assignee" }]);
+    }
+    if (url.includes("/history/historic-task-log-entries")) {
+      return json({ data: [], total: 0, start: 0, size: 100 });
+    }
     if (/\/runtime\/tasks\/[^/]+$/.test(url)) return json(TASKS[0]);
     if (url.includes("/repository/process-definitions")) {
       return json({

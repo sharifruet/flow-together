@@ -2,8 +2,9 @@
  * CMMN drawing surface (REQUIREMENTS.md §7.4.3).
  *
  * Hand-built SVG rather than a canvas library — see docs/ui/adr/0009-cmmn-canvas.md.
- * Handles selection, dragging, resizing and drop-target reparenting; the editor screen
- * owns the model and undo history.
+ * Handles selection (single, additive and marquee), dragging, resizing, drop-target
+ * reparenting, zoom and pan, and drawing entry criteria between elements; the editor
+ * screen owns the model and undo history.
  *
  * CMMN shape conventions follow the OMG notation: the case plan model and stages are
  * rectangles with angled top corners, tasks are rounded rectangles with a type icon,
@@ -26,40 +27,89 @@ const MIN_SIZE = { width: 60, height: 40 };
 
 export interface CmmnCanvasProps {
   model: CmmnCase;
+  /** The element whose properties are shown; always the last one selected. */
   selectedId: string | null;
+  /** Everything selected, for multi-element move and delete. */
+  selectedIds?: string[];
   disabled?: boolean;
-  onSelect: (planItemId: string | null) => void;
+  /** `additive` is a shift-click or marquee, which extends the selection. */
+  onSelect: (planItemId: string | null, options?: { additive?: boolean }) => void;
+  /** Replaces the whole selection, used by the marquee. */
+  onSelectMany?: (planItemIds: string[]) => void;
+  /** Externally driven viewport, so the editor's toolbar can zoom and fit. */
+  viewport?: Viewport;
+  onViewportChange?: (viewport: Viewport) => void;
   /** Emitted once per gesture, not per pointer move, so undo steps stay meaningful. */
   onCommit: (model: CmmnCase) => void;
   /** Live preview during a drag; not pushed onto the undo stack. */
   onPreview: (model: CmmnCase) => void;
 }
 
+/** Where the diagram is looked at from: top-left corner in diagram units, plus scale. */
+export interface Viewport {
+  x: number;
+  y: number;
+  scale: number;
+}
+
+export const DEFAULT_VIEWPORT: Viewport = { x: 0, y: 0, scale: 1 };
+const MIN_SCALE = 0.25;
+const MAX_SCALE = 3;
+
 type Gesture =
-  | { kind: "move"; planItemId: string; startX: number; startY: number; origin: Bounds }
-  | { kind: "resize"; planItemId: string | null; startX: number; startY: number; origin: Bounds };
+  | {
+      kind: "move";
+      planItemId: string;
+      startX: number;
+      startY: number;
+      origin: Bounds;
+      /** Everything dragged together, including the primary element. */
+      alsoMoving: string[];
+    }
+  | { kind: "resize"; planItemId: string | null; startX: number; startY: number; origin: Bounds }
+  | { kind: "pan"; startX: number; startY: number; origin: Viewport }
+  | { kind: "marquee"; startX: number; startY: number; currentX: number; currentY: number }
+  | { kind: "connect"; sourceId: string; startX: number; startY: number; currentX: number; currentY: number };
 
 export function CmmnCanvas({
   model,
   selectedId,
+  selectedIds,
   disabled = false,
   onSelect,
+  onSelectMany,
+  viewport = DEFAULT_VIEWPORT,
+  onViewportChange,
   onCommit,
   onPreview,
 }: CmmnCanvasProps) {
   const svgRef = useRef<SVGSVGElement>(null);
   const [gesture, setGesture] = useState<Gesture | null>(null);
+  const selection = selectedIds ?? (selectedId ? [selectedId] : []);
+  const selectionSet = new Set(selection);
   const modelRef = useRef(model);
   useEffect(() => {
     modelRef.current = model;
   }, [model]);
 
-  const toDiagram = useCallback((event: { clientX: number; clientY: number }) => {
-    const svg = svgRef.current;
-    if (!svg) return { x: 0, y: 0 };
-    const rect = svg.getBoundingClientRect();
-    return { x: event.clientX - rect.left, y: event.clientY - rect.top };
-  }, []);
+  /**
+   * Client coordinates to diagram coordinates.
+   *
+   * Must account for the viewport: with the SVG zoomed, a pixel on screen is no longer
+   * a unit in the diagram, and dragging would drift from the pointer at any scale but 1.
+   */
+  const toDiagram = useCallback(
+    (event: { clientX: number; clientY: number }) => {
+      const svg = svgRef.current;
+      if (!svg) return { x: 0, y: 0 };
+      const rect = svg.getBoundingClientRect();
+      return {
+        x: viewport.x + (event.clientX - rect.left) / viewport.scale,
+        y: viewport.y + (event.clientY - rect.top) / viewport.scale,
+      };
+    },
+    [viewport],
+  );
 
   // Pointer move/up live on the window so a fast drag that leaves the SVG still tracks.
   useEffect(() => {
@@ -67,6 +117,21 @@ export function CmmnCanvas({
 
     const onMove = (event: PointerEvent) => {
       const point = toDiagram(event);
+
+      if (gesture.kind === "pan") {
+        // Panning moves the viewport, not the model, so it never touches undo.
+        onViewportChange?.({
+          ...gesture.origin,
+          x: gesture.origin.x - (point.x - gesture.startX),
+          y: gesture.origin.y - (point.y - gesture.startY),
+        });
+        return;
+      }
+      if (gesture.kind === "marquee" || gesture.kind === "connect") {
+        setGesture({ ...gesture, currentX: point.x, currentY: point.y });
+        return;
+      }
+
       const dx = point.x - gesture.startX;
       const dy = point.y - gesture.startY;
       onPreview(applyGesture(modelRef.current, gesture, dx, dy));
@@ -74,6 +139,32 @@ export function CmmnCanvas({
 
     const onUp = (event: PointerEvent) => {
       const point = toDiagram(event);
+
+      if (gesture.kind === "pan") {
+        setGesture(null);
+        return;
+      }
+
+      if (gesture.kind === "marquee") {
+        const box = normalise(gesture.startX, gesture.startY, point.x, point.y);
+        // A marquee selects what it fully contains; partial overlap would make it
+        // impossible to select a small element sitting inside a stage.
+        const inside = modelRef.current.elements
+          .filter((element) => contains(box, element.bounds))
+          .map((element) => element.planItemId);
+        setGesture(null);
+        if (inside.length > 0) onSelectMany?.(inside);
+        else onSelect(null);
+        return;
+      }
+
+      if (gesture.kind === "connect") {
+        const target = elementAtPoint(modelRef.current, point, gesture.sourceId);
+        setGesture(null);
+        if (target) onCommit(connectElements(modelRef.current, gesture.sourceId, target));
+        return;
+      }
+
       const dx = point.x - gesture.startX;
       const dy = point.y - gesture.startY;
       let next = applyGesture(modelRef.current, gesture, dx, dy);
@@ -108,12 +199,20 @@ export function CmmnCanvas({
       window.removeEventListener("pointermove", onMove);
       window.removeEventListener("pointerup", onUp);
     };
-  }, [gesture, toDiagram, onPreview, onCommit]);
+  }, [gesture, toDiagram, onPreview, onCommit, onSelect, onSelectMany, onViewportChange]);
 
   const startMove = (event: React.PointerEvent, element: CmmnElement) => {
     if (disabled) return;
     event.stopPropagation();
-    onSelect(element.planItemId);
+    const additive = event.shiftKey;
+    onSelect(element.planItemId, { additive });
+
+    // Dragging one of several selected elements moves them all; dragging an unselected
+    // one selects it first, so a drag never moves something the user didn't grab.
+    const wasSelected = selectionSet.has(element.planItemId);
+    const alsoMoving =
+      wasSelected && selection.length > 1 && !additive ? selection : [element.planItemId];
+
     const point = toDiagram(event);
     setGesture({
       kind: "move",
@@ -121,6 +220,21 @@ export function CmmnCanvas({
       startX: point.x,
       startY: point.y,
       origin: element.bounds,
+      alsoMoving,
+    });
+  };
+
+  const startConnect = (event: React.PointerEvent, element: CmmnElement) => {
+    if (disabled) return;
+    event.stopPropagation();
+    const point = toDiagram(event);
+    setGesture({
+      kind: "connect",
+      sourceId: element.planItemId,
+      startX: point.x,
+      startY: point.y,
+      currentX: point.x,
+      currentY: point.y,
     });
   };
 
@@ -144,10 +258,46 @@ export function CmmnCanvas({
       className="tf-cmmn"
       width={width}
       height={height}
-      viewBox={`0 0 ${width} ${height}`}
+      viewBox={`${viewport.x} ${viewport.y} ${width / viewport.scale} ${height / viewport.scale}`}
       role="application"
       aria-label="Case diagram"
-      onPointerDown={() => onSelect(null)}
+      onWheel={(event) => {
+        if (!onViewportChange) return;
+        // Ctrl/Cmd+wheel is the platform gesture for zoom; a plain wheel scrolls.
+        event.preventDefault();
+        const point = toDiagram(event);
+        const factor = event.ctrlKey || event.metaKey ? 1.06 : 1.03;
+        const next = clampScale(
+          event.deltaY < 0 ? viewport.scale * factor : viewport.scale / factor,
+        );
+        // Keep the point under the cursor fixed, which is what makes zoom feel direct.
+        onViewportChange({
+          scale: next,
+          x: point.x - (point.x - viewport.x) * (viewport.scale / next),
+          y: point.y - (point.y - viewport.y) * (viewport.scale / next),
+        });
+      }}
+      onPointerDown={(event) => {
+        // Middle button, space-drag and Alt-drag all pan; a plain background drag
+        // draws a marquee, and a plain background click clears the selection.
+        const panning = event.button === 1 || event.altKey;
+        const point = toDiagram(event);
+        if (panning && onViewportChange) {
+          setGesture({ kind: "pan", startX: point.x, startY: point.y, origin: viewport });
+          return;
+        }
+        if (!disabled && onSelectMany) {
+          setGesture({
+            kind: "marquee",
+            startX: point.x,
+            startY: point.y,
+            currentX: point.x,
+            currentY: point.y,
+          });
+          return;
+        }
+        onSelect(null);
+      }}
     >
       <defs>
         <pattern id="tf-grid" width={GRID * 4} height={GRID * 4} patternUnits="userSpaceOnUse">
@@ -158,8 +308,25 @@ export function CmmnCanvas({
             strokeWidth="0.5"
           />
         </pattern>
+        <marker
+          id="tf-arrow"
+          viewBox="0 0 10 10"
+          refX="9"
+          refY="5"
+          markerWidth="6"
+          markerHeight="6"
+          orient="auto-start-reverse"
+        >
+          <path d="M 0 0 L 10 5 L 0 10 z" fill="var(--tf-text-muted)" />
+        </marker>
       </defs>
-      <rect width={width} height={height} fill="url(#tf-grid)" />
+      <rect
+        x={viewport.x}
+        y={viewport.y}
+        width={width / viewport.scale}
+        height={height / viewport.scale}
+        fill="url(#tf-grid)"
+      />
 
       {/* Case plan model: rectangle with angled top corners, per CMMN notation. */}
       <g
@@ -185,16 +352,54 @@ export function CmmnCanvas({
         />
       ) : null}
 
+      {/* Entry criteria, drawn under the shapes so they never obscure a label. */}
+      {model.elements.flatMap((element) =>
+        element.entrySentries
+          .filter((sentry) => sentry.sourceRef)
+          .map((sentry) => {
+            const source = model.elements.find((e) => e.planItemId === sentry.sourceRef);
+            if (!source) return null;
+            return (
+              <path
+                key={`${element.planItemId}-${sentry.id}`}
+                className="tf-cmmn__connection"
+                d={connectionPath(source.bounds, element.bounds)}
+                markerEnd="url(#tf-arrow)"
+              />
+            );
+          }),
+      )}
+
       {ordered.map((element) => (
         <ElementShape
           key={element.planItemId}
           element={element}
-          selected={selectedId === element.planItemId}
+          selected={selectionSet.has(element.planItemId)}
+          primary={selectedId === element.planItemId}
           disabled={disabled}
           onPointerDown={(event) => startMove(event, element)}
           onResize={(event) => startResize(event, element.planItemId, element.bounds)}
+          onConnect={(event) => startConnect(event, element)}
         />
       ))}
+
+      {gesture?.kind === "marquee" ? (
+        <rect
+          className="tf-cmmn__marquee"
+          {...toRect(normalise(gesture.startX, gesture.startY, gesture.currentX, gesture.currentY))}
+        />
+      ) : null}
+
+      {gesture?.kind === "connect" ? (
+        <line
+          className="tf-cmmn__connection tf-cmmn__connection--pending"
+          x1={gesture.startX}
+          y1={gesture.startY}
+          x2={gesture.currentX}
+          y2={gesture.currentY}
+          markerEnd="url(#tf-arrow)"
+        />
+      ) : null}
     </svg>
   );
 }
@@ -202,12 +407,17 @@ export function CmmnCanvas({
 function ElementShape({
   element,
   selected,
+  primary,
   disabled,
   onPointerDown,
+  onConnect,
   onResize,
 }: {
   element: CmmnElement;
   selected: boolean;
+  /** The one whose properties are shown; only it gets the resize and connect handles. */
+  primary: boolean;
+  onConnect: (event: React.PointerEvent) => void;
   disabled: boolean;
   onPointerDown: (event: React.PointerEvent) => void;
   onResize: (event: React.PointerEvent) => void;
@@ -288,7 +498,19 @@ function ElementShape({
         />
       ))}
 
-      {selected && !disabled ? (
+      {primary && !disabled ? (
+        <circle
+          className="tf-cmmn__connector"
+          cx={element.bounds.x + element.bounds.width}
+          cy={element.bounds.y + element.bounds.height / 2}
+          r={5}
+          onPointerDown={onConnect}
+        >
+          <title>Drag to another element to add an entry criterion</title>
+        </circle>
+      ) : null}
+
+      {primary && !disabled ? (
         <rect
           className="tf-cmmn__handle"
           x={b.x + b.width - 5}
@@ -353,7 +575,15 @@ function snap(value: number): number {
   return Math.round(value / GRID) * GRID;
 }
 
-export function applyGesture(model: CmmnCase, gesture: Gesture, dx: number, dy: number): CmmnCase {
+/** The gestures that change the model. Pan, marquee and connect are handled elsewhere. */
+export type ModelGesture = Extract<Gesture, { kind: "move" } | { kind: "resize" }>;
+
+export function applyGesture(
+  model: CmmnCase,
+  gesture: ModelGesture,
+  dx: number,
+  dy: number,
+): CmmnCase {
   if (gesture.kind === "resize" && gesture.planItemId === null) {
     return {
       ...model,
@@ -368,47 +598,49 @@ export function applyGesture(model: CmmnCase, gesture: Gesture, dx: number, dy: 
   const targetId = gesture.planItemId;
   if (!targetId) return model;
 
-  // Moving a stage carries its descendants, otherwise children are left behind.
-  const carried =
-    gesture.kind === "move" ? descendantsOf(model, targetId) : new Set<string>();
+  if (gesture.kind === "resize") {
+    return {
+      ...model,
+      elements: model.elements.map((element) =>
+        element.planItemId === targetId
+          ? {
+              ...element,
+              bounds: {
+                ...element.bounds,
+                width: Math.max(MIN_SIZE.width, snap(gesture.origin.width + dx)),
+                height: Math.max(MIN_SIZE.height, snap(gesture.origin.height + dy)),
+              },
+            }
+          : element,
+      ),
+    };
+  }
+
+  // The primary element snaps to the grid; everything moving with it — the rest of the
+  // selection, plus any stage's descendants — shifts by the same amount, so relative
+  // positions are preserved exactly rather than each snapping independently.
+  const offsetX = snap(gesture.origin.x + dx) - gesture.origin.x;
+  const offsetY = snap(gesture.origin.y + dy) - gesture.origin.y;
+
+  const carried = new Set<string>(gesture.alsoMoving);
+  for (const id of gesture.alsoMoving) {
+    for (const descendant of descendantsOf(model, id)) carried.add(descendant);
+  }
 
   return {
     ...model,
-    elements: model.elements.map((element) => {
-      if (element.planItemId === targetId) {
-        if (gesture.kind === "move") {
-          return {
+    elements: model.elements.map((element) =>
+      carried.has(element.planItemId)
+        ? {
             ...element,
             bounds: {
               ...element.bounds,
-              x: snap(gesture.origin.x + dx),
-              y: snap(gesture.origin.y + dy),
+              x: element.bounds.x + offsetX,
+              y: element.bounds.y + offsetY,
             },
-          };
-        }
-        return {
-          ...element,
-          bounds: {
-            ...element.bounds,
-            width: Math.max(MIN_SIZE.width, snap(gesture.origin.width + dx)),
-            height: Math.max(MIN_SIZE.height, snap(gesture.origin.height + dy)),
-          },
-        };
-      }
-
-      if (carried.has(element.planItemId)) {
-        return {
-          ...element,
-          bounds: {
-            ...element.bounds,
-            x: snap(element.bounds.x + (snap(gesture.origin.x + dx) - gesture.origin.x)),
-            y: snap(element.bounds.y + (snap(gesture.origin.y + dy) - gesture.origin.y)),
-          },
-        };
-      }
-
-      return element;
-    }),
+          }
+        : element,
+    ),
   };
 }
 
@@ -429,4 +661,98 @@ function descendantsOf(model: CmmnCase, planItemId: string): Set<string> {
     }
   }
   return found;
+}
+
+/* ── Geometry and connection helpers ─────────────────────────────────────── */
+
+function clampScale(scale: number): number {
+  return Math.min(MAX_SCALE, Math.max(MIN_SCALE, scale));
+}
+
+export function normalise(x1: number, y1: number, x2: number, y2: number): Bounds {
+  return {
+    x: Math.min(x1, x2),
+    y: Math.min(y1, y2),
+    width: Math.abs(x2 - x1),
+    height: Math.abs(y2 - y1),
+  };
+}
+
+function toRect(bounds: Bounds) {
+  return { x: bounds.x, y: bounds.y, width: bounds.width, height: bounds.height };
+}
+
+/** True when `inner` lies entirely inside `outer`. */
+export function contains(outer: Bounds, inner: Bounds): boolean {
+  return (
+    inner.x >= outer.x &&
+    inner.y >= outer.y &&
+    inner.x + inner.width <= outer.x + outer.width &&
+    inner.y + inner.height <= outer.y + outer.height
+  );
+}
+
+/**
+ * The topmost element under a point, ignoring `exceptId`.
+ *
+ * Iterates from the end so the element drawn last — the one visually on top — wins,
+ * which matters when a task sits inside a stage.
+ */
+export function elementAtPoint(
+  model: CmmnCase,
+  point: { x: number; y: number },
+  exceptId?: string,
+): string | undefined {
+  for (let i = model.elements.length - 1; i >= 0; i -= 1) {
+    const element = model.elements[i];
+    if (element.planItemId === exceptId) continue;
+    const b = element.bounds;
+    if (point.x >= b.x && point.x <= b.x + b.width && point.y >= b.y && point.y <= b.y + b.height) {
+      return element.planItemId;
+    }
+  }
+  return undefined;
+}
+
+/**
+ * Adds an entry criterion on `targetId` that fires when `sourceId` completes.
+ *
+ * This is what "drawing a connection" means in CMMN: unlike BPMN there is no sequence
+ * flow, so a line on the diagram is really a sentry with a `planItemOnPart`. Drawing the
+ * same connection twice is a no-op rather than stacking duplicate sentries.
+ */
+export function connectElements(model: CmmnCase, sourceId: string, targetId: string): CmmnCase {
+  if (sourceId === targetId) return model;
+  const target = model.elements.find((element) => element.planItemId === targetId);
+  if (!target) return model;
+  if (target.entrySentries.some((sentry) => sentry.sourceRef === sourceId)) return model;
+
+  return {
+    ...model,
+    elements: model.elements.map((element) =>
+      element.planItemId === targetId
+        ? {
+            ...element,
+            entrySentries: [
+              ...element.entrySentries,
+              {
+                id: `${targetId}_on_${sourceId}`,
+                sourceRef: sourceId,
+                standardEvent: "complete",
+              },
+            ],
+          }
+        : element,
+    ),
+  };
+}
+
+/** An orthogonal-ish path from the right edge of `from` to the left edge of `to`. */
+export function connectionPath(from: Bounds, to: Bounds): string {
+  const x1 = from.x + from.width;
+  const y1 = from.y + from.height / 2;
+  const x2 = to.x;
+  const y2 = to.y + to.height / 2;
+  const midX = x1 + (x2 - x1) / 2;
+  return `M ${x1} ${y1} L ${midX} ${y1} L ${midX} ${y2} L ${x2} ${y2}`;
 }

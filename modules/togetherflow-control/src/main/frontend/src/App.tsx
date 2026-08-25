@@ -1,4 +1,4 @@
-import { useMemo, useState } from "react";
+import { useCallback, useMemo, useState } from "react";
 import {
   ApiClient,
   CaseApi,
@@ -11,8 +11,10 @@ import {
   RepositoryApi,
   SystemApi,
   ToastProvider,
+  UserProfileApi,
   useAuth,
   useTenant,
+  type AppLinks,
 } from "@togetherflow/common";
 import { AppShell, type ControlView } from "./features/shell/AppShell";
 import { LoginScreen } from "./features/shell/LoginScreen";
@@ -25,6 +27,8 @@ import { Deployments } from "./features/deployments/Deployments";
 import { System } from "./features/system/System";
 
 export interface AppProps {
+  /** Sibling app URLs for the shell switcher (§7.5). */
+  apps?: AppLinks;
   apiBase: string;
   dmnBase: string;
   cmmnBase: string;
@@ -34,6 +38,7 @@ export interface AppProps {
 }
 
 export function App({
+  apps,
   apiBase,
   dmnBase,
   cmmnBase,
@@ -89,6 +94,18 @@ export function App({
     }),
     [clients],
   );
+  /**
+   * Self-service password change (§7.5). The identity resource that owns this lives on
+   * the *process* API, so every app can offer it without carrying an IDM client.
+   */
+  const changePassword = useCallback(
+    async (password: string) => {
+      if (!session) return;
+      await new UserProfileApi(clients.process).changePassword(session.userId, password);
+    },
+    [clients, session],
+  );
+
 
   if (isInitialising) {
     return (
@@ -103,7 +120,7 @@ export function App({
   if (!session) return <LoginScreen />;
 
   return (
-    <AppShell view={view} onViewChange={setView}>
+    <AppShell view={view} onViewChange={setView} apps={apps} onChangePassword={changePassword}>
       {view === "instances" ? <Instances instanceApi={apis.instances} /> : null}
       {view === "cases" ? <CaseInstances caseApi={apis.cases} /> : null}
       {view === "definitions" ? (

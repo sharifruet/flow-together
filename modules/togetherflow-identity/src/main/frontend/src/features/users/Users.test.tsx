@@ -2,7 +2,13 @@ import { render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { describe, expect, it, vi } from "vitest";
 import type { Mock } from "vitest";
-import { ApiError, ToastProvider, type IdmApi, type IdmUser } from "@togetherflow/common";
+import {
+  ApiError,
+  ToastProvider,
+  type IdmApi,
+  type IdmUser,
+  type UserProfileApi,
+} from "@togetherflow/common";
 import { Users } from "./Users";
 
 function page(rows: IdmUser[], total = rows.length) {
@@ -29,12 +35,23 @@ function stubIdm(overrides: Record<string, unknown> = {}): StubIdm {
 function renderUsers(idm: IdmApi, readOnly = false) {
   return render(
     <ToastProvider>
-      <Users idm={idm} readOnly={readOnly} />
+      <Users profileApi={stubProfileApi()} idm={idm} readOnly={readOnly} />
     </ToastProvider>,
   );
 }
 
 const ALICE: IdmUser = { id: "alice", firstName: "Alice", lastName: "Adams", email: "a@x.com" };
+
+/** The profile panel talks to the process API, so it is stubbed separately. */
+function stubProfileApi(): UserProfileApi {
+  return {
+    listInfo: vi.fn().mockResolvedValue([]),
+    setInfo: vi.fn().mockResolvedValue({}),
+    deleteInfo: vi.fn().mockResolvedValue(undefined),
+    pictureUrl: vi.fn().mockReturnValue("/picture"),
+    uploadPicture: vi.fn().mockResolvedValue(undefined),
+  } as unknown as UserProfileApi;
+}
 
 describe("Users", () => {
   it("lists users with their display name and id", async () => {

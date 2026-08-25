@@ -15,7 +15,12 @@ try {
           the credential check lives; IDM is only used for identity data. */}
       <AuthProvider baseUrl={config.apiBase} mode={config.auth.mode} oidc={config.auth.oidc}>
         <TenantProvider>
-          <IdentityApp idmBase={config.idmBase} readOnly={config.identity.readOnly} />
+          <IdentityApp
+            apps={config.apps}
+            apiBase={config.apiBase}
+            idmBase={config.idmBase}
+            readOnly={config.identity.readOnly}
+          />
         </TenantProvider>
       </AuthProvider>
     </StrictMode>,

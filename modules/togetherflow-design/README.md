@@ -35,10 +35,32 @@ Losing modelling work is the fastest way for an editor to feel unprofessional, s
 - **Ctrl/Cmd+S** saves.
 - **Deploy saves first**, so deploying after an edit never ships the previous version.
 
+## Model library
+
+Beyond create/search/duplicate/delete, the library **imports** an existing BPMN, CMMN, DMN,
+form or event file as a new draft, and **exports** any model back to its native format.
+The file's kind is worked out from its extension, falling back to sniffing the namespace
+(for a bare `.xml`) or the JSON shape — and when it genuinely cannot tell, it says so
+rather than guessing and creating an undeployable draft. Imported content is stored
+verbatim; a round trip through an editor would risk changing a model the user only meant
+to bring in.
+
+## Checking a model before deploying
+
+The BPMN editor has **XML** (read-only view of exactly what will be deployed, with a
+download) and **Check**. Deploy runs the checks first and refuses on a blocking problem.
+
+These checks run **in the browser**, and the panel says so. The engine ships
+`flowable-process-validation` but exposes no REST endpoint for it, so there is no
+"validate this" call to make — the only server-side validation available is deployment
+itself. What is checked: well-formed XML, a start event, unreachable nodes and dead ends,
+sequence flows pointing at nothing, service tasks with no implementation, exclusive
+gateways that can deadlock, and user tasks nobody can pick up. Passing does not guarantee
+the engine will accept the model.
+
 ## Known limitations
 
-- **No pre-deploy validation.** The engine has `flowable-process-validation`, but no REST
-  endpoint exposes it, so an invalid model fails at deploy time with the engine's message.
+- **Client-side validation only** — see above; there is no endpoint to delegate to.
 - **The moddle descriptor is not exhaustive.** It covers what the panel edits plus common
   attributes; anything outside it survives the round trip but isn't typed or editable.
   Listeners, form properties, multi-instance and boundary-event config aren't exposed yet.
@@ -79,10 +101,16 @@ Working: palette, selection, drag with grid snapping, resize, nesting with repar
 removed elements, undo/redo, entry criteria, properties incl. `flowable:` attributes,
 autosave, unsaved-changes guard, save and deploy to `/cmmn-repository/deployments`.
 
-Not yet built, and honestly a foundation rather than a finished modeller: connection
-drawing (entry criteria are configured in the panel, not by dragging a line), draggable
-sentry placement, exit criteria in the panel, multi-select/align/copy-paste, zoom and pan,
-and auto-layout for models that arrive without diagram information.
+Also working: **zoom and pan** (wheel, Ctrl/Cmd+wheel, Alt-drag or middle-drag, and toolbar
+controls), **multi-select** (shift-click to extend, marquee-drag on the background) with
+move and delete across the whole selection, and **connection drawing** — dragging from an
+element's connector handle to another adds an entry criterion. Worth knowing what that
+means: CMMN has no sequence flow, so a line on the diagram is really a sentry with a
+`planItemOnPart` on the *target*.
+
+Not yet built: draggable sentry placement, exit criteria in the panel, align and
+copy-paste, and auto-layout for models that arrive without diagram information — a `.cmmn`
+file with no CMMNDI currently opens with its shapes stacked.
 
 The model layer (`cmmnModel.ts`) is unit-tested against the engine's own
 `examples/employee-onboarding.cmmn`, so producing deployable XML is pinned down
@@ -106,8 +134,11 @@ File names inside the bundle carry the suffix each engine matches on (`.bpmn20.x
 If a selected model has no saved content, publishing is **refused** rather than silently
 shipping a bundle with that model missing.
 
-Not yet built: theme/access (`usersAccess`/`groupsAccess`) fields, and a view of already
-published app definitions and their versions.
+The builder also lists **published versions** of the app — every deployed version of its
+key, newest first. Publishing creates a new version rather than mutating one, so this is
+the only way to tell whether a draft has been published since it was last edited.
+
+Not yet built: theme/access (`usersAccess`/`groupsAccess`) fields.
 
 ## Form builder
 
@@ -123,8 +154,19 @@ Forms therefore ship inside an app bundle, and take effect wherever a form engin
 configured. The builder says so on screen rather than offering an action that cannot succeed.
 See [ADR 0010](../../docs/ui/adr/0010-form-and-event-authoring.md).
 
-Not yet built: outcomes (custom submit buttons), validation rules beyond *required*,
-conditional visibility, and layout columns.
+**Outcomes** — named submit buttons — are edited here and drive Work: with none, a task
+shows a single "Complete task"; with outcomes, each becomes its own button and the choice
+is recorded as a variable (`outcomeVariableName`, defaulting to `form_<key>_outcome`).
+
+**Conditional visibility** shows a field only when another field has a given answer.
+Flowable's form model has no such property, so the rule is carried in the engine's
+free-form `params` map as a TogetherFlow convention — the form stays a valid Flowable
+form, and any other consumer just shows the field
+([ADR 0012](../../docs/ui/adr/0012-conditional-field-visibility.md)). It is presentation
+only: a hidden field is absent, not protected, and validation skips it deliberately so a
+form cannot become unsubmittable because of an unanswerable hidden requirement.
+
+Not yet built: validation rules beyond *required*, and layout columns.
 
 ## Event Registry editor
 

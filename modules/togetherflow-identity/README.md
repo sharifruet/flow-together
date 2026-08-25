@@ -33,6 +33,14 @@ Same as the other modules: `dev`, `build`, `test`, `lint`, `typecheck`, `e2e`.
   "list members" endpoint, so members are listed through `GET /users?memberOfGroup=…`.
 - **Privileges** — grant and revoke to users and groups. Privileges themselves are defined
   by the deployment; the REST layer exposes no create/delete for them.
+- **Profile** — a user's picture and their custom info key/value pairs. Viewable even in a
+  read-only deployment; editable only where identities are writable.
+
+**These two are not IDM endpoints**, which is worth knowing before looking for them:
+`UserPictureResource` and `UserInfoCollectionResource` live in `flowable-rest` under
+`/identity/users/{id}/…` — the *process* API. The same paths on `/idm-api` answer "No
+endpoint". The info collection also returns **keys only**, so reading the values costs one
+request per key; `UserProfileApi.listInfo` does that so callers get what they asked for.
 
 ## Read-only (directory-backed) deployments
 

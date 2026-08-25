@@ -18,13 +18,17 @@ import {
   ApiError,
   Button,
   ConfirmDialog,
+  SelectInput,
   TextInput,
+  getVisibilityRule,
   useToast,
+  withVisibilityRule,
   type FormField,
   type FormFieldType,
   type FormModelResponse,
   type ModelApi,
   type ModelResponse,
+  type VisibilityOperator,
 } from "@togetherflow/common";
 import {
   FIELD_TYPES,
@@ -72,6 +76,7 @@ export function FormBuilder({
   );
 
   const fields = form.fields ?? [];
+  const outcomes = form.outcomes ?? [];
 
   const addField = (type: FormFieldType) => {
     update({ fields: [...fields, newField(type, fields)] });
@@ -226,6 +231,59 @@ export function FormBuilder({
               ))}
             </ul>
           )}
+          <h2 className="tf-panel__section-title">Outcomes ({outcomes.length})</h2>
+          <p className="tf-muted">
+            Named submit buttons. With none, the task shows a single "Complete task"; with
+            outcomes, each becomes its own button and the choice is recorded as a variable.
+          </p>
+          {outcomes.length > 0 ? (
+            <ul className="tf-form-fields">
+              {outcomes.map((outcome, index) => (
+                <li className="tf-outcome-row" key={index}>
+                  <TextInput
+                    label={`Outcome ${index + 1}`}
+                    value={outcome.name}
+                    disabled={saving}
+                    onChange={(event) =>
+                      update({
+                        outcomes: outcomes.map((o, i) =>
+                          i === index ? { ...o, name: event.target.value } : o,
+                        ),
+                      })
+                    }
+                  />
+                  <button
+                    type="button"
+                    className="tf-chip-item__remove"
+                    aria-label={`Remove outcome ${index + 1}`}
+                    disabled={saving}
+                    onClick={() => update({ outcomes: outcomes.filter((_, i) => i !== index) })}
+                  >
+                    ×
+                  </button>
+                </li>
+              ))}
+            </ul>
+          ) : null}
+          <Button
+            variant="secondary"
+            disabled={saving}
+            onClick={() =>
+              update({ outcomes: [...outcomes, { name: `Outcome ${outcomes.length + 1}` }] })
+            }
+          >
+            Add outcome
+          </Button>
+
+          {outcomes.length > 0 ? (
+            <TextInput
+              label="Outcome variable"
+              value={form.outcomeVariableName ?? ""}
+              disabled={saving}
+              hint="Where the chosen outcome is stored. Defaults to form_<key>_outcome."
+              onChange={(event) => update({ outcomeVariableName: event.target.value })}
+            />
+          ) : null}
         </div>
 
         <aside className="tf-properties" aria-label="Field properties">
@@ -322,6 +380,93 @@ export function FormBuilder({
                   </Button>
                 </section>
               ) : null}
+
+              {/*
+                Conditional visibility is a TogetherFlow convention carried in the
+                engine's free-form `params` map — Flowable's FormField has no such
+                property. See visibility.ts.
+              */}
+              <section className="tf-properties__section">
+                <h3 className="tf-properties__section-title">Show this field</h3>
+                {(() => {
+                  const rule = getVisibilityRule(current);
+                  const candidates = fields.filter(
+                    (f, i) => i !== selected && !isPresentational(f.type),
+                  );
+                  return (
+                    <>
+                      <SelectInput
+                        label="When"
+                        value={rule ? rule.field : ""}
+                        disabled={saving || candidates.length === 0}
+                        hint={
+                          candidates.length === 0
+                            ? "Add another field first."
+                            : "Leave as Always to show it unconditionally."
+                        }
+                        onChange={(event) => {
+                          const fieldId = event.target.value;
+                          updateField(
+                            selected,
+                            withVisibilityRule(
+                              current,
+                              fieldId ? { field: fieldId, operator: rule?.operator ?? "isSet", value: rule?.value } : undefined,
+                            ) as Partial<FormField>,
+                          );
+                        }}
+                      >
+                        <option value="">Always</option>
+                        {candidates.map((f) => (
+                          <option key={f.id} value={f.id}>
+                            {f.name || f.id}
+                          </option>
+                        ))}
+                      </SelectInput>
+
+                      {rule ? (
+                        <>
+                          <SelectInput
+                            label="Condition"
+                            value={rule.operator}
+                            disabled={saving}
+                            onChange={(event) =>
+                              updateField(
+                                selected,
+                                withVisibilityRule(current, {
+                                  ...rule,
+                                  operator: event.target.value as VisibilityOperator,
+                                }) as Partial<FormField>,
+                              )
+                            }
+                          >
+                            <option value="isSet">has any answer</option>
+                            <option value="isEmpty">is empty</option>
+                            <option value="equals">equals</option>
+                            <option value="notEquals">does not equal</option>
+                          </SelectInput>
+
+                          {rule.operator === "equals" || rule.operator === "notEquals" ? (
+                            <TextInput
+                              label="Value"
+                              value={rule.value ?? ""}
+                              disabled={saving}
+                              onChange={(event) =>
+                                updateField(
+                                  selected,
+                                  withVisibilityRule(current, {
+                                    ...rule,
+                                    value: event.target.value,
+                                  }) as Partial<FormField>,
+                                )
+                              }
+                            />
+                          ) : null}
+                        </>
+                      ) : null}
+                    </>
+                  );
+                })()}
+              </section>
 
               <section className="tf-properties__section">
                 <div className="tf-row-actions">

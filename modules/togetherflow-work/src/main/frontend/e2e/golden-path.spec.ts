@@ -115,6 +115,9 @@ test.describe("TogetherFlow Work golden path", () => {
     await expect(page.locator("#tf-task-search")).toBeFocused();
 
     await page.locator("#tf-task-search").blur();
+    // `g` cycles Tasks → Cases → Start work → My history.
+    await page.keyboard.press("g");
+    await expect(page.getByRole("tab", { name: "Open" })).toBeVisible();
     await page.keyboard.press("g");
     await expect(page.getByRole("heading", { name: "Start work" })).toBeVisible();
     await page.keyboard.press("g");

@@ -928,3 +928,143 @@
     grid-template-columns: 1fr 1fr;
   }
 }
+
+/* ── Pre-deploy checks and XML source (§7.4.2) ────────────────────────────── */
+
+.tf-issues {
+  margin: 0 0 var(--tf-space-4);
+  padding: var(--tf-space-3) var(--tf-space-4);
+  border: 1px solid var(--tf-border);
+  border-left: 3px solid var(--tf-warning);
+  border-radius: var(--tf-radius);
+  background: var(--tf-bg-subtle);
+}
+.tf-issues__title {
+  margin: 0 0 var(--tf-space-2);
+  font-size: 0.9375rem;
+}
+.tf-issues__list {
+  list-style: none;
+  margin: 0 0 var(--tf-space-2);
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: var(--tf-space-1);
+  max-height: 30vh;
+  overflow-y: auto;
+}
+.tf-issues__item {
+  display: grid;
+  grid-template-columns: 72px minmax(0, 1fr) auto;
+  align-items: baseline;
+  gap: var(--tf-space-2);
+  font-size: 0.875rem;
+}
+.tf-issues__severity {
+  font-size: 0.6875rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+.tf-issues__item--error .tf-issues__severity {
+  color: var(--tf-danger);
+}
+.tf-issues__item--warning .tf-issues__severity {
+  color: var(--tf-warning);
+}
+.tf-issues__locate {
+  border: none;
+  background: none;
+  padding: 0;
+  color: var(--tf-accent);
+  font: inherit;
+  font-size: 0.8125rem;
+  cursor: pointer;
+  text-decoration: underline;
+}
+.tf-issues__caveat {
+  margin: 0 0 var(--tf-space-2);
+  font-size: 0.8125rem;
+  color: var(--tf-text-muted);
+}
+
+.tf-dialog--wide {
+  max-width: min(900px, 92vw);
+  max-height: 88vh;
+  overflow-y: auto;
+}
+.tf-source {
+  margin: 0 0 var(--tf-space-3);
+  padding: var(--tf-space-3);
+  border: 1px solid var(--tf-border);
+  border-radius: var(--tf-radius);
+  background: var(--tf-bg-subtle);
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-size: 0.8125rem;
+  line-height: 1.5;
+  overflow: auto;
+  max-height: 56vh;
+  white-space: pre;
+}
+
+.tf-outcome-row {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: var(--tf-space-2);
+  align-items: end;
+}
+.tf-outcome-row .tf-field {
+  margin-bottom: 0;
+}
+
+.tf-versions {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: var(--tf-space-1);
+}
+.tf-versions__item {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr) auto;
+  align-items: center;
+  gap: var(--tf-space-3);
+  padding: var(--tf-space-1) var(--tf-space-2);
+  border: 1px solid var(--tf-border);
+  border-radius: var(--tf-radius);
+}
+.tf-versions__name {
+  font-weight: 600;
+}
+.tf-versions__meta {
+  font-size: 0.8125rem;
+  color: var(--tf-text-muted);
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+}
+
+/* CMMN: connections, marquee and the connect handle (§7.4.3) */
+.tf-cmmn__connection {
+  fill: none;
+  stroke: var(--tf-text-muted);
+  stroke-width: 1.5;
+}
+.tf-cmmn__connection--pending {
+  stroke: var(--tf-accent);
+  stroke-dasharray: 4 3;
+}
+.tf-cmmn__marquee {
+  fill: color-mix(in srgb, var(--tf-accent) 12%, transparent);
+  stroke: var(--tf-accent);
+  stroke-width: 1;
+  stroke-dasharray: 4 3;
+}
+.tf-cmmn__connector {
+  fill: var(--tf-bg-raised);
+  stroke: var(--tf-accent);
+  stroke-width: 2;
+  cursor: crosshair;
+}
+.tf-cmmn__connector:hover {
+  fill: var(--tf-accent);
+}

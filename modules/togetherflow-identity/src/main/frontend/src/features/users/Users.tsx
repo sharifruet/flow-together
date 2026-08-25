@@ -16,21 +16,26 @@ import {
   type Column,
   type IdmApi,
   type IdmUser,
+  type UserProfileApi,
 } from "@togetherflow/common";
+import { UserProfile } from "./UserProfile";
 
 const PAGE_SIZE = 25;
 
 export interface UsersProps {
+  /** Pictures and custom info live on the process API, not IDM — see UserProfile. */
+  profileApi: UserProfileApi;
   idm: IdmApi;
   readOnly: boolean;
 }
 
-export function Users({ idm, readOnly }: UsersProps) {
+export function Users({ idm, profileApi, readOnly }: UsersProps) {
   const { push } = useToast();
   const [start, setStart] = useState(0);
   const [search, setSearch] = useState("");
   const debounced = useDebouncedValue(search).trim();
   const [editing, setEditing] = useState<IdmUser | null>(null);
+  const [profileFor, setProfileFor] = useState<IdmUser | null>(null);
   const [creating, setCreating] = useState(false);
   const [pendingDelete, setPendingDelete] = useState<IdmUser | null>(null);
   const [busy, setBusy] = useState(false);
@@ -99,18 +104,25 @@ export function Users({ idm, readOnly }: UsersProps) {
       {
         key: "actions",
         header: "",
-        width: readOnly ? "1px" : "150px",
-        render: (user) =>
-          readOnly ? null : (
-            <div className="tf-row-actions">
-              <Button variant="ghost" onClick={() => setEditing(user)}>
-                Edit
-              </Button>
-              <Button variant="ghost" onClick={() => setPendingDelete(user)}>
-                Delete
-              </Button>
-            </div>
-          ),
+        width: readOnly ? "110px" : "230px",
+        render: (user) => (
+          <div className="tf-row-actions">
+            {/* Viewable even in a directory-backed deployment; editing is gated below. */}
+            <Button variant="ghost" onClick={() => setProfileFor(user)}>
+              Profile
+            </Button>
+            {readOnly ? null : (
+              <>
+                <Button variant="ghost" onClick={() => setEditing(user)}>
+                  Edit
+                </Button>
+                <Button variant="ghost" onClick={() => setPendingDelete(user)}>
+                  Delete
+                </Button>
+              </>
+            )}
+          </div>
+        ),
       },
     ],
     [readOnly],
@@ -219,6 +231,15 @@ export function Users({ idm, readOnly }: UsersProps) {
             );
             if (ok) setEditing(null);
           }}
+        />
+      ) : null}
+
+      {profileFor ? (
+        <UserProfile
+          profileApi={profileApi}
+          user={profileFor}
+          readOnly={readOnly}
+          onClose={() => setProfileFor(null)}
         />
       ) : null}
 

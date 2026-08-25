@@ -215,6 +215,11 @@
 				<module>modules/togetherflow-identity</module>
 				<module>modules/togetherflow-control</module>
 				<module>modules/togetherflow-design</module>
+				<!--
+				    Optional: only deployed when a non-`db` attachment provider is
+				    configured (REQUIREMENTS.md §7.6). Building it is harmless either way.
+				-->
+				<module>modules/togetherflow-attachment-gateway</module>
 			</modules>
 		</profile>
 		<profile>

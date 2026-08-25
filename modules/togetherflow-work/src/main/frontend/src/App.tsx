@@ -6,10 +6,12 @@ import {
   ProcessApi,
   TaskApi,
   ToastProvider,
+  UserProfileApi,
   useAuth,
   useTenant,
   type CaseInstanceResponse,
   type TaskResponse,
+  type AppLinks,
 } from "@togetherflow/common";
 import { AppShell, type WorkView } from "./features/shell/AppShell";
 import { LoginScreen } from "./features/shell/LoginScreen";
@@ -23,13 +25,23 @@ import { CaseDetail } from "./features/cases/CaseDetail";
 const VIEW_CYCLE: WorkView[] = ["inbox", "cases", "start", "history"];
 
 export interface AppProps {
+  /** Sibling app URLs for the shell switcher (§7.5). */
+  apps?: AppLinks;
   baseUrl: string;
   /** CMMN runs on its own servlet, so case work needs a second base URL. */
   cmmnBase: string;
+  /** Attachment gateway base URL; empty for the default `db` provider (§7.6). */
+  attachmentGateway?: string;
   fetchImpl?: typeof fetch;
 }
 
-export function App({ baseUrl, cmmnBase, fetchImpl }: AppProps) {
+export function App({
+  apps,
+  baseUrl,
+  cmmnBase,
+  attachmentGateway,
+  fetchImpl,
+}: AppProps) {
   const { session, signOut, getAuthHeaders, isInitialising } = useAuth();
   const { tenantId } = useTenant();
   const [view, setView] = useState<WorkView>("inbox");
@@ -54,12 +66,27 @@ export function App({ baseUrl, cmmnBase, fetchImpl }: AppProps) {
   const client = useMemo(() => makeClient(baseUrl), [makeClient, baseUrl]);
   const cmmnClient = useMemo(() => makeClient(cmmnBase), [makeClient, cmmnBase]);
 
-  const taskApi = useMemo(() => new TaskApi(client), [client]);
+  const taskApi = useMemo(
+    () => new TaskApi(client, attachmentGateway || undefined),
+    [client, attachmentGateway],
+  );
   const processApi = useMemo(() => new ProcessApi(client), [client]);
   const historyApi = useMemo(() => new HistoryApi(client), [client]);
   const caseApi = useMemo(() => new CaseApi(cmmnClient), [cmmnClient]);
 
   const refresh = useCallback(() => setRefreshToken((token) => token + 1), []);
+  /**
+   * Self-service password change (§7.5). The identity resource that owns this lives on
+   * the *process* API, so every app can offer it without carrying an IDM client.
+   */
+  const changePassword = useCallback(
+    async (password: string) => {
+      if (!session) return;
+      await new UserProfileApi(makeClient(baseUrl)).changePassword(session.userId, password);
+    },
+    [makeClient, baseUrl, session],
+  );
+
 
   const onTaskCompleted = useCallback(() => {
     setSelectedTask(undefined);
@@ -111,6 +138,8 @@ export function App({ baseUrl, cmmnBase, fetchImpl }: AppProps) {
 
   return (
     <AppShell
+      apps={apps}
+      onChangePassword={changePassword}
       view={view}
       onViewChange={(next) => {
         setView(next);

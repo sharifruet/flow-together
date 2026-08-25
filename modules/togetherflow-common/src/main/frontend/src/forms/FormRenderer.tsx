@@ -8,6 +8,7 @@
 
 import { useId, useState } from "react";
 import type { FormField, FormModelResponse, OptionFormField } from "../api/types";
+import { isFieldVisible } from "./visibility";
 import {
   isContainer,
   isOptionField,
@@ -73,6 +74,10 @@ interface NodeProps {
 }
 
 function FieldNode({ field, ...rest }: NodeProps) {
+  // Presentation-only: a hidden field is simply not rendered. Its value, if any was
+  // entered before the condition turned, is still submitted — hiding is not clearing.
+  if (!isFieldVisible(field, rest.values)) return null;
+
   if (isContainer(field)) {
     return (
       <div className="tf-form__container">

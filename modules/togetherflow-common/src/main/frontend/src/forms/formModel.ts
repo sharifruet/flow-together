@@ -13,6 +13,7 @@ import type {
   OptionFormField,
   RestVariable,
 } from "../api/types";
+import { hiddenFieldIds } from "./visibility";
 
 /** Field types that carry no value — layout and display only. */
 const PRESENTATIONAL: ReadonlySet<string> = new Set([
@@ -97,8 +98,11 @@ export type FormErrors = Record<string, string>;
 
 export function validateForm(model: FormModelResponse, values: FormValues): FormErrors {
   const errors: FormErrors = {};
+  // A field the user cannot see must not block submission — requiring an answer to a
+  // hidden question is unanswerable.
+  const hidden = hiddenFieldIds(model, values);
   for (const field of flattenFields(model.fields)) {
-    if (!isSubmittable(field) || field.readOnly) continue;
+    if (!isSubmittable(field) || field.readOnly || hidden.has(field.id)) continue;
     const error = validateField(field, values[field.id]);
     if (error) errors[field.id] = error;
   }

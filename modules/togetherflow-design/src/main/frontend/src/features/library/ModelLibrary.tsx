@@ -3,7 +3,7 @@
  * across every language, with create / open / duplicate / delete.
  */
 
-import { useCallback, useMemo, useState } from "react";
+import { useCallback, useMemo, useRef, useState } from "react";
 import {
   ApiError,
   AsyncBoundary,
@@ -29,6 +29,13 @@ import { emptyCase, serialiseCmmn } from "../cmmn/cmmnModel";
 import { emptyAppDraft } from "../apps/appDraft";
 import { emptyEventDraft } from "@togetherflow/common";
 import { emptyFormModel } from "../forms/formDraft";
+import {
+  IMPORT_ACCEPT,
+  categoryFor,
+  describeImport,
+  detectKind,
+  exportModel,
+} from "./importExport";
 
 const PAGE_SIZE = 25;
 
@@ -44,6 +51,7 @@ export function ModelLibrary({ modelApi, onOpen, refreshToken }: ModelLibraryPro
   const [search, setSearch] = useState("");
   const debounced = useDebouncedValue(search).trim();
   const [creating, setCreating] = useState<ModelKind | null>(null);
+  const importRef = useRef<HTMLInputElement>(null);
   const [pendingDelete, setPendingDelete] = useState<ModelResponse | null>(null);
   const [busy, setBusy] = useState(false);
   const [reloadToken, setReloadToken] = useState(0);
@@ -100,6 +108,48 @@ export function ModelLibrary({ modelApi, onOpen, refreshToken }: ModelLibraryPro
     if (copy) onOpen(copy);
   };
 
+  /**
+   * Imports a file as a new draft.
+   *
+   * The engine's model repository stores opaque bytes, so the content goes in exactly
+   * as it arrived — a round trip through an editor would risk changing a model the user
+   * only meant to bring in.
+   */
+  const importFile = useCallback(
+    async (file: File) => {
+      const content = await file.text();
+      const kind = detectKind(file.name, content);
+      if (!kind) {
+        push({
+          tone: "error",
+          message: `Can't tell what kind of model "${file.name}" is. Expected BPMN, CMMN, DMN, a form or an event.`,
+        });
+        return;
+      }
+      const { name, key } = describeImport(file.name, content, kind);
+      const created = await run(`Imported "${name}".`, async () => {
+        const model = await modelApi.create({ name, key, category: categoryFor(kind), version: 1 });
+        await modelApi.saveSource(model.id, content);
+        return model;
+      });
+      if (created) onOpen(created);
+    },
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [modelApi, onOpen, push],
+  );
+
+  const exportOne = useCallback(
+    async (model: ModelResponse) => {
+      const source = await modelApi.getSource(model.id);
+      if (!source) {
+        push({ tone: "error", message: `"${model.name ?? model.id}" has no saved content to export.` });
+        return;
+      }
+      exportModel(model, modelKindOf(model), source);
+    },
+    [modelApi, push],
+  );
+
   const columns = useMemo<Column<ModelResponse>[]>(
     () => [
       {
@@ -135,6 +185,9 @@ export function ModelLibrary({ modelApi, onOpen, refreshToken }: ModelLibraryPro
           <div className="tf-row-actions">
             <Button variant="ghost" onClick={() => onOpen(model)}>
               Open
+            </Button>
+            <Button variant="ghost" disabled={busy} onClick={() => void exportOne(model)}>
+              Export
             </Button>
             <Button variant="ghost" disabled={busy} onClick={() => void duplicate(model)}>
               Duplicate
@@ -177,6 +230,27 @@ export function ModelLibrary({ modelApi, onOpen, refreshToken }: ModelLibraryPro
           <Button variant="secondary" onClick={() => setCreating("app")}>
             New app
           </Button>
+          <Button variant="secondary" disabled={busy} onClick={() => importRef.current?.click()}>
+            Import
+          </Button>
+          {/*
+            A hidden input rather than a drop zone: importing is occasional, and the
+            native picker is the control people already know.
+          */}
+          <input
+            ref={importRef}
+            type="file"
+            className="tf-visually-hidden"
+            accept={IMPORT_ACCEPT}
+            aria-hidden="true"
+            tabIndex={-1}
+            onChange={(event) => {
+              const file = event.target.files?.[0];
+              // Reset so re-picking the same file fires change again.
+              event.target.value = "";
+              if (file) void importFile(file);
+            }}
+          />
         </div>
       </header>
 

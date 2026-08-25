@@ -74,22 +74,42 @@ supplies a form definition, using the Flowable-native renderer in `togetherflow-
 grid remains the fallback when there is no form. Forms authored in Design use that same
 schema, untranslated.
 
-Attachments run on the engine's own storage — the default `db` provider in REQUIREMENTS.md
-§7.6 — and support both uploading bytes and registering a link to content held elsewhere.
-The link path is the same seam a SharePoint or filesystem gateway plugs into later, so
-switching provider changes where the URL comes from, not this UI.
+Attachments run on the engine's own storage by default — the `db` provider in
+REQUIREMENTS.md §7.6 — and support both uploading bytes and registering a link. Setting
+`TF_ATTACHMENT_GATEWAY` switches the upload path to
+[`togetherflow-attachment-gateway`](../togetherflow-attachment-gateway/README.md), which
+stores the file elsewhere and hands back a URL registered as an `externalUrl` attachment.
+**No screen changes** between the two: the seam is inside `TaskApi.uploadAttachment`.
 
-Not built: case-specific views beyond tasks (a CMMN task appears in the inbox like any
-other, but there is no case-level view of it), and process/case diagram context on a task
-— "where am I in the flow?" is answerable in Control, not here.
+**Case work** (§7.1) is built: a Cases view listing the cases you're involved in, a case
+detail with plan items nested under their stage, stage/milestone progress and case data,
+terminate, starting a case alongside starting a process, and cases in My history.
 
-**The app switcher is still stubbed.** Control, Identity and Design all exist now, but the
-account menu lists them as disabled "Coming soon" items — in all four apps, not just this
-one. Making them real links needs each app's URL as runtime configuration (they are
-separately deployed origins), which no app has yet.
+The inbox needed no second query for case tasks — **the task table is shared across
+engines**, so `/query/tasks` already returns them tagged `scopeType: "cmmn"`. What it
+needed was context, so a case task is now marked as one.
 
-Keyboard shortcuts: `g` cycles Tasks → Start work → My history, `/` focuses task search,
-`Esc` closes the task detail.
+**Task detail** additionally shows who is involved (identity links), sub-tasks and the
+audit trail, and supports delegate / hand-back alongside claim, unclaim and complete.
+Rendered forms with named **outcomes** replace the single "Complete task" button with one
+button per outcome, and **upload fields** attach through the task's own attachment
+endpoint.
+
+Not built: process/case diagram context on a task — "where am I in the flow?" is
+answerable in Control, not here.
+
+## Two things the engine does that the UI deliberately does not expose
+
+- **Triggering an active human task completes it**, bypassing its form and assignee. That
+  is a legitimate admin escape hatch, and a way to skip your own form. Work's case view
+  offers it on nothing; it points at Tasks instead. Control offers it, labelled "Force
+  complete". See [ADR 0011](../../docs/ui/adr/0011-case-runtime-and-audience-scoped-actions.md).
+- **A task's audit trail is empty on a stock engine.** `enableHistoricTaskLogging` defaults
+  to `false`, so the History section says the engine records nothing rather than implying
+  nothing has happened.
+
+Keyboard shortcuts: `g` cycles Tasks → Cases → Start work → My history, `/` focuses task
+search, `Esc` closes the open detail panel.
 
 ## Configuration
 
@@ -101,6 +121,9 @@ variables.
 | Env var | Default | Meaning |
 |---|---|---|
 | `TF_API_BASE` | `/process-api` | Base URL of the process REST API |
+| `TF_CMMN_BASE` | `/cmmn-api` | Base URL of the CMMN REST API — case work is unreachable without it |
+| `TF_ATTACHMENT_GATEWAY` | *(empty)* | Base URL of `togetherflow-attachment-gateway`. Empty is the default `db` provider: bytes go straight to Flowable (§7.6) |
+| `TF_APP_WORK`, `TF_APP_CONTROL`, `TF_APP_IDENTITY`, `TF_APP_DESIGN` | *(empty)* | URLs of the sibling apps for the shell's app switcher. Unset apps are simply not offered |
 | `TF_AUTH_MODE` | `oidc` | `oidc` (production) or `basic` (local development only) |
 | `TF_OIDC_AUTHORITY` | — | Issuer URL, e.g. `https://keycloak.example.com/realms/Flowable`. Required when mode is `oidc` |
 | `TF_OIDC_CLIENT_ID` | — | Public client id. Required when mode is `oidc` |

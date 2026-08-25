@@ -9,6 +9,19 @@
 import type { AuthMode } from "./auth/AuthContext";
 import type { OidcConfig } from "./auth/oidc";
 
+/**
+ * Where the other TogetherFlow apps live.
+ *
+ * They are separately deployed origins, so there is nothing to infer — the app switcher
+ * only offers what the deployment configures. Anything unset is simply not listed.
+ */
+export interface AppLinks {
+  work?: string;
+  control?: string;
+  identity?: string;
+  design?: string;
+}
+
 export interface RuntimeConfig {
   apiBase: string;
   /** IDM REST base; separate servlet from the process API. */
@@ -24,6 +37,14 @@ export interface RuntimeConfig {
   /** External worker job REST base. */
   externalJobBase: string;
   auth: { mode: AuthMode; oidc?: OidcConfig };
+  /** URLs of the sibling apps, for the shell's app switcher (§7.5). */
+  apps: AppLinks;
+  /**
+   * Base URL of `togetherflow-attachment-gateway`, set only where the deployment uses a
+   * non-`db` attachment provider (§7.6). Empty means the default: bytes go straight to
+   * Flowable and no gateway is deployed.
+   */
+  attachmentGateway: string;
   identity: {
     /**
      * True when identities come from a read-only directory (LDAP) rather than the
@@ -45,6 +66,8 @@ declare global {
       appBase?: string;
       eventBase?: string;
       externalJobBase?: string;
+      apps?: AppLinks;
+      attachmentGateway?: string;
       identity?: { readOnly?: boolean };
       auth?: {
         mode?: string;
@@ -69,12 +92,26 @@ export function readRuntimeConfig(): RuntimeConfig {
   const appBase = raw.appBase ?? "/app-api";
   const eventBase = raw.eventBase ?? "/event-registry-api";
   const externalJobBase = raw.externalJobBase ?? "/external-job-api";
+  const apps: AppLinks = raw.apps ?? {};
+  const attachmentGateway = raw.attachmentGateway ?? "";
   const identity = { readOnly: raw.identity?.readOnly === true };
 
   const mode: AuthMode = raw.auth?.mode === "basic" ? "basic" : "oidc";
 
   if (mode === "basic") {
-    return { apiBase, idmBase, dmnBase, cmmnBase, appBase, eventBase, externalJobBase, identity, auth: { mode: "basic" } };
+    return {
+      apiBase,
+      idmBase,
+      dmnBase,
+      cmmnBase,
+      appBase,
+      eventBase,
+      externalJobBase,
+      apps,
+      attachmentGateway,
+      identity,
+      auth: { mode: "basic" },
+    };
   }
 
   const { authority, clientId } = raw.auth ?? {};
@@ -95,6 +132,8 @@ export function readRuntimeConfig(): RuntimeConfig {
     appBase,
     eventBase,
     externalJobBase,
+    apps,
+    attachmentGateway,
     identity,
     auth: {
       mode: "oidc",

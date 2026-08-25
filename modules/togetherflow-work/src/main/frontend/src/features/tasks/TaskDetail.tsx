@@ -52,7 +52,11 @@ export function TaskDetail({
     null,
   );
   const [busy, setBusy] = useState(false);
-  const [confirmComplete, setConfirmComplete] = useState(false);
+  /**
+   * Which outcome is pending confirmation. `null` means no dialog; an empty string is a
+   * plain completion with no named outcome — the two are genuinely different states.
+   */
+  const [confirmComplete, setConfirmComplete] = useState<string | null>(null);
   const [comment, setComment] = useState("");
   const [delegating, setDelegating] = useState(false);
   const [delegateTo, setDelegateTo] = useState("");
@@ -110,6 +114,7 @@ export function TaskDetail({
 
   const form = detail.data?.form ?? undefined;
   const usingForm = hasRenderableFields(form);
+  const outcomes = usingForm ? (form?.outcomes ?? []) : [];
 
   const [formEdits, setFormEdits] = useState<{ taskId: string; values: FormValues } | null>(null);
   const [touched, setTouched] = useState<Record<string, boolean>>({});
@@ -367,7 +372,7 @@ export function TaskDetail({
                 </div>
               </section>
 
-              {detail.data?.people && detail.data.people.length > 0 ? (
+              {Array.isArray(detail.data?.people) && detail.data.people.length > 0 ? (
                 <section className="tf-detail__section">
                   <h3 className="tf-detail__section-title">People</h3>
                   <ul className="tf-people">
@@ -383,7 +388,7 @@ export function TaskDetail({
                 </section>
               ) : null}
 
-              {detail.data?.subTasks && detail.data.subTasks.length > 0 ? (
+              {Array.isArray(detail.data?.subTasks) && detail.data.subTasks.length > 0 ? (
                 <section className="tf-detail__section">
                   <h3 className="tf-detail__section-title">
                     Sub-tasks ({detail.data.subTasks.length})
@@ -403,7 +408,12 @@ export function TaskDetail({
 
               <section className="tf-detail__section">
                 <h3 className="tf-detail__section-title">History</h3>
-                {detail.data?.log === undefined ? (
+                {/*
+                  The shape is checked, not assumed. An endpoint that answers with
+                  something unexpected must not take the whole panel down with it —
+                  which is exactly what reading `.data.length` off a non-page did.
+                */}
+                {!Array.isArray(detail.data?.log?.data) ? (
                   <p className="tf-muted">This task's history could not be read.</p>
                 ) : detail.data.log.data.length === 0 ? (
                   <p className="tf-muted">
@@ -460,13 +470,31 @@ export function TaskDetail({
                     <Button variant="secondary" loading={busy} onClick={() => setDelegating(true)}>
                       Delegate
                     </Button>
-                    <Button
-                      loading={busy}
-                      disabled={!canSubmit}
-                      onClick={() => setConfirmComplete(true)}
-                    >
-                      Complete task
-                    </Button>
+                    {/*
+                      A form may name its own outcomes ("Approve", "Reject"). Each is a
+                      distinct submit that records which was chosen, so they replace the
+                      generic Complete rather than sitting beside it.
+                    */}
+                    {outcomes.length > 0 ? (
+                      outcomes.map((outcome) => (
+                        <Button
+                          key={outcome.id ?? outcome.name}
+                          loading={busy}
+                          disabled={!canSubmit}
+                          onClick={() => setConfirmComplete(outcome.name)}
+                        >
+                          {outcome.name}
+                        </Button>
+                      ))
+                    ) : (
+                      <Button
+                        loading={busy}
+                        disabled={!canSubmit}
+                        onClick={() => setConfirmComplete("")}
+                      >
+                        Complete task
+                      </Button>
+                    )}
                   </>
                 ) : null}
 
@@ -548,21 +576,34 @@ export function TaskDetail({
               ) : null}
 
               <ConfirmDialog
-                open={confirmComplete}
-                title="Complete this task?"
-                description={`"${current.name ?? "This task"}" will be completed and removed from your inbox. This can't be undone.`}
-                confirmLabel="Complete task"
+                open={confirmComplete !== null}
+                title={confirmComplete ? `${confirmComplete} this task?` : "Complete this task?"}
+                description={
+                  confirmComplete
+                    ? `"${current.name ?? "This task"}" will be submitted with the outcome "${confirmComplete}" and removed from your inbox. This can't be undone.`
+                    : `"${current.name ?? "This task"}" will be completed and removed from your inbox. This can't be undone.`
+                }
+                confirmLabel={confirmComplete || "Complete task"}
                 busy={busy}
-                onCancel={() => setConfirmComplete(false)}
+                onCancel={() => setConfirmComplete(null)}
                 onConfirm={() => {
-                  setConfirmComplete(false);
+                  const outcome = confirmComplete;
+                  setConfirmComplete(null);
                   void runAction("Task completed.", async () => {
-                    await taskApi.complete(
-                      current.id,
+                    const submitted =
                       usingForm && form
                         ? formValuesToVariables(form, formValues)
-                        : toRestVariables(variables),
-                    );
+                        : toRestVariables(variables);
+                    // The chosen outcome travels as a variable, named by the form or
+                    // by the engine's default of "form_<key>_outcome".
+                    if (outcome && form) {
+                      submitted.push({
+                        name: form.outcomeVariableName || `form_${form.key ?? "form"}_outcome`,
+                        type: "string",
+                        value: outcome,
+                      });
+                    }
+                    await taskApi.complete(current.id, submitted);
                     onCompleted();
                   });
                 }}

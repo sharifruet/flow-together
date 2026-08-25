@@ -6,11 +6,13 @@ import {
   ModelApi,
   Skeleton,
   ToastProvider,
+  UserProfileApi,
   modelKindOf,
   useAsync,
   useAuth,
   useTenant,
   type ModelResponse,
+  type AppLinks,
 } from "@togetherflow/common";
 import { AppShell } from "./features/shell/AppShell";
 import { LoginScreen } from "./features/shell/LoginScreen";
@@ -40,6 +42,8 @@ const EventEditor = lazy(() =>
 );
 
 export interface AppProps {
+  /** Sibling app URLs for the shell switcher (§7.5). */
+  apps?: AppLinks;
   apiBase: string;
   dmnBase: string;
   cmmnBase: string;
@@ -48,7 +52,8 @@ export interface AppProps {
   fetchImpl?: typeof fetch;
 }
 
-export function App({ apiBase, dmnBase, cmmnBase, appBase, eventBase, fetchImpl }: AppProps) {
+export function App({ apps,
+  apiBase, dmnBase, cmmnBase, appBase, eventBase, fetchImpl }: AppProps) {
   const { session, signOut, getAuthHeaders, isInitialising } = useAuth();
   const { tenantId } = useTenant();
   const [editing, setEditing] = useState<ModelResponse | null>(null);
@@ -85,6 +90,18 @@ export function App({ apiBase, dmnBase, cmmnBase, appBase, eventBase, fetchImpl 
 
   const close = useCallback(() => setEditing(null), []);
   const onSaved = useCallback(() => setRefreshToken((t) => t + 1), []);
+  /**
+   * Self-service password change (§7.5). The identity resource that owns this lives on
+   * the *process* API, so every app can offer it without carrying an IDM client.
+   */
+  const changePassword = useCallback(
+    async (password: string) => {
+      if (!session) return;
+      await new UserProfileApi(makeClient(apiBase)).changePassword(session.userId, password);
+    },
+    [makeClient, apiBase, session],
+  );
+
 
   if (isInitialising) {
     return (
@@ -110,7 +127,7 @@ export function App({ apiBase, dmnBase, cmmnBase, appBase, eventBase, fetchImpl 
       onSaved,
     };
     return (
-      <AppShell view="models" onViewChange={close}>
+      <AppShell view="models" onViewChange={close} apps={apps} onChangePassword={changePassword}>
         <Suspense
           fallback={
             <div className="tf-editor__loading-standalone">
@@ -160,7 +177,7 @@ export function App({ apiBase, dmnBase, cmmnBase, appBase, eventBase, fetchImpl 
   }
 
   return (
-    <AppShell view="models" onViewChange={() => undefined}>
+    <AppShell view="models" onViewChange={() => undefined} apps={apps} onChangePassword={changePassword}>
       <ModelLibrary modelApi={modelApi} onOpen={setEditing} refreshToken={refreshToken} />
     </AppShell>
   );

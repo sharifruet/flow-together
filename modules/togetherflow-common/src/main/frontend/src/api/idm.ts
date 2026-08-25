@@ -281,6 +281,21 @@ export class UserProfileApi {
     );
   }
 
+  /**
+   * Sets a user's password.
+   *
+   * On the *process* API's identity resource, like the picture and info endpoints —
+   * which is what makes self-service password change available from every app, not
+   * only the one that happens to hold an IDM client. Verified against a running
+   * engine: the change takes effect immediately for the next sign-in.
+   */
+  changePassword(userId: string, password: string): Promise<unknown> {
+    return this.client.request(`/identity/users/${encodeURIComponent(userId)}`, {
+      method: "PUT",
+      body: { password },
+    });
+  }
+
   /** 404 when the user has no picture, which is the common case, not an error. */
   pictureUrl(userId: string): string {
     return this.client.buildUrl(`/identity/users/${encodeURIComponent(userId)}/picture`);

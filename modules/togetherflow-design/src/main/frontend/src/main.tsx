@@ -14,6 +14,7 @@ try {
       <AuthProvider baseUrl={config.apiBase} mode={config.auth.mode} oidc={config.auth.oidc}>
         <TenantProvider>
           <DesignApp
+            apps={config.apps}
             apiBase={config.apiBase}
             dmnBase={config.dmnBase}
             cmmnBase={config.cmmnBase}

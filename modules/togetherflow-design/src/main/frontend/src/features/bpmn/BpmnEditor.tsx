@@ -23,6 +23,8 @@ import {
   type ModelResponse,
 } from "@togetherflow/common";
 import { useBpmnModeler } from "./useBpmnModeler";
+import { canDeploy, validateBpmn, type ValidationIssue } from "./validateBpmn";
+import { downloadFile } from "../library/importExport";
 import { PropertiesPanel } from "./PropertiesPanel";
 
 const AUTOSAVE_IDLE_MS = 4000;
@@ -61,6 +63,7 @@ export function BpmnEditor({
     zoomOut,
     zoomFit,
     getXml,
+    selectElement,
     markSaved,
     updateProperties,
   } = useBpmnModeler(initialXml);
@@ -69,6 +72,50 @@ export function BpmnEditor({
   const [lastSavedAt, setLastSavedAt] = useState<Date | null>(null);
   const [confirmLeave, setConfirmLeave] = useState(false);
   const [confirmDeploy, setConfirmDeploy] = useState(false);
+  const [sourceXml, setSourceXml] = useState<string | null>(null);
+  const [issues, setIssues] = useState<ValidationIssue[] | null>(null);
+
+  /** Read-only view of the XML the engine will actually receive (§7.4.2). */
+  const openSource = useCallback(async () => {
+    try {
+      setSourceXml(await getXml());
+    } catch (cause) {
+      push({ tone: "error", message: (cause as Error).message || "Could not read the XML." });
+    }
+  }, [getXml, push]);
+
+  /**
+   * Runs the client-side checks. They approximate `flowable-process-validation`, which
+   * no REST endpoint exposes — so this catches the common mistakes early but is not a
+   * guarantee, and the panel says so.
+   */
+  const check = useCallback(async () => {
+    try {
+      const found = validateBpmn(await getXml());
+      setIssues(found);
+      if (found.length === 0) push({ tone: "success", message: "No problems found." });
+    } catch (cause) {
+      push({ tone: "error", message: (cause as Error).message || "Could not check the model." });
+    }
+  }, [getXml, push]);
+
+  /** Deploying runs the checks first; blocking problems stop it before the round trip. */
+  const startDeploy = useCallback(async () => {
+    try {
+      const found = validateBpmn(await getXml());
+      setIssues(found.length > 0 ? found : null);
+      if (!canDeploy(found)) {
+        push({
+          tone: "error",
+          message: "Fix the problems listed below before deploying.",
+        });
+        return;
+      }
+    } catch {
+      // A model we cannot even read is the engine's problem to report.
+    }
+    setConfirmDeploy(true);
+  }, [getXml, push]);
 
   const save = useCallback(
     async (options: { silent?: boolean } = {}) => {
@@ -199,14 +246,93 @@ export function BpmnEditor({
               +
             </Button>
           </div>
+          <Button variant="secondary" disabled={!ready} onClick={() => void openSource()}>
+            XML
+          </Button>
+          <Button variant="secondary" disabled={!ready} onClick={() => void check()}>
+            Check
+          </Button>
           <Button variant="secondary" loading={saving} disabled={!ready} onClick={() => void save()}>
             Save
           </Button>
-          <Button loading={deploying} disabled={!ready} onClick={() => setConfirmDeploy(true)}>
+          <Button loading={deploying} disabled={!ready} onClick={() => void startDeploy()}>
             Deploy
           </Button>
         </div>
       </header>
+
+      {issues && issues.length > 0 ? (
+        <section className="tf-issues" aria-label="Model checks">
+          <h2 className="tf-issues__title">
+            {issues.filter((i) => i.severity === "error").length} problem
+            {issues.filter((i) => i.severity === "error").length === 1 ? "" : "s"},{" "}
+            {issues.filter((i) => i.severity === "warning").length} warning
+            {issues.filter((i) => i.severity === "warning").length === 1 ? "" : "s"}
+          </h2>
+          <ul className="tf-issues__list">
+            {issues.map((issue, index) => (
+              <li
+                className={`tf-issues__item tf-issues__item--${issue.severity}`}
+                key={`${issue.elementId ?? ""}-${index}`}
+              >
+                <span className="tf-issues__severity">{issue.severity}</span>
+                <span>{issue.message}</span>
+                {issue.elementId ? (
+                  <button
+                    type="button"
+                    className="tf-issues__locate"
+                    onClick={() => selectElement(issue.elementId!)}
+                  >
+                    Show
+                  </button>
+                ) : null}
+              </li>
+            ))}
+          </ul>
+          <p className="tf-issues__caveat">
+            These checks run in the browser. The engine's own validator has no REST
+            endpoint, so passing here doesn't guarantee the engine will accept the model.
+          </p>
+          <Button variant="secondary" onClick={() => setIssues(null)}>
+            Dismiss
+          </Button>
+        </section>
+      ) : null}
+
+      {sourceXml !== null ? (
+        <div className="tf-dialog-backdrop" onMouseDown={() => setSourceXml(null)}>
+          <div
+            className="tf-dialog tf-dialog--wide"
+            role="dialog"
+            aria-modal="true"
+            aria-label="BPMN XML"
+            onMouseDown={(event) => event.stopPropagation()}
+          >
+            <h2 className="tf-dialog__title">BPMN XML</h2>
+            <p className="tf-dialog__description">
+              Exactly what will be deployed. Read-only — edit the diagram, not the text.
+            </p>
+            <pre className="tf-source">{sourceXml}</pre>
+            <div className="tf-dialog__actions">
+              <Button
+                variant="secondary"
+                onClick={() =>
+                  downloadFile(
+                    `${model.key ?? model.id}.bpmn20.xml`,
+                    sourceXml,
+                    "application/xml",
+                  )
+                }
+              >
+                Download
+              </Button>
+              <Button variant="secondary" onClick={() => setSourceXml(null)}>
+                Close
+              </Button>
+            </div>
+          </div>
+        </div>
+      ) : null}
 
       {loadError ? (
         <ErrorState error={new Error(loadError)} />

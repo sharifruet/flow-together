@@ -24,6 +24,8 @@ export interface BpmnModelerState {
   zoomOut: () => void;
   zoomFit: () => void;
   getXml: () => Promise<string>;
+  /** Selects an element by id and scrolls it into view (used by validation). */
+  selectElement: (elementId: string) => void;
   markSaved: () => void;
   /** The currently selected element, for the properties panel. */
   selection: BpmnElement | null;
@@ -168,6 +170,30 @@ export function useBpmnModeler(xml: string | null): BpmnModelerState {
     canvas?.zoom("fit-viewport", "auto");
   }, []);
 
+  /**
+   * Selects an element by id and scrolls it into view.
+   *
+   * Used by the validation panel: a problem the user cannot find on the canvas is only
+   * marginally more useful than no message at all.
+   */
+  const selectElement = useCallback((elementId: string) => {
+    const modeler = modelerRef.current;
+    if (!modeler) return;
+    const registry = modeler.get("elementRegistry") as
+      | { get: (id: string) => unknown }
+      | undefined;
+    const element = registry?.get(elementId);
+    if (!element) return;
+    const selection = modeler.get("selection") as
+      | { select: (element: unknown) => void }
+      | undefined;
+    selection?.select(element);
+    const canvas = modeler.get("canvas") as
+      | { scrollToElement?: (element: unknown) => void }
+      | undefined;
+    canvas?.scrollToElement?.(element);
+  }, []);
+
   const getXml = useCallback(async () => {
     const modeler = modelerRef.current;
     if (!modeler) throw new Error("The editor is not ready yet.");
@@ -202,6 +228,7 @@ export function useBpmnModeler(xml: string | null): BpmnModelerState {
     zoomOut,
     zoomFit,
     getXml,
+    selectElement,
     markSaved,
     updateProperties,
   };

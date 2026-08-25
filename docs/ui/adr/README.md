@@ -20,6 +20,8 @@ replacement.
 | [0008](0008-bpmn-dmn-modelers.md) | bpmn-js + dmn-js with a hand-written Flowable moddle extension | Accepted |
 | [0009](0009-cmmn-canvas.md) | Hand-built SVG canvas for CMMN (no maintained library exists) | Accepted |
 | [0010](0010-form-and-event-authoring.md) | Client-side authoring for forms and events, drafts in the generic model repository | Accepted |
+| [0011](0011-case-runtime-and-audience-scoped-actions.md) | Case runtime on the shared task table; the same engine action scoped by audience | Accepted |
+| [0012](0012-conditional-field-visibility.md) | Conditional field visibility as a `params` convention, not an engine change | Accepted |
 
 **ADRs 0001–0007 were made by default during Phase 1 and ratified retroactively in Phase 0.**
 That ordering was a process mistake — they should have been settled before code was written
@@ -27,6 +29,6 @@ That ordering was a process mistake — they should have been settled before cod
 triggers, rather than presented as if they had been deliberated up front. ADR 0003's
 deadline has since been met by ADR 0006.
 
-ADRs 0008–0010 were decided before the work they govern, each after probing the actual
-option — the canvas libraries in 0008 and 0009, a running engine in 0010 — rather than
-inferring from source.
+ADRs 0008–0012 were decided before the work they govern, each after probing the actual
+option — the canvas libraries in 0008 and 0009, a running engine in 0010 and 0011, the
+engine's own form model in 0012 — rather than inferring from source.

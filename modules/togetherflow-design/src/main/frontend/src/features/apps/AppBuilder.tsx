@@ -58,6 +58,7 @@ export function AppBuilder({
   const [publishing, setPublishing] = useState(false);
   const [confirmPublish, setConfirmPublish] = useState(false);
   const [confirmLeave, setConfirmLeave] = useState(false);
+  const [publishedToken, setPublishedToken] = useState(0);
 
   // Only non-app models can be bundled — an app cannot contain another app.
   const models = useAsync(
@@ -66,6 +67,20 @@ export function AppBuilder({
       return page.data.filter((m) => m.id !== model.id && m.category !== "togetherflow:app");
     },
     [modelApi, model.id],
+  );
+
+  /**
+   * Every deployed version of this app key, newest first. `latest: false` is the point:
+   * the default would show only the current one and hide the history entirely.
+   */
+  const published = useAsync(
+    async (signal) => {
+      const page = await appApi.listDefinitions({ latest: false, size: 100 }, signal);
+      return page.data
+        .filter((definition) => definition.key === draft.key)
+        .sort((a, b) => b.version - a.version);
+    },
+    [appApi, draft.key, publishedToken],
   );
 
   const update = useCallback(
@@ -148,6 +163,7 @@ export function AppBuilder({
       }
 
       const deployment = await appApi.deployBundle(zipSync(files), draft.key);
+      setPublishedToken((n) => n + 1);
       push({
         tone: "success",
         message: `Published "${draft.name}" with ${selected.length} model${selected.length === 1 ? "" : "s"}.`,
@@ -288,6 +304,39 @@ export function AppBuilder({
           </AsyncBoundary>
         </section>
       </div>
+
+      {/*
+        What is actually live, as opposed to what this draft says. Publishing creates a
+        new version rather than mutating one, so seeing the version history is the only
+        way to tell whether the draft has been published since it was last edited.
+      */}
+      <section className="tf-panel__section">
+        <h2 className="tf-panel__section-title">Published versions</h2>
+        <AsyncBoundary
+          loading={published.loading}
+          error={published.error}
+          data={published.data}
+          onRetry={published.refetch}
+          isEmpty={(rows) => rows.length === 0}
+          empty={
+            <p className="tf-muted">
+              Never published. Publishing deploys this app and everything in it.
+            </p>
+          }
+        >
+          {(rows) => (
+            <ul className="tf-versions">
+              {rows.map((definition) => (
+                <li className="tf-versions__item" key={definition.id}>
+                  <span className="tf-badge tf-badge--running">v{definition.version}</span>
+                  <span className="tf-versions__name">{definition.name ?? definition.key}</span>
+                  <span className="tf-versions__meta">{definition.deploymentId?.slice(0, 8)}</span>
+                </li>
+              ))}
+            </ul>
+          )}
+        </AsyncBoundary>
+      </section>
 
       <ConfirmDialog
         open={confirmPublish}

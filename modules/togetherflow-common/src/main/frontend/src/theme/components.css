@@ -330,3 +330,63 @@
     display: none;
   }
 }
+
+/* ── Shell menu: app switcher, appearance, password (§7.5) ────────────────── */
+
+a.tf-menu__item {
+  display: block;
+  text-decoration: none;
+  color: inherit;
+}
+a.tf-menu__item:hover {
+  text-decoration: none;
+}
+
+.tf-theme-choice {
+  display: flex;
+  gap: 2px;
+  padding: 2px;
+  margin: var(--tf-space-1) var(--tf-space-3) var(--tf-space-2);
+  border: 1px solid var(--tf-border);
+  border-radius: var(--tf-radius);
+  background: var(--tf-bg-subtle);
+}
+.tf-theme-choice__item {
+  flex: 1;
+  padding: 0.3rem 0.4rem;
+  border: none;
+  border-radius: calc(var(--tf-radius) - 2px);
+  background: transparent;
+  color: var(--tf-text-muted);
+  font: inherit;
+  font-size: 0.8125rem;
+  cursor: pointer;
+  white-space: nowrap;
+}
+.tf-theme-choice__item:hover {
+  color: var(--tf-text);
+}
+.tf-theme-choice__item.is-selected {
+  background: var(--tf-bg-raised);
+  color: var(--tf-text);
+  font-weight: 600;
+  box-shadow: 0 1px 2px rgb(0 0 0 / 0.08);
+}
+.tf-theme-choice__item:focus-visible {
+  outline: 2px solid var(--tf-accent);
+  outline-offset: -2px;
+}
+
+/* Upload field inside a rendered form (§7.1). */
+.tf-form__upload {
+  display: flex;
+  flex-direction: column;
+  gap: var(--tf-space-1);
+}
+.tf-form__upload-state {
+  font-size: 0.8125rem;
+  color: var(--tf-text-muted);
+}
+.tf-form__upload-state--error {
+  color: var(--tf-danger);
+}

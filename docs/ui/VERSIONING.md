@@ -93,6 +93,38 @@ client that decides how to read a body by sniffing it will hand back a parsed ob
 the caller expects text — which silently emptied every JSON draft on reopen. `getSource`
 reads with an explicit text response type.
 
+### Building the case runtime and the remaining admin screens
+
+A further round of probing, for CMMN case work, Control's definitions and event screens,
+and Identity's profile features, corrected several more assumptions:
+
+| Assumption | Reality |
+|---|---|
+| Case tasks need a separate query | **The task table is shared across engines.** The BPMN `POST /query/tasks` already returns case tasks, tagged `scopeType: "cmmn"` with `scopeId` holding the case instance id. Work's inbox needed no second query — only case *context* on the task. |
+| CMMN history is queried like BPMN history | Query endpoints live under **`/cmmn-query`**, not `/cmmn-history`. `POST /cmmn-history/historic-case-instances` answers *"Request method 'POST' is not supported"*. |
+| There is a historic plan-item endpoint | **There is not.** `/cmmn-history/historic-plan-item-instances` answers "No endpoint". A case's progress comes from `/cmmn-runtime/case-instances/{id}/stage-overview`, which returns stages and milestones together with `current`/`ended` flags. |
+| `EventInstanceCollectionResource` lists received events | **It is POST-only — "Send an event instance".** The engine keeps no queryable log of inbound events. Control therefore offers the honest inverse: send an event and watch what it starts. A `channelDefinitionKey` is required, and the payload is a plain JSON object under `eventPayload`, not a name/value array. |
+| User pictures and custom info are IDM endpoints | They live in **`flowable-rest`, under `/identity/users/{id}/…` on the *process* API**. The same paths on `/idm-api` answer "No endpoint". The info *collection* returns **keys only** — values need one request per key. |
+| Changing a password needs the IDM API | `PUT /identity/users/{id}` with a `password` works on the process API, which is why self-service password change is available from every app rather than only the one holding an IDM client. |
+| A task's audit trail is always available | `enableHistoricTaskLogging` defaults to **false** on `ProcessEngineConfiguration`, so a stock deployment records nothing at all — the whole-engine query returns 0 rows. The UI distinguishes "nothing happened yet" from "this engine does not record task history". |
+
+Two behaviours are worth calling out because they shaped the UI rather than just the code:
+
+- **Triggering an ACTIVE human task completes it** (204), bypassing its form, its assignee
+  and its validation. That is a legitimate admin escape hatch for a case nobody can
+  action, and a way to skip your own form if offered to end users — so Control offers it,
+  labelled "Force complete" with an explicit warning, and Work does not offer it at all.
+- **A case diagram needs CMMNDI.** `…/case-instances/{id}/diagram` answers 400 ("has no
+  graphical notation") for the hand-written `.cmmn` files that are common in practice, so
+  callers check `graphicalNotationDefined` first.
+
+Confirmed working end to end against the live engine for this round: starting a case from
+Work, the case list and detail with plan items and stage overview, plan-item actions,
+terminate, case history, Control's case inspector, process-definition suspend/activate,
+authorized starters (grant and revoke), signal broadcast, event/channel source inspection,
+sending an event, task delegation, and the attachment gateway's filesystem provider
+(upload → stored on disk → registered with Flowable as an `externalUrl` → read back).
+
 ## Runtime configuration
 
 Nothing environment-specific is baked into the bundle. Configuration is read from

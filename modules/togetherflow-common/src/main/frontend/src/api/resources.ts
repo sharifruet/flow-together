@@ -1,6 +1,6 @@
 /** Typed wrappers over the Flowable REST resources this app uses. */
 
-import type { ApiClient } from "./client";
+import { ApiError, type ApiClient } from "./client";
 import type {
   AttachmentLinkRequest,
   AttachmentResponse,
@@ -23,7 +23,16 @@ import type {
 } from "./types";
 
 export class TaskApi {
-  constructor(private readonly client: ApiClient) {}
+  /**
+   * @param client the process API
+   * @param gatewayBaseUrl base URL of `togetherflow-attachment-gateway`, set only where
+   *   the deployment uses a non-`db` attachment provider (§7.6). Unset is the default
+   *   `db` behaviour: bytes go straight to Flowable and no gateway exists.
+   */
+  constructor(
+    private readonly client: ApiClient,
+    private readonly gatewayBaseUrl?: string,
+  ) {}
 
   /** POST /query/tasks — the filterable inbox query. */
   query(request: TaskQueryRequest, signal?: AbortSignal): Promise<DataResponse<TaskResponse>> {
@@ -183,21 +192,85 @@ export class TaskApi {
    * provider (REQUIREMENTS.md §7.6). The resource takes the first file part
    * regardless of its field name, and reads name/description/type as form fields.
    */
-  uploadAttachment(
+  /**
+   * Attaches a file to a task.
+   *
+   * Two paths, chosen by configuration alone (§7.6):
+   *
+   * - **No gateway (`db`, the default):** multipart straight to Flowable, whose engine
+   *   stores the bytes itself. Zero extra infrastructure.
+   * - **Gateway configured (`filesystem` / `sharepoint`):** the file goes to
+   *   `togetherflow-attachment-gateway`, which stores it and returns a URL; that URL is
+   *   registered against the task as an `externalUrl` attachment, so no bytes pass
+   *   through the engine.
+   *
+   * Both produce the same kind of attachment as far as every screen is concerned:
+   * Flowable's own model holds either a `contentId` or a `url` per row and the two
+   * coexist, so switching provider never migrates what is already stored.
+   */
+  async uploadAttachment(
     taskId: string,
     file: File,
     meta: { name?: string; description?: string; type?: string } = {},
   ): Promise<AttachmentResponse> {
+    const name = meta.name?.trim() || file.name;
+    const type = meta.type || file.type || "application/octet-stream";
+
+    if (this.gatewayBaseUrl) {
+      const stored = await this.uploadThroughGateway(taskId, file);
+      return this.addAttachmentLink(taskId, {
+        name,
+        description: meta.description,
+        type,
+        externalUrl: stored.url,
+      });
+    }
+
     const form = new FormData();
-    form.append("name", meta.name?.trim() || file.name);
+    form.append("name", name);
     if (meta.description) form.append("description", meta.description);
-    form.append("type", meta.type || file.type || "application/octet-stream");
+    form.append("type", type);
     form.append("file", file, file.name);
 
     return this.client.request(`/runtime/tasks/${encodeURIComponent(taskId)}/attachments`, {
       method: "POST",
       body: form,
     });
+  }
+
+  /**
+   * Sends the bytes to the gateway.
+   *
+   * Plain `fetch`, not the ApiClient: the gateway is a separate service on its own base
+   * URL, and forwarding the engine's credentials to it would be wrong.
+   */
+  private async uploadThroughGateway(
+    taskId: string,
+    file: File,
+  ): Promise<{ url: string; fileName: string }> {
+    const form = new FormData();
+    form.append("taskId", taskId);
+    form.append("file", file, file.name);
+
+    const response = await fetch(`${this.gatewayBaseUrl!.replace(/\/+$/, "")}/attachments`, {
+      method: "POST",
+      body: form,
+      credentials: "same-origin",
+    });
+    if (!response.ok) {
+      // §13.4: Work must stay usable when the gateway is down, so the message says what
+      // to do instead rather than only that something broke.
+      throw new ApiError(
+        response.status === 413
+          ? "That file is larger than this deployment allows."
+          : "Attachment storage is unavailable. Try again, or attach a link instead.",
+        response.status,
+        // The gateway is a separate service and issues no correlation id of its own.
+        "",
+        undefined,
+      );
+    }
+    return (await response.json()) as { url: string; fileName: string };
   }
 
   /**

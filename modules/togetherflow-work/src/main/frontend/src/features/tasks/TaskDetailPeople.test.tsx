@@ -134,6 +134,26 @@ describe("TaskDetail — audit trail", () => {
     renderDetail(stubApi({ listLogEntries: vi.fn().mockRejectedValue(new Error("nope")) }));
     expect(await screen.findByText(/history could not be read/i)).toBeInTheDocument();
   });
+
+  /**
+   * Found by a stubbed e2e run: an endpoint answering with an unexpected shape made
+   * `log.data.length` throw and took the entire task panel down — the task became
+   * unworkable because its audit trail was odd.
+   */
+  it("survives an endpoint that answers with the wrong shape", async () => {
+    renderDetail(
+      stubApi({
+        listLogEntries: vi.fn().mockResolvedValue({}),
+        listSubTasks: vi.fn().mockResolvedValue({}),
+        listIdentityLinks: vi.fn().mockResolvedValue({}),
+      }),
+    );
+
+    // The task itself still renders, which is the point.
+    expect(await screen.findByText("Approve invoice")).toBeInTheDocument();
+    expect(screen.getByText(/history could not be read/i)).toBeInTheDocument();
+    expect(screen.queryByRole("heading", { name: "People" })).not.toBeInTheDocument();
+  });
 });
 
 describe("TaskDetail — delegation", () => {

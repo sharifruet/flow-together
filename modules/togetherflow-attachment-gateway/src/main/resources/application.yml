@@ -1,0 +1,38 @@
+# TogetherFlow attachment gateway (REQUIREMENTS.md §7.6).
+#
+# Only run this service when a non-`db` provider is configured. With the default `db`
+# provider the Work app posts straight to Flowable's own task-attachment endpoint and
+# this process is not part of the deployment at all.
+server:
+  port: 8091
+
+spring:
+  application:
+    name: togetherflow-attachment-gateway
+  servlet:
+    multipart:
+      # Kept in step with togetherflow.attachments.max-file-size-bytes below; Spring
+      # rejects at this boundary before the controller ever sees the request.
+      max-file-size: 25MB
+      max-request-size: 26MB
+
+togetherflow:
+  attachments:
+    # db | filesystem | sharepoint
+    provider: filesystem
+    max-file-size-bytes: 26214400
+    filesystem:
+      base-path: /var/lib/togetherflow/attachments
+      # Must be reachable by the browser: it becomes the attachment's stored URL.
+      public-base-url: http://localhost:8091
+    sharepoint:
+      tenant-id: ""
+      client-id: ""
+      client-secret: ""
+      site-id: ""
+      drive-id: ""
+      folder-path: TogetherFlow
+
+logging:
+  level:
+    org.togetherflow.attachments: INFO

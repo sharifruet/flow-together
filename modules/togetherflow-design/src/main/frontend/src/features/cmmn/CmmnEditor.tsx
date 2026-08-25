@@ -19,7 +19,7 @@ import {
   type ModelApi,
   type ModelResponse,
 } from "@togetherflow/common";
-import { CmmnCanvas } from "./CmmnCanvas";
+import { CmmnCanvas, DEFAULT_VIEWPORT, type Viewport } from "./CmmnCanvas";
 import {
   TYPE_LABELS,
   createElement,
@@ -101,7 +101,33 @@ export function CmmnEditor({
 
   const caseModel = history?.present ?? null;
   const parseError = parsed.error;
-  const [selectedId, setSelectedId] = useState<string | null>(null);
+  /**
+   * The whole selection. `selectedId` — the last one picked — drives the properties
+   * panel; the rest only matter for moving and deleting together.
+   */
+  const [selectedIds, setSelectedIds] = useState<string[]>([]);
+  const selectedId = selectedIds.length > 0 ? selectedIds[selectedIds.length - 1] : null;
+  const [viewport, setViewport] = useState<Viewport>(DEFAULT_VIEWPORT);
+
+  const select = useCallback((planItemId: string | null, options?: { additive?: boolean }) => {
+    if (planItemId === null) {
+      setSelectedIds([]);
+      return;
+    }
+    setSelectedIds((current) => {
+      if (!options?.additive) return [planItemId];
+      // Shift-clicking something already selected removes it, which is what every
+      // other selection UI does.
+      return current.includes(planItemId)
+        ? current.filter((id) => id !== planItemId)
+        : [...current, planItemId];
+    });
+  }, []);
+
+  const setSelectedId = useCallback(
+    (planItemId: string | null) => setSelectedIds(planItemId ? [planItemId] : []),
+    [],
+  );
   const [dirty, setDirty] = useState(false);
   const [saving, setSaving] = useState(false);
   const [deploying, setDeploying] = useState(false);
@@ -185,10 +211,14 @@ export function CmmnEditor({
   };
 
   const deleteSelected = useCallback(() => {
-    if (!caseModel || !selectedId || selectedId === caseModel.planModelId) return;
-    commit(removeElement(caseModel, selectedId));
-    setSelectedId(null);
-  }, [caseModel, selectedId, commit]);
+    if (!caseModel || selectedIds.length === 0) return;
+    // The case plan model is the diagram itself and cannot be deleted.
+    const removable = selectedIds.filter((id) => id !== caseModel.planModelId);
+    if (removable.length === 0) return;
+    const next = removable.reduce((model, id) => removeElement(model, id), caseModel);
+    commit(next);
+    setSelectedIds([]);
+  }, [caseModel, selectedIds, commit]);
 
   const save = useCallback(
     async (options: { silent?: boolean } = {}) => {
@@ -313,6 +343,25 @@ export function CmmnEditor({
               Redo
             </Button>
           </div>
+          <div className="tf-editor__group" role="group" aria-label="Zoom">
+            <Button
+              variant="secondary"
+              aria-label="Zoom out"
+              onClick={() => setViewport((v) => ({ ...v, scale: Math.max(0.25, v.scale / 1.2) }))}
+            >
+              −
+            </Button>
+            <Button variant="secondary" onClick={() => setViewport(DEFAULT_VIEWPORT)}>
+              Fit
+            </Button>
+            <Button
+              variant="secondary"
+              aria-label="Zoom in"
+              onClick={() => setViewport((v) => ({ ...v, scale: Math.min(3, v.scale * 1.2) }))}
+            >
+              +
+            </Button>
+          </div>
           <Button variant="secondary" loading={saving} disabled={!caseModel} onClick={() => void save()}>
             Save
           </Button>
@@ -352,8 +401,12 @@ export function CmmnEditor({
             <CmmnCanvas
               model={caseModel}
               selectedId={selectedId}
+              selectedIds={selectedIds}
               disabled={busy}
-              onSelect={setSelectedId}
+              onSelect={select}
+              onSelectMany={setSelectedIds}
+              viewport={viewport}
+              onViewportChange={setViewport}
               onCommit={commit}
               onPreview={preview}
             />
