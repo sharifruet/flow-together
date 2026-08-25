@@ -1,0 +1,169 @@
+name: TogetherFlow UI
+
+# Baseline CI for the TogetherFlow frontend modules (IMPLEMENTATION_PLAN.md, Phase 0).
+# Runs only when the UI or its specs change, so engine-only PRs are unaffected.
+on:
+  push:
+    branches: [main]
+    paths:
+      - "modules/togetherflow-*/**"
+      - "docs/public-api/**"
+      - ".github/workflows/togetherflow-ui.yml"
+  pull_request:
+    paths:
+      - "modules/togetherflow-*/**"
+      - "docs/public-api/**"
+      - ".github/workflows/togetherflow-ui.yml"
+
+permissions:
+  contents: read
+
+jobs:
+  verify:
+    name: Lint, typecheck, test, build
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        module:
+          - togetherflow-common
+          - togetherflow-work
+          - togetherflow-identity
+          - togetherflow-control
+          - togetherflow-design
+    defaults:
+      run:
+        working-directory: modules/${{ matrix.module }}/src/main/frontend
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: modules/${{ matrix.module }}/src/main/frontend/package-lock.json
+
+      - name: Install
+        run: npm ci --no-audit --no-fund
+
+      - name: Lint
+        run: npm run lint
+
+      - name: Typecheck
+        run: npm run typecheck
+
+      - name: Test
+        run: npm test
+
+      - name: Build
+        run: npm run build
+        if: matrix.module != 'togetherflow-common'
+
+  contract-drift:
+    name: OpenAPI contract drift
+    runs-on: ubuntu-latest
+    # Regenerates types from the checked-in specs and fails if the committed
+    # output differs — i.e. someone changed a spec without regenerating, or
+    # regenerated without committing. The typed conformance assertions in
+    # src/api/contract.test-d.ts then fail the typecheck job above if a change
+    # actually breaks what the UI depends on.
+    defaults:
+      run:
+        working-directory: modules/togetherflow-common/src/main/frontend
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: modules/togetherflow-common/src/main/frontend/package-lock.json
+
+      - name: Install
+        run: npm ci --no-audit --no-fund
+
+      - name: Regenerate types from specs
+        run: npm run codegen
+
+      - name: Fail if generated types are out of date
+        run: |
+          if ! git diff --quiet -- src/api/generated; then
+            echo "::error::Generated API types are out of date. Run 'npm run codegen' in modules/togetherflow-common/src/main/frontend and commit the result."
+            git diff --stat -- src/api/generated
+            exit 1
+          fi
+          echo "Generated types match the published specs."
+
+  visual:
+    name: Visual regression
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: modules/togetherflow-work/src/main/frontend
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: modules/togetherflow-work/src/main/frontend/package-lock.json
+
+      - name: Install
+        run: npm ci --no-audit --no-fund
+
+      - name: Install browser
+        run: npx playwright install --with-deps chromium
+
+      # Baselines are committed per-platform. These were generated on darwin, so a
+      # linux runner will legitimately differ on font rendering until linux baselines
+      # are committed — hence continue-on-error with the report uploaded for review.
+      # Remove continue-on-error once linux baselines exist.
+      - name: Visual regression
+        id: visual
+        continue-on-error: true
+        run: npm run e2e:visual
+
+      - name: Upload diff report
+        if: steps.visual.outcome == 'failure'
+        uses: actions/upload-artifact@v4
+        with:
+          name: visual-regression-report
+          path: modules/togetherflow-work/src/main/frontend/test-results/
+          retention-days: 7
+
+  audit:
+    name: Dependency vulnerabilities
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        module:
+          - togetherflow-common
+          - togetherflow-work
+          - togetherflow-identity
+          - togetherflow-control
+          - togetherflow-design
+    defaults:
+      run:
+        working-directory: modules/${{ matrix.module }}/src/main/frontend
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: modules/${{ matrix.module }}/src/main/frontend/package-lock.json
+
+      - name: Install
+        run: npm ci --no-audit --no-fund
+
+      # Fails the build on high/critical advisories only; moderate findings are
+      # reported without blocking, so a transitive dev-only advisory cannot stop a
+      # release while a real exploitable issue still does (REQUIREMENTS.md §13.1).
+      - name: Audit (report all)
+        run: npm audit --audit-level=moderate || true
+
+      - name: Audit (fail on high or critical)
+        run: npm audit --audit-level=high

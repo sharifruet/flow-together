@@ -202,6 +202,21 @@
 	</build>
 
 	<profiles>
+		<!--
+		    TogetherFlow UI modules. Opt-in via -Ptogetherflow because these modules
+		    download a pinned Node/npm and run a JS build, which engine-only builds
+		    should not have to pay for.
+		-->
+		<profile>
+			<id>togetherflow</id>
+			<modules>
+				<module>modules/togetherflow-common</module>
+				<module>modules/togetherflow-work</module>
+				<module>modules/togetherflow-identity</module>
+				<module>modules/togetherflow-control</module>
+				<module>modules/togetherflow-design</module>
+			</modules>
+		</profile>
 		<profile>
 			<id>deploy</id>
 			<modules>
