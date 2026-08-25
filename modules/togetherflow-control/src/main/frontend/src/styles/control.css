@@ -556,3 +556,143 @@
   background: var(--tf-info-bg);
   color: var(--tf-info);
 }
+
+/* ── Case instances, definitions, event registry ──────────────────────────── */
+
+.tf-dialog--wide {
+  max-width: min(880px, 92vw);
+  max-height: 88vh;
+  overflow-y: auto;
+}
+.tf-dialog__actions--split {
+  justify-content: space-between;
+}
+
+/* Stage/milestone progress, compact for the inspector. */
+.tf-stage-chips {
+  list-style: none;
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--tf-space-2);
+  margin: 0 0 var(--tf-space-3);
+  padding: 0;
+}
+.tf-stage-chip {
+  padding: 0.15rem 0.6rem;
+  border-radius: 999px;
+  border: 1px solid var(--tf-border);
+  font-size: 0.8125rem;
+  color: var(--tf-text-muted);
+}
+.tf-stage-chip.is-done {
+  border-color: var(--tf-accent);
+  color: var(--tf-accent);
+  font-weight: 600;
+}
+.tf-stage-chip.is-current {
+  border-color: var(--tf-accent);
+  background: color-mix(in srgb, var(--tf-accent) 12%, transparent);
+  color: var(--tf-text);
+  font-weight: 600;
+}
+
+.tf-planitems {
+  list-style: none;
+  margin: 0 0 var(--tf-space-3);
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: var(--tf-space-1);
+}
+.tf-planitems__row {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto auto auto;
+  align-items: center;
+  gap: var(--tf-space-2);
+  padding: var(--tf-space-2) var(--tf-space-3);
+  border: 1px solid var(--tf-border);
+  border-radius: var(--tf-radius);
+}
+.tf-planitems__name {
+  font-weight: 600;
+  overflow-wrap: anywhere;
+}
+.tf-planitems__type {
+  font-size: 0.75rem;
+  color: var(--tf-text-muted);
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+.tf-planitems__actions {
+  display: flex;
+  gap: var(--tf-space-1);
+}
+
+/* Authorized starters */
+.tf-starters {
+  list-style: none;
+  margin: 0 0 var(--tf-space-3);
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: var(--tf-space-1);
+}
+.tf-starters__item {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr) auto;
+  align-items: center;
+  gap: var(--tf-space-2);
+  padding: var(--tf-space-1) var(--tf-space-2);
+  border: 1px solid var(--tf-border);
+  border-radius: var(--tf-radius);
+}
+.tf-starters__name {
+  font-weight: 600;
+}
+.tf-starters__add {
+  display: grid;
+  grid-template-columns: 140px minmax(0, 1fr) auto;
+  gap: var(--tf-space-2);
+  align-items: end;
+  padding-top: var(--tf-space-3);
+  border-top: 1px solid var(--tf-border);
+}
+.tf-starters__add .tf-field {
+  margin-bottom: 0;
+}
+@media (max-width: 640px) {
+  .tf-starters__add {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}
+
+/* Signal broadcast / send event */
+.tf-signal {
+  max-width: 620px;
+}
+.tf-note {
+  padding: var(--tf-space-3);
+  border: 1px solid var(--tf-border);
+  border-left: 3px solid var(--tf-accent);
+  border-radius: var(--tf-radius);
+  background: var(--tf-bg-subtle);
+  margin-bottom: var(--tf-space-4);
+}
+
+/* Deployed source, shown read-only. */
+.tf-source {
+  margin: 0 0 var(--tf-space-3);
+  padding: var(--tf-space-3);
+  border: 1px solid var(--tf-border);
+  border-radius: var(--tf-radius);
+  background: var(--tf-bg-subtle);
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-size: 0.8125rem;
+  line-height: 1.5;
+  overflow-x: auto;
+  max-height: 46vh;
+}
+.tf-source-input {
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-size: 0.8125rem;
+}

@@ -682,3 +682,112 @@
 .tf-form__radio input {
   margin: 0;
 }
+
+/* ── Case work (§7.1) ─────────────────────────────────────────────────────── */
+
+/* Stage/milestone progress: a vertical track with a marker per step. */
+.tf-stages {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+}
+.tf-stages__item {
+  position: relative;
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr) auto;
+  align-items: center;
+  gap: var(--tf-space-3);
+  padding: var(--tf-space-2) 0;
+}
+/* The connecting line, drawn behind the markers and stopped at the last item. */
+.tf-stages__item:not(:last-child)::before {
+  content: "";
+  position: absolute;
+  left: 5px;
+  top: 50%;
+  bottom: -50%;
+  width: 2px;
+  background: var(--tf-border);
+}
+.tf-stages__marker {
+  width: 12px;
+  height: 12px;
+  border-radius: 50%;
+  border: 2px solid var(--tf-border);
+  background: var(--tf-bg-raised);
+  z-index: 1;
+}
+.tf-stages__item.is-done .tf-stages__marker {
+  border-color: var(--tf-accent);
+  background: var(--tf-accent);
+}
+.tf-stages__item.is-current .tf-stages__marker {
+  border-color: var(--tf-accent);
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--tf-accent) 25%, transparent);
+}
+.tf-stages__name {
+  font-weight: 600;
+}
+.tf-stages__item:not(.is-done):not(.is-current) .tf-stages__name {
+  color: var(--tf-text-muted);
+  font-weight: 500;
+}
+.tf-stages__state {
+  font-size: 0.8125rem;
+  color: var(--tf-text-muted);
+}
+
+/* Plan items, nested by stage. */
+.tf-planitems {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: var(--tf-space-1);
+}
+.tf-planitems__row {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto auto auto;
+  align-items: center;
+  gap: var(--tf-space-2);
+  padding: var(--tf-space-2) var(--tf-space-3);
+  border: 1px solid var(--tf-border);
+  border-radius: var(--tf-radius);
+  background: var(--tf-bg-raised);
+}
+.tf-planitems__name {
+  font-weight: 600;
+  overflow-wrap: anywhere;
+}
+.tf-planitems__type {
+  font-size: 0.75rem;
+  color: var(--tf-text-muted);
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+.tf-planitems__actions {
+  display: flex;
+  gap: var(--tf-space-1);
+}
+/* Nested plan items sit inside their stage, with a rule marking the nesting. */
+.tf-planitems .tf-planitems {
+  margin-top: var(--tf-space-1);
+  border-inline-start: 2px solid var(--tf-border);
+}
+@media (max-width: 640px) {
+  .tf-planitems__row {
+    grid-template-columns: minmax(0, 1fr) auto;
+    row-gap: var(--tf-space-1);
+  }
+  .tf-planitems__actions {
+    grid-column: 1 / -1;
+  }
+}
+.tf-planitems__hint {
+  font-size: 0.8125rem;
+  color: var(--tf-text-muted);
+  white-space: nowrap;
+}

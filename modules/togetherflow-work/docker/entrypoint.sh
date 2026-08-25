@@ -4,6 +4,8 @@
 set -eu
 
 : "${TF_API_BASE:=/process-api}"
+# CMMN runs on its own servlet; case work is unreachable without it.
+: "${TF_CMMN_BASE:=/cmmn-api}"
 : "${TF_AUTH_MODE:=oidc}"
 : "${TF_OIDC_AUTHORITY:=}"
 : "${TF_OIDC_CLIENT_ID:=}"
@@ -18,6 +20,7 @@ fi
 cat > /usr/share/nginx/html/config.js <<JS
 window.__TOGETHERFLOW_CONFIG__ = {
   apiBase: "${TF_API_BASE}",
+  cmmnBase: "${TF_CMMN_BASE}",
   auth: {
     mode: "${TF_AUTH_MODE}",
     authority: "${TF_OIDC_AUTHORITY}",
@@ -27,4 +30,4 @@ window.__TOGETHERFLOW_CONFIG__ = {
 };
 JS
 
-echo "TogetherFlow: apiBase=${TF_API_BASE} authMode=${TF_AUTH_MODE}"
+echo "TogetherFlow: apiBase=${TF_API_BASE} cmmnBase=${TF_CMMN_BASE} authMode=${TF_AUTH_MODE}"

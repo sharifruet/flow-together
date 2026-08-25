@@ -1,5 +1,6 @@
 export * from "./api/client";
 export * from "./api/apps";
+export * from "./api/cases";
 export * from "./api/control";
 export * from "./api/events";
 export * from "./api/idm";

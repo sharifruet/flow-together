@@ -15,10 +15,12 @@ import {
   type Column,
   type HistoricProcessInstanceResponse,
   type HistoricTaskInstanceResponse,
+  type CaseApi,
+  type CaseInstanceResponse,
   type HistoryApi,
 } from "@togetherflow/common";
 
-type HistoryTab = "tasks" | "instances";
+type HistoryTab = "tasks" | "instances" | "cases";
 
 const PAGE_SIZE = 25;
 
@@ -27,7 +29,11 @@ export interface MyHistoryProps {
   userId: string;
 }
 
-export function MyHistory({ historyApi, userId }: MyHistoryProps) {
+export interface MyHistoryScreenProps extends MyHistoryProps {
+  caseApi: CaseApi;
+}
+
+export function MyHistory({ historyApi, caseApi, userId }: MyHistoryScreenProps) {
   const [tab, setTab] = useState<HistoryTab>("tasks");
 
   return (
@@ -54,12 +60,23 @@ export function MyHistory({ historyApi, userId }: MyHistoryProps) {
         >
           Process instances
         </button>
+        <button
+          type="button"
+          role="tab"
+          aria-selected={tab === "cases"}
+          className={chipClass(tab === "cases")}
+          onClick={() => setTab("cases")}
+        >
+          Cases
+        </button>
       </div>
 
       {tab === "tasks" ? (
         <CompletedTasks historyApi={historyApi} userId={userId} />
-      ) : (
+      ) : tab === "instances" ? (
         <MyInstances historyApi={historyApi} userId={userId} />
+      ) : (
+        <MyCaseHistory caseApi={caseApi} userId={userId} />
       )}
     </section>
   );
@@ -285,4 +302,97 @@ export function formatDuration(millis: number | null | undefined): string {
   const hours = Math.round(minutes / 60);
   if (hours < 24) return `${hours}h`;
   return `${Math.round(hours / 24)}d`;
+}
+
+/**
+ * Cases the user took part in.
+ *
+ * Uses the historic query rather than the runtime one: a finished case is gone from the
+ * runtime tables, and "my history" is mostly about finished work. Running cases are
+ * included too (the historic tables hold both), so this stays a complete record rather
+ * than silently omitting anything still open.
+ */
+function MyCaseHistory({ caseApi, userId }: { caseApi: CaseApi; userId: string }) {
+  const [start, setStart] = useState(0);
+
+  const request = useMemo(
+    () => ({ start, size: PAGE_SIZE, involvedUser: userId }),
+    [start, userId],
+  );
+
+  const { data, error, loading, refetch } = useAsync(
+    (signal) => caseApi.queryHistoric(request, signal),
+    [caseApi, request],
+  );
+
+  const columns = useMemo<Column<CaseInstanceResponse>[]>(
+    () => [
+      {
+        key: "name",
+        header: "Case",
+        render: (instance) => (
+          <div className="tf-task-cell">
+            <span className="tf-task-cell__name">
+              {instance.name || instance.caseDefinitionName || instance.id}
+            </span>
+            {instance.businessKey ? (
+              <span className="tf-task-cell__description">{instance.businessKey}</span>
+            ) : null}
+          </div>
+        ),
+      },
+      {
+        key: "status",
+        header: "Status",
+        width: "120px",
+        render: (instance) =>
+          instance.endTime ? (
+            <span className="tf-badge tf-badge--done">Completed</span>
+          ) : (
+            <span className="tf-badge tf-badge--running">Running</span>
+          ),
+      },
+      {
+        key: "started",
+        header: "Started",
+        width: "190px",
+        secondary: true,
+        render: (instance) => formatDateTime(instance.startTime ?? undefined),
+      },
+    ],
+    [],
+  );
+
+  return (
+    <AsyncBoundary
+      loading={loading}
+      error={error}
+      data={data}
+      onRetry={refetch}
+      isEmpty={(page) => page.data.length === 0}
+      empty={
+        <EmptyState
+          title="No cases yet"
+          description="Cases you start or take part in will be listed here."
+        />
+      }
+    >
+      {(page) => (
+        <>
+          <DataTable
+            caption="My cases"
+            columns={columns}
+            rows={page.data}
+            rowKey={(instance) => instance.id}
+          />
+          <Pagination
+            start={page.start}
+            size={page.size || PAGE_SIZE}
+            total={page.total}
+            onChange={setStart}
+          />
+        </>
+      )}
+    </AsyncBoundary>
+  );
 }

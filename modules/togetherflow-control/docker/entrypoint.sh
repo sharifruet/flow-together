@@ -6,6 +6,9 @@ set -eu
 : "${TF_API_BASE:=/process-api}"
 : "${TF_IDM_BASE:=/idm-api}"
 : "${TF_DMN_BASE:=/dmn-api}"
+# Case instances and the event registry each sit on their own servlet.
+: "${TF_CMMN_BASE:=/cmmn-api}"
+: "${TF_EVENT_BASE:=/event-registry-api}"
 : "${TF_EXTERNAL_JOB_BASE:=/external-job-api}"
 : "${TF_IDENTITY_READ_ONLY:=false}"
 : "${TF_AUTH_MODE:=oidc}"
@@ -24,6 +27,8 @@ window.__TOGETHERFLOW_CONFIG__ = {
   apiBase: "${TF_API_BASE}",
   idmBase: "${TF_IDM_BASE}",
   dmnBase: "${TF_DMN_BASE}",
+  cmmnBase: "${TF_CMMN_BASE}",
+  eventBase: "${TF_EVENT_BASE}",
   externalJobBase: "${TF_EXTERNAL_JOB_BASE}",
   identity: { readOnly: ${TF_IDENTITY_READ_ONLY} },
   auth: {

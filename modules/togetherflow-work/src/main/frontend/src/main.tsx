@@ -17,7 +17,7 @@ try {
         oidc={config.auth.oidc}
       >
         <TenantProvider>
-          <WorkApp baseUrl={config.apiBase} />
+          <WorkApp baseUrl={config.apiBase} cmmnBase={config.cmmnBase} />
         </TenantProvider>
       </AuthProvider>
     </StrictMode>,

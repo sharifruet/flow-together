@@ -1,7 +1,10 @@
 import { useMemo, useState } from "react";
 import {
   ApiClient,
+  CaseApi,
+  CaseDefinitionAccessApi,
   DecisionHistoryApi,
+  EventRegistryApi,
   ExternalWorkerApi,
   InstanceApi,
   JobApi,
@@ -14,6 +17,9 @@ import {
 import { AppShell, type ControlView } from "./features/shell/AppShell";
 import { LoginScreen } from "./features/shell/LoginScreen";
 import { Instances } from "./features/instances/Instances";
+import { CaseInstances } from "./features/cases/CaseInstances";
+import { Definitions } from "./features/definitions/Definitions";
+import { EventRegistry } from "./features/events/EventRegistry";
 import { Jobs } from "./features/jobs/Jobs";
 import { Deployments } from "./features/deployments/Deployments";
 import { System } from "./features/system/System";
@@ -21,17 +27,26 @@ import { System } from "./features/system/System";
 export interface AppProps {
   apiBase: string;
   dmnBase: string;
+  cmmnBase: string;
+  eventBase: string;
   externalJobBase: string;
   fetchImpl?: typeof fetch;
 }
 
-export function App({ apiBase, dmnBase, externalJobBase, fetchImpl }: AppProps) {
+export function App({
+  apiBase,
+  dmnBase,
+  cmmnBase,
+  eventBase,
+  externalJobBase,
+  fetchImpl,
+}: AppProps) {
   const { session, signOut, getAuthHeaders, isInitialising } = useAuth();
   const { tenantId } = useTenant();
   const [view, setView] = useState<ControlView>("instances");
 
-  // Three servlets, three clients — the DMN and external-job APIs are mounted
-  // separately from the process API.
+  // Each engine is a separate servlet, so each gets its own client over the same
+  // auth and tenant wiring.
   const clients = useMemo(() => {
     const make = (baseUrl: string) =>
       new ApiClient({
@@ -41,8 +56,24 @@ export function App({ apiBase, dmnBase, externalJobBase, fetchImpl }: AppProps) 
         getTenantId: () => tenantId,
         onUnauthorized: signOut,
       });
-    return { process: make(apiBase), dmn: make(dmnBase), externalJob: make(externalJobBase) };
-  }, [apiBase, dmnBase, externalJobBase, fetchImpl, getAuthHeaders, tenantId, signOut]);
+    return {
+      process: make(apiBase),
+      dmn: make(dmnBase),
+      cmmn: make(cmmnBase),
+      event: make(eventBase),
+      externalJob: make(externalJobBase),
+    };
+  }, [
+    apiBase,
+    dmnBase,
+    cmmnBase,
+    eventBase,
+    externalJobBase,
+    fetchImpl,
+    getAuthHeaders,
+    tenantId,
+    signOut,
+  ]);
 
   const apis = useMemo(
     () => ({
@@ -51,6 +82,9 @@ export function App({ apiBase, dmnBase, externalJobBase, fetchImpl }: AppProps) 
       repository: new RepositoryApi(clients.process),
       system: new SystemApi(clients.process),
       decisions: new DecisionHistoryApi(clients.dmn),
+      cases: new CaseApi(clients.cmmn),
+      caseAccess: new CaseDefinitionAccessApi(clients.cmmn),
+      events: new EventRegistryApi(clients.event),
       workers: new ExternalWorkerApi(clients.externalJob),
     }),
     [clients],
@@ -71,6 +105,16 @@ export function App({ apiBase, dmnBase, externalJobBase, fetchImpl }: AppProps) 
   return (
     <AppShell view={view} onViewChange={setView}>
       {view === "instances" ? <Instances instanceApi={apis.instances} /> : null}
+      {view === "cases" ? <CaseInstances caseApi={apis.cases} /> : null}
+      {view === "definitions" ? (
+        <Definitions
+          repositoryApi={apis.repository}
+          caseApi={apis.cases}
+          caseAccessApi={apis.caseAccess}
+          systemApi={apis.system}
+        />
+      ) : null}
+      {view === "events" ? <EventRegistry eventApi={apis.events} /> : null}
       {view === "jobs" ? <Jobs jobApi={apis.jobs} /> : null}
       {view === "deployments" ? <Deployments repositoryApi={apis.repository} /> : null}
       {view === "system" ? (

@@ -38,6 +38,7 @@ export default defineConfig({
     port: 5273,
     proxy: {
       "/process-api": proxy("/service"),
+      "/cmmn-api": proxy("/cmmn-api"),
     },
   },
 });

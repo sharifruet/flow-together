@@ -1,7 +1,7 @@
 import { render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { describe, expect, it, vi } from "vitest";
-import { ApiError, type HistoryApi } from "@togetherflow/common";
+import { ApiError, type CaseApi, type HistoryApi } from "@togetherflow/common";
 import type { Mock } from "vitest";
 import { MyHistory, formatDuration } from "./MyHistory";
 
@@ -14,6 +14,14 @@ type StubHistoryApi = HistoryApi & {
   queryTasks: Mock;
   queryProcessInstances: Mock;
 };
+
+/** Cases live on a separate engine, so the screen takes a second API. */
+function stubCaseApi(overrides: Partial<Record<string, unknown>> = {}): CaseApi & { queryHistoric: Mock } {
+  return {
+    queryHistoric: vi.fn().mockResolvedValue(page([])),
+    ...overrides,
+  } as unknown as CaseApi & { queryHistoric: Mock };
+}
 
 function stubApi(overrides: Partial<Record<string, unknown>> = {}): StubHistoryApi {
   return {
@@ -37,7 +45,7 @@ describe("formatDuration", () => {
 describe("MyHistory", () => {
   it("queries the signed-in user's finished tasks, newest first", async () => {
     const api = stubApi();
-    render(<MyHistory historyApi={api} userId="alice" />);
+    render(<MyHistory historyApi={api} caseApi={stubCaseApi()} userId="alice" />);
 
     await waitFor(() => expect(api.queryTasks).toHaveBeenCalled());
     expect(api.queryTasks.mock.calls[0][0]).toMatchObject({
@@ -56,19 +64,19 @@ describe("MyHistory", () => {
         ]),
       ),
     });
-    render(<MyHistory historyApi={api} userId="alice" />);
+    render(<MyHistory historyApi={api} caseApi={stubCaseApi()} userId="alice" />);
 
     expect(await screen.findByText("Approve invoice")).toBeInTheDocument();
     expect(screen.getByText("2m")).toBeInTheDocument();
   });
 
   it("shows a guiding empty state when nothing is finished", async () => {
-    render(<MyHistory historyApi={stubApi()} userId="alice" />);
+    render(<MyHistory historyApi={stubApi()} caseApi={stubCaseApi()} userId="alice" />);
     expect(await screen.findByText(/nothing completed yet/i)).toBeInTheDocument();
   });
 
   it("distinguishes a zero-results search", async () => {
-    render(<MyHistory historyApi={stubApi()} userId="alice" />);
+    render(<MyHistory historyApi={stubApi()} caseApi={stubCaseApi()} userId="alice" />);
     await screen.findByText(/nothing completed yet/i);
 
     await userEvent.type(screen.getByRole("searchbox"), "zzz");
@@ -85,7 +93,7 @@ describe("MyHistory", () => {
         ]),
       ),
     });
-    render(<MyHistory historyApi={api} userId="alice" />);
+    render(<MyHistory historyApi={api} caseApi={stubCaseApi()} userId="alice" />);
 
     await userEvent.click(screen.getByRole("tab", { name: /process instances/i }));
 
@@ -100,7 +108,7 @@ describe("MyHistory", () => {
     const api = stubApi({
       queryTasks: vi.fn().mockRejectedValue(new ApiError("Boom", 500, "corr-h", undefined)),
     });
-    render(<MyHistory historyApi={api} userId="alice" />);
+    render(<MyHistory historyApi={api} caseApi={stubCaseApi()} userId="alice" />);
 
     expect(await screen.findByText(/couldn't load this/i)).toBeInTheDocument();
     expect(screen.getByText("corr-h")).toBeInTheDocument();
@@ -110,7 +118,7 @@ describe("MyHistory", () => {
     const api = stubApi({
       queryTasks: vi.fn().mockResolvedValue(page([{ id: "h1", name: "T" }], 80)),
     });
-    render(<MyHistory historyApi={api} userId="alice" />);
+    render(<MyHistory historyApi={api} caseApi={stubCaseApi()} userId="alice" />);
     await screen.findByText("T");
 
     await userEvent.click(screen.getByRole("button", { name: /next/i }));

@@ -16,6 +16,8 @@ try {
           <ControlApp
             apiBase={config.apiBase}
             dmnBase={config.dmnBase}
+            cmmnBase={config.cmmnBase}
+            eventBase={config.eventBase}
             externalJobBase={config.externalJobBase}
           />
         </TenantProvider>

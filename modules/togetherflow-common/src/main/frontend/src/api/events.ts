@@ -103,6 +103,44 @@ export class EventRegistryApi {
     });
   }
 
+  /** The deployed event model — the JSON exactly as it was deployed. */
+  getEventModel(eventDefinitionId: string, signal?: AbortSignal): Promise<EventFileModel> {
+    return this.client.request(
+      `/event-registry-repository/event-definitions/${encodeURIComponent(eventDefinitionId)}/model`,
+      { signal },
+    );
+  }
+
+  getChannelModel(channelDefinitionId: string, signal?: AbortSignal): Promise<ChannelFileModel> {
+    return this.client.request(
+      `/event-registry-repository/channel-definitions/${encodeURIComponent(channelDefinitionId)}/model`,
+      { signal },
+    );
+  }
+
+  /**
+   * Sends an event into the registry, as if it had arrived on the channel.
+   *
+   * Verified against a running engine, and worth stating precisely because the class
+   * name suggests otherwise: `EventInstanceCollectionResource` is **POST-only**. There
+   * is no endpoint that lists received event instances — the engine keeps no such log.
+   * So an operator cannot browse events that arrived; they can send one and observe
+   * what it starts. A `channelDefinitionKey` is required (the engine answers "Either
+   * channelDefinitionId or channelDefinitionKey is required" without it), and the
+   * payload is a plain JSON object under `eventPayload`, not a name/value array.
+   */
+  sendEvent(request: {
+    eventDefinitionKey: string;
+    channelDefinitionKey: string;
+    eventPayload: Record<string, unknown>;
+  }): Promise<void> {
+    const tenantId = this.client.tenantId;
+    return this.client.request("/event-registry-runtime/event-instances", {
+      method: "POST",
+      body: tenantId ? { ...request, tenantId } : request,
+    });
+  }
+
   /**
    * Deploys a single `.event` or `.channel` file. This endpoint takes one file and
    * does **not** accept an archive, so a model carrying both an event and a channel

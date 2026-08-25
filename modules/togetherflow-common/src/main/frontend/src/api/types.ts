@@ -250,6 +250,8 @@ export interface CaseDefinitionResponse {
   deploymentId?: string;
   category?: string;
   startFormDefined?: boolean;
+  /** False for hand-written .cmmn files with no CMMNDI — no diagram can be rendered. */
+  graphicalNotationDefined?: boolean;
 }
 
 export interface CaseInstanceCreateRequest {
@@ -263,13 +265,23 @@ export interface CaseInstanceCreateRequest {
 
 export interface CaseInstanceResponse {
   id: string;
-  name?: string;
-  businessKey?: string;
+  url?: string;
+  name?: string | null;
+  businessKey?: string | null;
+  businessStatus?: string | null;
   caseDefinitionId?: string;
-  caseDefinitionName?: string;
+  caseDefinitionName?: string | null;
+  caseDefinitionKey?: string;
+  caseDefinitionVersion?: number;
+  caseDefinitionDescription?: string | null;
   startTime?: string;
-  startUserId?: string;
+  /** Set only on a finished case; the runtime query never returns one. */
+  endTime?: string | null;
+  startUserId?: string | null;
   state?: string;
+  completed?: boolean;
+  ended?: boolean;
+  parentId?: string | null;
   tenantId?: string;
 }
 

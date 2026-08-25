@@ -10,7 +10,14 @@
 import { useEffect, useRef, useState, type ReactNode } from "react";
 import { Brand, useAuth, useTenant } from "@togetherflow/common";
 
-export type ControlView = "instances" | "jobs" | "deployments" | "system";
+export type ControlView =
+  | "instances"
+  | "cases"
+  | "definitions"
+  | "jobs"
+  | "deployments"
+  | "events"
+  | "system";
 
 export interface AppShellProps {
   view: ControlView;
@@ -54,7 +61,17 @@ export function AppShell({ view, onViewChange, children }: AppShellProps) {
         </div>
 
         <nav className="tf-shell__nav" aria-label="Control sections">
-          {(["instances", "jobs", "deployments", "system"] as ControlView[]).map((section) => (
+          {(
+            [
+              "instances",
+              "cases",
+              "definitions",
+              "jobs",
+              "deployments",
+              "events",
+              "system",
+            ] as ControlView[]
+          ).map((section) => (
             <button
               key={section}
               type="button"

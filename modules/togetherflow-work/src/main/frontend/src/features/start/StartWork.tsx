@@ -1,3 +1,11 @@
+/**
+ * Start new work (REQUIREMENTS.md §7.1): browse what the user may start, and start it.
+ *
+ * Processes and cases live on different engines and different servlets, but from the
+ * user's side "start something" is one job, so they share one screen with a kind
+ * switch rather than being split into two pages.
+ */
+
 import { useEffect, useMemo, useRef, useState } from "react";
 import {
   ApiError,
@@ -17,20 +25,34 @@ import {
   validateVariables,
   type EditableVariable,
   type FormValues,
+  type CaseApi,
   type ProcessApi,
-  type ProcessDefinitionResponse,
 } from "@togetherflow/common";
 import { VariableEditor } from "../tasks/VariableEditor";
 
+export type StartKind = "process" | "case";
+
+/** What both definition kinds have in common, as far as this screen is concerned. */
+type Startable = {
+  id: string;
+  key: string;
+  name?: string;
+  version: number;
+  description?: string;
+  startFormDefined?: boolean;
+};
+
 export interface StartWorkProps {
   processApi: ProcessApi;
-  onStarted: () => void;
+  caseApi: CaseApi;
+  onStarted: (kind: StartKind) => void;
 }
 
-export function StartWork({ processApi, onStarted }: StartWorkProps) {
+export function StartWork({ processApi, caseApi, onStarted }: StartWorkProps) {
   const { push } = useToast();
+  const [kind, setKind] = useState<StartKind>("process");
   const [search, setSearch] = useState("");
-  const [selected, setSelected] = useState<ProcessDefinitionResponse | null>(null);
+  const [selected, setSelected] = useState<Startable | null>(null);
   const [businessKey, setBusinessKey] = useState("");
   const [variables, setVariables] = useState<EditableVariable[]>([]);
   const [formValues, setFormValues] = useState<FormValues>({});
@@ -38,8 +60,11 @@ export function StartWork({ processApi, onStarted }: StartWorkProps) {
   const [busy, setBusy] = useState(false);
 
   const { data, error, loading, refetch } = useAsync(
-    (signal) => processApi.listDefinitions({ latest: true }, signal),
-    [processApi],
+    async (signal) =>
+      kind === "process"
+        ? await processApi.listDefinitions({ latest: true }, signal)
+        : await caseApi.listDefinitions({ latest: true }, signal),
+    [processApi, caseApi, kind],
   );
 
   const filtered = useMemo(() => {
@@ -53,9 +78,13 @@ export function StartWork({ processApi, onStarted }: StartWorkProps) {
 
   // Only fetched once a definition is chosen, and only when it declares a start form.
   const startForm = useAsync(
-    async (signal) =>
-      selected?.startFormDefined ? await processApi.getStartForm(selected.id, signal) : null,
-    [processApi, selected?.id, selected?.startFormDefined],
+    async (signal) => {
+      if (!selected?.startFormDefined) return null;
+      return kind === "process"
+        ? await processApi.getStartForm(selected.id, signal)
+        : await caseApi.getStartForm(selected.id, signal);
+    },
+    [processApi, caseApi, kind, selected?.id, selected?.startFormDefined],
   );
 
   const form = startForm.data ?? undefined;
@@ -92,12 +121,15 @@ export function StartWork({ processApi, onStarted }: StartWorkProps) {
     if (!selected) return;
     setBusy(true);
     try {
-      const instance = await processApi.start({
-        processDefinitionId: selected.id,
+      const request = {
         businessKey: businessKey.trim() || undefined,
         variables:
           usingForm && form ? formValuesToVariables(form, formValues) : toRestVariables(variables),
-      });
+      };
+      const instance =
+        kind === "process"
+          ? await processApi.start({ ...request, processDefinitionId: selected.id })
+          : await caseApi.start({ ...request, caseDefinitionId: selected.id });
       push({
         tone: "success",
         message: `Started "${selected.name ?? selected.key}".`,
@@ -107,13 +139,13 @@ export function StartWork({ processApi, onStarted }: StartWorkProps) {
       setVariables([]);
       setFormValues({});
       setTouched({});
-      onStarted();
+      onStarted(kind);
       return instance;
     } catch (cause) {
       const apiError = cause instanceof ApiError ? cause : undefined;
       push({
         tone: "error",
-        message: apiError?.message ?? "Could not start that process.",
+        message: apiError?.message ?? `Could not start that ${kind}.`,
         reference: apiError?.correlationId,
       });
     } finally {
@@ -125,7 +157,7 @@ export function StartWork({ processApi, onStarted }: StartWorkProps) {
     return (
       <section className="tf-start" aria-label={`Start ${selected.name ?? selected.key}`}>
         <button type="button" className="tf-back" onClick={() => setSelected(null)}>
-          ← Back to all processes
+          ← Back to all {kind === "process" ? "processes" : "cases"}
         </button>
         <h1 className="tf-start__title">{selected.name ?? selected.key}</h1>
         <p className="tf-start__meta">
@@ -161,7 +193,7 @@ export function StartWork({ processApi, onStarted }: StartWorkProps) {
             <>
               {selected.startFormDefined ? (
                 <p className="tf-detail__note">
-                  This process declares a start form, but its definition could not be loaded.
+                  This {kind} declares a start form, but its definition could not be loaded.
                   Set the underlying variables instead.
                 </p>
               ) : null}
@@ -197,17 +229,46 @@ export function StartWork({ processApi, onStarted }: StartWorkProps) {
   return (
     <section className="tf-start" aria-label="Start new work">
       <h1 className="tf-start__title">Start work</h1>
-      <p className="tf-start__meta">Choose a process to start a new instance.</p>
+      <p className="tf-start__meta">
+        Choose a {kind === "process" ? "process" : "case"} to start a new instance.
+      </p>
+
+      <div className="tf-inbox__filters" role="tablist" aria-label="What to start">
+        <button
+          type="button"
+          role="tab"
+          aria-selected={kind === "process"}
+          className={["tf-chip", kind === "process" ? "tf-chip--active" : ""].filter(Boolean).join(" ")}
+          onClick={() => {
+            setKind("process");
+            setSearch("");
+          }}
+        >
+          Processes
+        </button>
+        <button
+          type="button"
+          role="tab"
+          aria-selected={kind === "case"}
+          className={["tf-chip", kind === "case" ? "tf-chip--active" : ""].filter(Boolean).join(" ")}
+          onClick={() => {
+            setKind("case");
+            setSearch("");
+          }}
+        >
+          Cases
+        </button>
+      </div>
 
       <div className="tf-start__search">
         <label className="tf-visually-hidden" htmlFor="tf-definition-search">
-          Search processes
+          Search {kind === "process" ? "processes" : "cases"}
         </label>
         <input
           id="tf-definition-search"
           className="tf-input"
           type="search"
-          placeholder="Search processes…"
+          placeholder={kind === "process" ? "Search processes…" : "Search cases…"}
           value={search}
           onChange={(event) => setSearch(event.target.value)}
         />
@@ -221,8 +282,8 @@ export function StartWork({ processApi, onStarted }: StartWorkProps) {
         isEmpty={(page) => page.data.length === 0}
         empty={
           <EmptyState
-            title="No processes deployed"
-            description="Once a process is deployed to the engine, it'll be startable from here."
+            title={kind === "process" ? "No processes deployed" : "No cases deployed"}
+            description={`Once a ${kind} is deployed to the engine, it'll be startable from here.`}
           />
         }
       >

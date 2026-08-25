@@ -4,9 +4,6 @@ import type { ApiClient } from "./client";
 import type {
   AttachmentLinkRequest,
   AttachmentResponse,
-  CaseDefinitionResponse,
-  CaseInstanceCreateRequest,
-  CaseInstanceResponse,
   CommentResponse,
   DataResponse,
   FormModelResponse,
@@ -228,29 +225,9 @@ export class ProcessApi {
  * CMMN lives behind its own servlet prefix, so it takes a separately-configured client
  * rather than reusing the process one.
  */
-export class CaseApi {
-  constructor(private readonly client: ApiClient) {}
 
-  listDefinitions(
-    params: { latest?: boolean; size?: number } = {},
-    signal?: AbortSignal,
-  ): Promise<DataResponse<CaseDefinitionResponse>> {
-    return this.client.request("/cmmn-repository/case-definitions", {
-      query: {
-        latest: params.latest ?? true,
-        size: params.size ?? 100,
-        tenantId: this.client.tenantId,
-        sort: "name",
-      },
-      signal,
-    });
-  }
-
-  start(request: CaseInstanceCreateRequest): Promise<CaseInstanceResponse> {
-    const tenantId = this.client.tenantId;
-    return this.client.request("/cmmn-runtime/case-instances", {
-      method: "POST",
-      body: tenantId ? { ...request, tenantId } : request,
-    });
-  }
-}
+/*
+ * The CMMN runtime API (case instances, plan items, milestones, start) lives in
+ * `cases.ts`. An earlier stub here duplicated its definition-list and start calls and
+ * was never wired to a screen; it was folded in rather than left to drift.
+ */

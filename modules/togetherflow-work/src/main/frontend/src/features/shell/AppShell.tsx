@@ -7,7 +7,7 @@
 import { useEffect, useRef, useState, type ReactNode } from "react";
 import { Brand, useAuth, useTenant } from "@togetherflow/common";
 
-export type WorkView = "inbox" | "start" | "history";
+export type WorkView = "inbox" | "cases" | "start" | "history";
 
 export interface AppShellProps {
   view: WorkView;
@@ -58,6 +58,14 @@ export function AppShell({ view, onViewChange, children }: AppShellProps) {
             onClick={() => onViewChange("inbox")}
           >
             Tasks
+          </button>
+          <button
+            type="button"
+            className={navClass(view === "cases")}
+            aria-current={view === "cases" ? "page" : undefined}
+            onClick={() => onViewChange("cases")}
+          >
+            Cases
           </button>
           <button
             type="button"

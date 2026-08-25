@@ -7,7 +7,12 @@
  */
 
 import type { ApiClient } from "./client";
-import type { DataResponse, ProcessInstanceResponse, RestVariable } from "./types";
+import type {
+  DataResponse,
+  ProcessDefinitionResponse,
+  ProcessInstanceResponse,
+  RestVariable,
+} from "./types";
 
 /* ── Types ──────────────────────────────────────────────────────────────── */
 
@@ -398,6 +403,30 @@ export class RepositoryApi {
   }
 
   /**
+   * Lists process definitions **without** filtering on suspension.
+   *
+   * `ProcessApi.listDefinitions` defaults `suspended: false` because Work only offers
+   * startable processes; an admin screen that inherited that default would hide exactly
+   * the definitions it exists to un-suspend.
+   */
+  listProcessDefinitions(
+    query: { latest?: boolean; size?: number; nameLike?: string; suspended?: boolean } = {},
+    signal?: AbortSignal,
+  ): Promise<DataResponse<ProcessDefinitionResponse>> {
+    return this.client.request("/repository/process-definitions", {
+      query: {
+        latest: query.latest ?? true,
+        size: query.size ?? 100,
+        nameLike: query.nameLike,
+        suspended: query.suspended,
+        sort: "name",
+        tenantId: this.client.tenantId,
+      },
+      signal,
+    });
+  }
+
+  /**
    * Suspend/activate a process definition. Only BPMN definitions support this —
    * the CMMN and DMN REST layers expose no equivalent (§7.2).
    */
@@ -432,6 +461,37 @@ export class RepositoryApi {
   removeStarter(definitionId: string, family: "users" | "groups", identityId: string): Promise<void> {
     return this.client.request(
       `/repository/process-definitions/${encodeURIComponent(definitionId)}/identitylinks/${family}/${encodeURIComponent(identityId)}`,
+      { method: "DELETE" },
+    );
+  }
+}
+
+/**
+ * Authorized starters for a **case** definition.
+ *
+ * The CMMN servlet exposes the same identity-link shape as BPMN, on its own base URL,
+ * so this takes a separate client rather than duplicating the whole repository API.
+ */
+export class CaseDefinitionAccessApi {
+  constructor(private readonly client: ApiClient) {}
+
+  listStarters(definitionId: string, signal?: AbortSignal): Promise<RestIdentityLink[]> {
+    return this.client.request(
+      `/cmmn-repository/case-definitions/${encodeURIComponent(definitionId)}/identitylinks`,
+      { signal },
+    );
+  }
+
+  addStarter(definitionId: string, identity: { user?: string; group?: string }): Promise<RestIdentityLink> {
+    return this.client.request(
+      `/cmmn-repository/case-definitions/${encodeURIComponent(definitionId)}/identitylinks`,
+      { method: "POST", body: identity },
+    );
+  }
+
+  removeStarter(definitionId: string, family: "users" | "groups", identityId: string): Promise<void> {
+    return this.client.request(
+      `/cmmn-repository/case-definitions/${encodeURIComponent(definitionId)}/identitylinks/${family}/${encodeURIComponent(identityId)}`,
       { method: "DELETE" },
     );
   }
