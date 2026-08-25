@@ -206,3 +206,93 @@ export function userDisplayName(user: IdmUser): string {
   const full = [user.firstName, user.lastName].filter(Boolean).join(" ").trim();
   return full || user.id;
 }
+
+/* ── Profile pictures and custom user info (§7.3) ─────────────────────────── */
+
+export interface UserInfoEntry {
+  key: string;
+  value?: string;
+  url?: string;
+}
+
+/**
+ * User pictures and custom info key/value pairs.
+ *
+ * **These are not on the IDM servlet.** §7.3 cites `UserPictureResource` and
+ * `UserInfoCollectionResource`, and both live in `flowable-rest` under
+ * `/identity/users/{id}/…` — the *process* API. Verified against a running engine: the
+ * same paths on `/idm-api` answer "No endpoint". So this takes the process client even
+ * though it is an identity concern.
+ */
+export class UserProfileApi {
+  constructor(private readonly client: ApiClient) {}
+
+  /**
+   * Lists the info keys for a user.
+   *
+   * The collection endpoint returns **keys only** — each entry carries `key` and `url`
+   * but no `value`. Reading the values means one request per key, which `listInfo`
+   * below does, so callers get what they actually asked for.
+   */
+  async listInfoKeys(userId: string, signal?: AbortSignal): Promise<UserInfoEntry[]> {
+    return this.client.request(`/identity/users/${encodeURIComponent(userId)}/info`, { signal });
+  }
+
+  /** Keys and their values, resolved. */
+  async listInfo(userId: string, signal?: AbortSignal): Promise<UserInfoEntry[]> {
+    const keys = await this.listInfoKeys(userId, signal);
+    return Promise.all(
+      keys.map(async (entry) => {
+        try {
+          return await this.getInfo(userId, entry.key, signal);
+        } catch {
+          // One unreadable key must not blank the whole list.
+          return { key: entry.key, value: undefined };
+        }
+      }),
+    );
+  }
+
+  getInfo(userId: string, key: string, signal?: AbortSignal): Promise<UserInfoEntry> {
+    return this.client.request(
+      `/identity/users/${encodeURIComponent(userId)}/info/${encodeURIComponent(key)}`,
+      { signal },
+    );
+  }
+
+  setInfo(userId: string, key: string, value: string): Promise<UserInfoEntry> {
+    return this.client.request(`/identity/users/${encodeURIComponent(userId)}/info`, {
+      method: "POST",
+      body: { key, value },
+    });
+  }
+
+  updateInfo(userId: string, key: string, value: string): Promise<UserInfoEntry> {
+    return this.client.request(
+      `/identity/users/${encodeURIComponent(userId)}/info/${encodeURIComponent(key)}`,
+      { method: "PUT", body: { value } },
+    );
+  }
+
+  deleteInfo(userId: string, key: string): Promise<void> {
+    return this.client.request(
+      `/identity/users/${encodeURIComponent(userId)}/info/${encodeURIComponent(key)}`,
+      { method: "DELETE" },
+    );
+  }
+
+  /** 404 when the user has no picture, which is the common case, not an error. */
+  pictureUrl(userId: string): string {
+    return this.client.buildUrl(`/identity/users/${encodeURIComponent(userId)}/picture`);
+  }
+
+  uploadPicture(userId: string, file: File): Promise<void> {
+    const form = new FormData();
+    form.append("file", file, file.name);
+    return this.client.request(`/identity/users/${encodeURIComponent(userId)}/picture`, {
+      method: "PUT",
+      query: { mimeType: file.type || "image/png" },
+      body: form,
+    });
+  }
+}

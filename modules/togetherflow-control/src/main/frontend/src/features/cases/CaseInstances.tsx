@@ -113,13 +113,13 @@ export function CaseInstances({ caseApi }: CaseInstancesProps) {
   );
 
   return (
-    <section className="tf-section" aria-label="Case instances">
-      <header className="tf-section__header">
+    <section className="tf-panel" aria-label="Case instances">
+      <header className="tf-panel__header">
         <div>
-          <h1 className="tf-section__title">Case instances</h1>
-          <p className="tf-section__meta">Running cases across the engine.</p>
+          <h1 className="tf-panel__title">Case instances</h1>
+          <p className="tf-panel__meta">Running cases across the engine.</p>
         </div>
-        <div className="tf-section__search">
+        <div className="tf-panel__search">
           <label className="tf-visually-hidden" htmlFor="tf-case-instance-search">
             Search cases by reference
           </label>

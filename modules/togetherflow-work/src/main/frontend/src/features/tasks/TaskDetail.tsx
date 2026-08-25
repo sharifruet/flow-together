@@ -3,6 +3,7 @@ import {
   ApiError,
   AsyncBoundary,
   Button,
+  TextInput,
   ConfirmDialog,
   EmptyState,
   FormRenderer,
@@ -53,21 +54,38 @@ export function TaskDetail({
   const [busy, setBusy] = useState(false);
   const [confirmComplete, setConfirmComplete] = useState(false);
   const [comment, setComment] = useState("");
+  const [delegating, setDelegating] = useState(false);
+  const [delegateTo, setDelegateTo] = useState("");
   const [reloadToken, setReloadToken] = useState(0);
 
   const detail = useAsync(
     async (signal) => {
       if (!taskId) return undefined;
-      const [task, taskVariables, comments, attachments] = await Promise.all([
-        taskApi.get(taskId, signal),
-        taskApi.listVariables(taskId, signal).catch(() => []),
-        taskApi.listComments(taskId, signal).catch(() => []),
-        taskApi.listAttachments(taskId, signal).catch(() => []),
-      ]);
+      const [task, taskVariables, comments, attachments, subTasks, people, log] =
+        await Promise.all([
+          taskApi.get(taskId, signal),
+          taskApi.listVariables(taskId, signal).catch(() => []),
+          taskApi.listComments(taskId, signal).catch(() => []),
+          taskApi.listAttachments(taskId, signal).catch(() => []),
+          taskApi.listSubTasks(taskId, signal).catch(() => []),
+          taskApi.listIdentityLinks(taskId, signal).catch(() => []),
+          // Empty on any engine that has not enabled historic task logging, which is
+          // the default — so a failure here must not take the whole panel down.
+          taskApi.listLogEntries(taskId, signal).catch(() => undefined),
+        ]);
       // Only ask for a form when the task declares one: the endpoint 400s otherwise,
       // and a needless failed request on every task selection is wasteful noise.
       const form = task.formKey ? await taskApi.getForm(taskId, signal) : null;
-      return { task, variables: taskVariables, comments, attachments, form };
+      return {
+        task,
+        variables: taskVariables,
+        comments,
+        attachments,
+        form,
+        subTasks,
+        people,
+        log,
+      };
     },
     [taskApi, taskId, reloadToken],
   );
@@ -210,6 +228,12 @@ export function TaskDetail({
                     )}
                     {" · "}
                     {priorityLabel(current.priority)} priority
+                    {current.scopeType === "cmmn" ? (
+                      <>
+                        {" · "}
+                        <span className="tf-badge tf-badge--running">Case</span>
+                      </>
+                    ) : null}
                   </p>
                 </div>
                 <button
@@ -245,6 +269,20 @@ export function TaskDetail({
                     disabled={busy || !isAssignedToMe}
                     onChange={setFormValue}
                     onBlur={(fieldId) => setTouched((t) => ({ ...t, [fieldId]: true }))}
+                    /*
+                     * An upload field stores the attachment's id. The file itself goes
+                     * through the task's own attachment endpoint, so it lands in
+                     * whichever store the deployment has configured (§7.6) rather than
+                     * needing a content engine this distribution does not ship.
+                     */
+                    onUploadFile={async (field, file) => {
+                      const attachment = await taskApi.uploadAttachment(current.id, file, {
+                        name: file.name,
+                        description: `Uploaded for "${field.name ?? field.id}"`,
+                      });
+                      reload();
+                      return attachment.id;
+                    }}
                   />
                 ) : (
                   <>
@@ -329,6 +367,65 @@ export function TaskDetail({
                 </div>
               </section>
 
+              {detail.data?.people && detail.data.people.length > 0 ? (
+                <section className="tf-detail__section">
+                  <h3 className="tf-detail__section-title">People</h3>
+                  <ul className="tf-people">
+                    {detail.data.people.map((link, index) => (
+                      <li className="tf-people__item" key={`${link.type}:${link.user ?? link.group}:${index}`}>
+                        <span className="tf-people__who">{link.user ?? link.group}</span>
+                        <span className="tf-people__how">
+                          {link.group ? `${link.type} (group)` : link.type}
+                        </span>
+                      </li>
+                    ))}
+                  </ul>
+                </section>
+              ) : null}
+
+              {detail.data?.subTasks && detail.data.subTasks.length > 0 ? (
+                <section className="tf-detail__section">
+                  <h3 className="tf-detail__section-title">
+                    Sub-tasks ({detail.data.subTasks.length})
+                  </h3>
+                  <ul className="tf-people">
+                    {detail.data.subTasks.map((sub) => (
+                      <li className="tf-people__item" key={sub.id}>
+                        <span className="tf-people__who">{sub.name ?? sub.id}</span>
+                        <span className="tf-people__how">
+                          {sub.assignee ? `assigned to ${sub.assignee}` : "unassigned"}
+                        </span>
+                      </li>
+                    ))}
+                  </ul>
+                </section>
+              ) : null}
+
+              <section className="tf-detail__section">
+                <h3 className="tf-detail__section-title">History</h3>
+                {detail.data?.log === undefined ? (
+                  <p className="tf-muted">This task's history could not be read.</p>
+                ) : detail.data.log.data.length === 0 ? (
+                  <p className="tf-muted">
+                    Nothing recorded. Engines only keep a task audit trail when
+                    <code> enableHistoricTaskLogging </code> is switched on, and it is off
+                    by default.
+                  </p>
+                ) : (
+                  <ol className="tf-tasklog">
+                    {detail.data.log.data.map((entry) => (
+                      <li className="tf-tasklog__item" key={entry.logNumber}>
+                        <span className="tf-tasklog__type">{entry.type ?? "event"}</span>
+                        <span className="tf-tasklog__when">{formatDateTime(entry.timeStamp)}</span>
+                        {entry.userId ? (
+                          <span className="tf-tasklog__who">by {entry.userId}</span>
+                        ) : null}
+                      </li>
+                    ))}
+                  </ol>
+                )}
+              </section>
+
               <footer className="tf-detail__actions">
                 {isUnassigned ? (
                   <Button
@@ -360,6 +457,9 @@ export function TaskDetail({
                     >
                       Unclaim
                     </Button>
+                    <Button variant="secondary" loading={busy} onClick={() => setDelegating(true)}>
+                      Delegate
+                    </Button>
                     <Button
                       loading={busy}
                       disabled={!canSubmit}
@@ -369,7 +469,75 @@ export function TaskDetail({
                     </Button>
                   </>
                 ) : null}
+
+                {/*
+                  A delegated task sits with the delegate until they hand it back.
+                  Resolving returns it to the owner — it does not complete it.
+                */}
+                {current.delegationState === "pending" && current.assignee === userId ? (
+                  <Button
+                    loading={busy}
+                    onClick={() =>
+                      runAction(`Handed back to ${current.owner ?? "the owner"}.`, async () => {
+                        await taskApi.resolve(current.id);
+                        reload();
+                        onChanged();
+                      })
+                    }
+                  >
+                    Hand back to {current.owner ?? "owner"}
+                  </Button>
+                ) : null}
               </footer>
+
+              {delegating ? (
+                <div className="tf-dialog-backdrop" onMouseDown={() => setDelegating(false)}>
+                  <div
+                    className="tf-dialog"
+                    role="dialog"
+                    aria-modal="true"
+                    aria-label="Delegate task"
+                    onMouseDown={(event) => event.stopPropagation()}
+                  >
+                    <h2 className="tf-dialog__title">Delegate this task</h2>
+                    <p className="tf-dialog__description">
+                      They do it on your behalf and hand it back when they are done. You stay
+                      its owner, so it returns to you rather than being completed by them.
+                    </p>
+                    <TextInput
+                      label="Delegate to"
+                      value={delegateTo}
+                      hint="The user id to hand it to."
+                      onChange={(event) => setDelegateTo(event.target.value)}
+                    />
+                    <div className="tf-dialog__actions">
+                      <Button
+                        variant="secondary"
+                        disabled={busy}
+                        onClick={() => setDelegating(false)}
+                      >
+                        Cancel
+                      </Button>
+                      <Button
+                        loading={busy}
+                        disabled={!delegateTo.trim()}
+                        onClick={() => {
+                          const to = delegateTo.trim();
+                          setDelegating(false);
+                          setDelegateTo("");
+                          void runAction(`Delegated to ${to}.`, async () => {
+                            await taskApi.delegate(current.id, to);
+                            reload();
+                            onChanged();
+                          });
+                        }}
+                      >
+                        Delegate
+                      </Button>
+                    </div>
+                  </div>
+                </div>
+              ) : null}
 
               {!canSubmit ? (
                 <p className="tf-detail__note tf-detail__note--error" role="alert">

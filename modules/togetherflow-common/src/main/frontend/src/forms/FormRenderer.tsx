@@ -6,7 +6,7 @@
  * over @bpmn-io/form-js.
  */
 
-import { useId } from "react";
+import { useId, useState } from "react";
 import type { FormField, FormModelResponse, OptionFormField } from "../api/types";
 import {
   isContainer,
@@ -24,6 +24,15 @@ export interface FormRendererProps {
   onChange: (fieldId: string, value: unknown) => void;
   /** Called when a field loses focus, so validation can run per-field (§14.3). */
   onBlur?: (fieldId: string) => void;
+  /**
+   * Handles an `upload` field's file, returning what should be stored as the field's
+   * value (typically an attachment id or URL).
+   *
+   * Only a task has somewhere to put a file — the attachment endpoint hangs off the
+   * task — so a start form is rendered without this and says so rather than showing a
+   * control that cannot work. Omitting it is a deliberate, supported state.
+   */
+  onUploadFile?: (field: FormField, file: File) => Promise<string>;
 }
 
 export function FormRenderer({
@@ -33,6 +42,7 @@ export function FormRenderer({
   disabled = false,
   onChange,
   onBlur,
+  onUploadFile,
 }: FormRendererProps) {
   return (
     <div className="tf-form">
@@ -45,6 +55,7 @@ export function FormRenderer({
           disabled={disabled}
           onChange={onChange}
           onBlur={onBlur}
+          onUploadFile={onUploadFile}
         />
       ))}
     </div>
@@ -58,6 +69,7 @@ interface NodeProps {
   disabled: boolean;
   onChange: (fieldId: string, value: unknown) => void;
   onBlur?: (fieldId: string) => void;
+  onUploadFile?: (field: FormField, file: File) => Promise<string>;
 }
 
 function FieldNode({ field, ...rest }: NodeProps) {
@@ -119,7 +131,15 @@ function HyperlinkField({ field }: { field: FormField }) {
   );
 }
 
-function InputField({ field, values, errors, disabled, onChange, onBlur }: NodeProps) {
+function InputField({
+  field,
+  values,
+  errors,
+  disabled,
+  onChange,
+  onBlur,
+  onUploadFile,
+}: NodeProps) {
   const generatedId = useId();
   const inputId = `tf-form-${field.id || generatedId}`;
   const errorId = `${inputId}-error`;
@@ -199,12 +219,22 @@ function InputField({ field, values, errors, disabled, onChange, onBlur }: NodeP
       />
     );
   } else if (field.type === "upload") {
-    // Uploads bind to the engine's content store, which this phase does not wire up;
-    // saying so beats rendering a control that silently does nothing.
-    control = (
+    // A file needs somewhere to go. On a task that is the attachment endpoint; on a
+    // start form there is no instance yet, so the field explains itself instead of
+    // rendering a control that would silently drop the file.
+    control = onUploadFile ? (
+      <UploadField
+        field={field}
+        inputId={inputId}
+        value={value}
+        disabled={disabled}
+        onChange={onChange}
+        onUploadFile={onUploadFile}
+      />
+    ) : (
       <p className="tf-form__static tf-muted">
-        File upload fields aren't supported yet — attach files from the task's
-        Attachments section instead.
+        Files can't be attached before the work is started — start it first, then attach
+        from the task.
       </p>
     );
   } else if (field.type === "people" || field.type === "functional-group") {
@@ -338,4 +368,70 @@ function inputTypeFor(fieldType: string): string {
     default:
       return "text";
   }
+}
+
+/**
+ * An `upload` field.
+ *
+ * Uploading is a side effect with three outcomes the user must be able to tell apart:
+ * in progress, attached, and failed. A bare file input shows none of them.
+ */
+function UploadField({
+  field,
+  inputId,
+  value,
+  disabled,
+  onChange,
+  onUploadFile,
+}: {
+  field: FormField;
+  inputId: string;
+  value: unknown;
+  disabled: boolean;
+  onChange: (fieldId: string, value: unknown) => void;
+  onUploadFile: (field: FormField, file: File) => Promise<string>;
+}) {
+  const [busy, setBusy] = useState(false);
+  const [failed, setFailed] = useState<string | null>(null);
+  const [name, setName] = useState<string | null>(null);
+
+  return (
+    <div className="tf-form__upload">
+      <input
+        id={inputId}
+        name={field.id}
+        type="file"
+        className="tf-input"
+        disabled={disabled || busy}
+        onChange={(event) => {
+          const file = event.target.files?.[0];
+          if (!file) return;
+          setBusy(true);
+          setFailed(null);
+          onUploadFile(field, file)
+            .then((stored) => {
+              onChange(field.id, stored);
+              setName(file.name);
+            })
+            .catch((cause: unknown) => {
+              setFailed(cause instanceof Error ? cause.message : "Upload failed.");
+              // Leave the field empty rather than pretending a value was stored.
+              onChange(field.id, undefined);
+            })
+            .finally(() => setBusy(false));
+        }}
+      />
+      {busy ? (
+        <span className="tf-form__upload-state" role="status">
+          Uploading…
+        </span>
+      ) : failed ? (
+        <span className="tf-form__upload-state tf-form__upload-state--error" role="alert">
+          {failed}
+        </span>
+      ) : value && name ? (
+        <span className="tf-form__upload-state">Attached {name}</span>
+      ) : null}
+    </div>
+  );
 }

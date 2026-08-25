@@ -791,3 +791,56 @@
   color: var(--tf-text-muted);
   white-space: nowrap;
 }
+
+/* People and sub-tasks on a task (§7.1) */
+.tf-people {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: var(--tf-space-1);
+}
+.tf-people__item {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: var(--tf-space-3);
+  padding: var(--tf-space-1) 0;
+  border-bottom: 1px solid var(--tf-border-subtle, var(--tf-border));
+}
+.tf-people__item:last-child {
+  border-bottom: none;
+}
+.tf-people__who {
+  font-weight: 600;
+}
+.tf-people__how {
+  font-size: 0.8125rem;
+  color: var(--tf-text-muted);
+}
+
+/* Task audit trail */
+.tf-tasklog {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: var(--tf-space-1);
+}
+.tf-tasklog__item {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: var(--tf-space-2);
+  font-size: 0.8125rem;
+}
+.tf-tasklog__type {
+  font-weight: 600;
+  text-transform: lowercase;
+}
+.tf-tasklog__when,
+.tf-tasklog__who {
+  color: var(--tf-text-muted);
+}

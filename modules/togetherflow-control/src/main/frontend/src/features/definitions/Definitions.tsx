@@ -51,11 +51,11 @@ export function Definitions({
   const [tab, setTab] = useState<DefinitionTab>("processes");
 
   return (
-    <section className="tf-section" aria-label="Definitions">
-      <header className="tf-section__header">
+    <section className="tf-panel" aria-label="Definitions">
+      <header className="tf-panel__header">
         <div>
-          <h1 className="tf-section__title">Definitions</h1>
-          <p className="tf-section__meta">
+          <h1 className="tf-panel__title">Definitions</h1>
+          <p className="tf-panel__meta">
             Control what can be started, and by whom.
           </p>
         </div>

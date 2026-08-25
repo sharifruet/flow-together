@@ -16,6 +16,8 @@ import type {
   ProcessInstanceResponse,
   RestVariable,
   TaskActionRequest,
+  TaskIdentityLink,
+  TaskLogEntry,
   TaskQueryRequest,
   TaskResponse,
 } from "./types";
@@ -88,6 +90,86 @@ export class TaskApi {
       if (error instanceof DOMException && error.name === "AbortError") throw error;
       return null;
     }
+  }
+
+  /** Sub-tasks (§7.1). Returns a bare array, not a paged response. */
+  listSubTasks(taskId: string, signal?: AbortSignal): Promise<TaskResponse[]> {
+    return this.client.request(`/runtime/tasks/${encodeURIComponent(taskId)}/subtasks`, { signal });
+  }
+
+  /** Who is involved with this task, and how (assignee, candidate, participant…). */
+  listIdentityLinks(taskId: string, signal?: AbortSignal): Promise<TaskIdentityLink[]> {
+    return this.client.request(`/runtime/tasks/${encodeURIComponent(taskId)}/identitylinks`, {
+      signal,
+    });
+  }
+
+  addIdentityLink(
+    taskId: string,
+    link: { userId?: string; groupId?: string; type: string },
+  ): Promise<TaskIdentityLink> {
+    return this.client.request(`/runtime/tasks/${encodeURIComponent(taskId)}/identitylinks`, {
+      method: "POST",
+      body: link,
+    });
+  }
+
+  removeIdentityLink(
+    taskId: string,
+    family: "users" | "groups",
+    identityId: string,
+    type: string,
+  ): Promise<void> {
+    return this.client.request(
+      `/runtime/tasks/${encodeURIComponent(taskId)}/identitylinks/${family}/${encodeURIComponent(identityId)}/${encodeURIComponent(type)}`,
+      { method: "DELETE" },
+    );
+  }
+
+  /**
+   * The task's audit trail.
+   *
+   * **Empty unless the engine opts in.** `enableHistoricTaskLogging` defaults to
+   * `false` on `ProcessEngineConfiguration`, so a stock deployment records nothing —
+   * confirmed against a running engine, where the whole-engine query returns 0 rows.
+   * The UI therefore distinguishes "nothing happened yet" from "this engine does not
+   * record task history" rather than showing a permanently empty list.
+   */
+  listLogEntries(taskId: string, signal?: AbortSignal): Promise<DataResponse<TaskLogEntry>> {
+    return this.client.request("/history/historic-task-log-entries", {
+      query: { taskId, size: 100, sort: "logNumber", order: "desc" },
+      signal,
+    });
+  }
+
+  /**
+   * Hands the task to someone else to do on your behalf.
+   *
+   * Verified against a running engine: the original assignee becomes `owner`, the
+   * delegate becomes `assignee`, and `delegationState` goes to `pending`. Resolving
+   * hands it back to the owner — it does *not* complete the task.
+   */
+  delegate(taskId: string, assignee: string): Promise<void> {
+    return this.client.request(`/runtime/tasks/${encodeURIComponent(taskId)}`, {
+      method: "POST",
+      body: { action: "delegate", assignee },
+    });
+  }
+
+  /** Returns a delegated task to its owner. */
+  resolve(taskId: string): Promise<void> {
+    return this.client.request(`/runtime/tasks/${encodeURIComponent(taskId)}`, {
+      method: "POST",
+      body: { action: "resolve" },
+    });
+  }
+
+  /** Reassignment is a task *update*, not an action — there is no "assign" action. */
+  assign(taskId: string, assignee: string | null): Promise<TaskResponse> {
+    return this.client.request(`/runtime/tasks/${encodeURIComponent(taskId)}`, {
+      method: "PUT",
+      body: { assignee },
+    });
   }
 
   listAttachments(taskId: string, signal?: AbortSignal): Promise<AttachmentResponse[]> {

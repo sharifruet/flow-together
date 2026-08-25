@@ -38,11 +38,11 @@ export function EventRegistry({ eventApi }: EventRegistryProps) {
   const [tab, setTab] = useState<EventTab>("events");
 
   return (
-    <section className="tf-section" aria-label="Event registry">
-      <header className="tf-section__header">
+    <section className="tf-panel" aria-label="Event registry">
+      <header className="tf-panel__header">
         <div>
-          <h1 className="tf-section__title">Event registry</h1>
-          <p className="tf-section__meta">
+          <h1 className="tf-panel__title">Event registry</h1>
+          <p className="tf-panel__meta">
             What the engine will react to, and a way to prove it does.
           </p>
         </div>

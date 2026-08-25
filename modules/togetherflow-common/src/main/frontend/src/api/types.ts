@@ -384,3 +384,33 @@ export interface FormModelResponse {
   outcomes?: FormOutcome[];
   outcomeVariableName?: string;
 }
+
+/* ── Task identity links and audit log (§7.1) ─────────────────────────────── */
+
+/**
+ * Someone involved with a task. `type` is the engine's own vocabulary — "assignee",
+ * "owner", "candidate", "participant" — and exactly one of user/group is set.
+ */
+export interface TaskIdentityLink {
+  url?: string;
+  user?: string | null;
+  group?: string | null;
+  type: string;
+}
+
+/**
+ * One entry in a task's audit trail.
+ *
+ * Only recorded when the engine sets `enableHistoricTaskLogging` (it defaults to false).
+ */
+export interface TaskLogEntry {
+  logNumber: number;
+  type?: string;
+  taskId?: string;
+  timeStamp?: string;
+  userId?: string | null;
+  data?: string | null;
+  processInstanceId?: string | null;
+  scopeId?: string | null;
+  scopeType?: string | null;
+}
