@@ -18,17 +18,50 @@ export const DC_NS = "http://www.omg.org/spec/CMMN/20151109/DC";
 export const FLOWABLE_CMMN_NS = "http://flowable.org/cmmn";
 
 /** Element kinds the editor can place. `casePlanModel` is the implicit root. */
+/**
+ * The kinds of plan item this editor can draw.
+ *
+ * Several of these are not distinct XML elements. Flowable's specialised tasks are all
+ * `<task>` carrying a `flowable:type` discriminator, and its typed event listeners are all
+ * `<eventListener>` carrying `flowable:eventType`; the type here is what the palette and
+ * the properties panel work in, and {@link xmlElementName} maps it back to the tag.
+ */
 export type CmmnElementType =
   | "humanTask"
   | "processTask"
   | "caseTask"
   | "decisionTask"
   | "serviceTask"
+  | "scriptTask"
+  | "httpTask"
+  | "mailTask"
   | "milestone"
   | "stage"
   | "timerEventListener"
   | "userEventListener"
-  | "genericEventListener";
+  | "genericEventListener"
+  | "signalEventListener"
+  | "variableEventListener"
+  | "intentEventListener"
+  | "reactivateEventListener";
+
+/**
+ * `flowable:type` on a `<task>`, for the kinds that are a typed task rather than their own
+ * element. Values are the engine's own constants (`ScriptServiceTask.SCRIPT_TASK` and so on).
+ */
+export const TASK_TYPE_DISCRIMINATOR: Partial<Record<CmmnElementType, string>> = {
+  scriptTask: "script",
+  httpTask: "http",
+  mailTask: "mail",
+};
+
+/** `flowable:eventType` on an `<eventListener>`, for the four typed listeners. */
+export const LISTENER_TYPE_DISCRIMINATOR: Partial<Record<CmmnElementType, string>> = {
+  signalEventListener: "signal",
+  variableEventListener: "variable",
+  intentEventListener: "intent",
+  reactivateEventListener: "reactivate",
+};
 
 export const CONTAINER_TYPES: ReadonlySet<CmmnElementType> = new Set(["stage"]);
 
@@ -235,6 +268,14 @@ export interface CmmnCase {
   diEdges: string[];
   /** Namespace declarations on `<definitions>` beyond the four this file always writes. */
   extraNamespaces: Record<string, string>;
+  /**
+   * Other attributes on `<definitions>` — `xsi:schemaLocation`, `exporter`, `author`.
+   *
+   * The serialiser rebuilds the root element rather than editing it, so anything not
+   * modelled here is dropped on the first save. None of these change how a case behaves,
+   * which is exactly why losing them is easy not to notice.
+   */
+  rootAttributes: Record<string, string>;
 }
 
 export const DEFAULT_SIZES: Record<CmmnElementType, { width: number; height: number }> = {
@@ -243,11 +284,18 @@ export const DEFAULT_SIZES: Record<CmmnElementType, { width: number; height: num
   caseTask: { width: 140, height: 80 },
   decisionTask: { width: 140, height: 80 },
   serviceTask: { width: 140, height: 80 },
+  scriptTask: { width: 140, height: 80 },
+  httpTask: { width: 140, height: 80 },
+  mailTask: { width: 140, height: 80 },
   milestone: { width: 140, height: 50 },
   stage: { width: 260, height: 180 },
   timerEventListener: { width: 40, height: 40 },
   userEventListener: { width: 40, height: 40 },
   genericEventListener: { width: 40, height: 40 },
+  signalEventListener: { width: 40, height: 40 },
+  variableEventListener: { width: 40, height: 40 },
+  intentEventListener: { width: 40, height: 40 },
+  reactivateEventListener: { width: 40, height: 40 },
 };
 
 export const TYPE_LABELS: Record<CmmnElementType, string> = {
@@ -256,11 +304,18 @@ export const TYPE_LABELS: Record<CmmnElementType, string> = {
   caseTask: "Case task",
   decisionTask: "Decision task",
   serviceTask: "Service task",
+  scriptTask: "Script task",
+  httpTask: "HTTP task",
+  mailTask: "Mail task",
   milestone: "Milestone",
   stage: "Stage",
   timerEventListener: "Timer event listener",
   userEventListener: "User event listener",
   genericEventListener: "Event listener",
+  signalEventListener: "Signal event listener",
+  variableEventListener: "Variable event listener",
+  intentEventListener: "Intent event listener",
+  reactivateEventListener: "Reactivate event listener",
 };
 
 /* ── Parsing ─────────────────────────────────────────────────────────────── */
@@ -314,6 +369,7 @@ export function parseCmmn(xml: string): CmmnCase {
       ? childrenByLocalName(diagram, "CMMNEdge").map(serialiseNode)
       : [],
     extraNamespaces: extraNamespaceDeclarations(doc.documentElement),
+    rootAttributes: otherRootAttributes(doc.documentElement),
   };
 }
 
@@ -375,6 +431,18 @@ function extraNamespaceDeclarations(root: Element): Record<string, string> {
   return result;
 }
 
+/** Root attributes that are neither a namespace declaration nor one this file writes. */
+function otherRootAttributes(root: Element): Record<string, string> {
+  const written = ["targetNamespace"];
+  const result: Record<string, string> = {};
+  for (const attr of Array.from(root.attributes)) {
+    if (attr.name.startsWith("xmlns")) continue;
+    if (written.includes(attr.name)) continue;
+    result[attr.name] = attr.value;
+  }
+  return result;
+}
+
 /**
  * Walks one container, pairing each plan item with the definition it references.
  * Definitions without a plan item are ignored — they are unreachable in the case.
@@ -395,7 +463,7 @@ function collectElements(
     const definition = findDefinition(container, definitionRef);
     if (!definition) continue;
 
-    const type = typeOf(definition.localName);
+    const type = typeOf(definition);
     if (!type) continue;
 
     const size = DEFAULT_SIZES[type];
@@ -406,7 +474,7 @@ function collectElements(
       name: definition.getAttribute("name") ?? planItem.getAttribute("name") ?? "",
       bounds: shapes.get(planItemId) ?? { x: 120, y: 120, ...size },
       parentId,
-      attributes: flowableAttributes(definition),
+      attributes: withoutDiscriminator(flowableAttributes(definition), type),
       plainAttributes: plainAttributes(definition, ["id", "name", "isBlocking"]),
       documentation:
         firstChildByLocalName(definition, "documentation")?.textContent?.trim() || undefined,
@@ -637,11 +705,25 @@ function readSentries(planItem: Element, container: Element, kind: string): Sent
 
 function findDefinition(container: Element, id: string): Element | undefined {
   return Array.from(container.children).find(
-    (child) => child.getAttribute("id") === id && typeOf(child.localName) !== null,
+    (child) => child.getAttribute("id") === id && typeOf(child) !== null,
   );
 }
 
-function typeOf(localName: string | null): CmmnElementType | null {
+/**
+ * Which kind of plan item a definition element is.
+ *
+ * Takes the element rather than its tag name because two tags carry more than one kind.
+ * `<task>` is a service task unless `flowable:type` says otherwise, and `<eventListener>`
+ * is the generic listener unless `flowable:eventType` names one of the four typed ones.
+ *
+ * Note the namespace on those discriminators. An earlier version of this file recorded
+ * that typed listeners "cannot be expressed in a deployable document" because the schema
+ * rejects `eventType` — true of the *un-prefixed* attribute, and only that one. The CMMN
+ * schema's `anyAttribute` is `##other`, so `flowable:eventType` is legal, and Flowable's
+ * own `signal-event-listener.cmmn` fixture uses exactly that and validates.
+ */
+function typeOf(definition: Element): CmmnElementType | null {
+  const localName = definition.localName;
   switch (localName) {
     case "humanTask":
     case "processTask":
@@ -655,21 +737,54 @@ function typeOf(localName: string | null): CmmnElementType | null {
       return "timerEventListener";
     case "userEventListener":
       return "userEventListener";
-    /*
-     * The generic listener's element is `<eventListener>`, not `<genericEventListener>`.
-     * Its typed variants — signal, variable, intent, reactivate — are deliberately absent:
-     * Flowable's parser reads them from an `eventType` attribute, but that attribute is
-     * rejected by the CMMN schema ("Attribute 'eventType' is not allowed"), which is
-     * checked before parsing. They cannot be expressed in a deployable document.
-     */
     case "eventListener":
-      return "genericEventListener";
-    // A plain <task> is modelled as a service task; the engine treats it as non-blocking work.
+      return byDiscriminator(definition, "eventType", LISTENER_TYPE_DISCRIMINATOR)
+        ?? "genericEventListener";
+    // A plain <task> is a service task; the engine treats it as non-blocking work.
     case "task":
-      return "serviceTask";
+      return byDiscriminator(definition, "type", TASK_TYPE_DISCRIMINATOR) ?? "serviceTask";
     default:
       return null;
   }
+}
+
+/** The editor type whose discriminator matches this element's, if any. */
+function byDiscriminator(
+  definition: Element,
+  attribute: string,
+  table: Partial<Record<CmmnElementType, string>>,
+): CmmnElementType | null {
+  const value =
+    definition.getAttributeNS(FLOWABLE_CMMN_NS, attribute) ||
+    definition.getAttribute(`flowable:${attribute}`) ||
+    "";
+  if (!value) return null;
+
+  const match = Object.entries(table).find(([, discriminator]) => discriminator === value);
+  return match ? (match[0] as CmmnElementType) : null;
+}
+
+/**
+ * The `flowable:type` / `flowable:eventType` discriminator is `element.type` here, so it is
+ * dropped from the attribute map.
+ *
+ * Keeping it in both places would mean serialising it twice, and — worse — letting the two
+ * disagree: a task whose `type` said one thing and whose attribute said another would draw
+ * as one kind and deploy as the other.
+ */
+function withoutDiscriminator(
+  attributes: Record<string, string>,
+  type: CmmnElementType,
+): Record<string, string> {
+  const key = type in TASK_TYPE_DISCRIMINATOR
+    ? "type"
+    : type in LISTENER_TYPE_DISCRIMINATOR
+      ? "eventType"
+      : null;
+  if (!key) return attributes;
+
+  const { [key]: _discriminator, ...rest } = attributes;
+  return rest;
 }
 
 function flowableAttributes(element: Element): Record<string, string> {
@@ -733,6 +848,9 @@ export function serialiseCmmn(model: CmmnCase): string {
   const namespaces = Object.entries(model.extraNamespaces ?? {})
     .map(([name, uri]) => `\n             ${name}="${esc(uri)}"`)
     .join("");
+  const rootAttrs = Object.entries(model.rootAttributes ?? {})
+    .map(([name, value]) => `\n             ${name}="${esc(value)}"`)
+    .join("");
   const caseAttrs = attributeXml(model.caseAttributes, model.casePlainAttributes);
   const planModelAttrs = attributeXml(model.planModelAttributes, model.planModelPlainAttributes);
   const extraCase = indentBlock(model.extraCaseChildren ?? [], 4);
@@ -745,7 +863,7 @@ export function serialiseCmmn(model: CmmnCase): string {
              xmlns:flowable="${FLOWABLE_CMMN_NS}"
              xmlns:cmmndi="${CMMNDI_NS}"
              xmlns:dc="${DC_NS}"${namespaces}
-             targetNamespace="http://flowable.org/cmmn">
+             targetNamespace="http://flowable.org/cmmn"${rootAttrs}>
   <case id="${esc(model.caseId)}" name="${esc(model.caseName)}"${caseAttrs}>
 ${model.documentation ? `    <documentation>${esc(model.documentation)}</documentation>\n` : ""}    <casePlanModel id="${esc(model.planModelId)}" name="${esc(model.planModelName)}"${planModelAttrs}>
 ${body}${extraPlanModel}    </casePlanModel>
@@ -846,15 +964,28 @@ function renderPlanItem(element: CmmnElement, indent: number): string {
  * serviceTask" — so no case containing one could ever be deployed. The parser already read
  * `<task>` as a service task; only the serialiser disagreed.
  */
+/** The element's `flowable:` attributes, with the kind discriminator written back on. */
+function withDiscriminator(element: CmmnElement): Record<string, string> {
+  const task = TASK_TYPE_DISCRIMINATOR[element.type];
+  if (task) return { ...element.attributes, type: task };
+
+  const listener = LISTENER_TYPE_DISCRIMINATOR[element.type];
+  if (listener) return { ...element.attributes, eventType: listener };
+
+  return element.attributes;
+}
+
 function xmlElementName(type: CmmnElementType): string {
-  if (type === "serviceTask") return "task";
-  if (type === "genericEventListener") return "eventListener";
+  if (type === "serviceTask" || type in TASK_TYPE_DISCRIMINATOR) return "task";
+  if (type === "genericEventListener" || type in LISTENER_TYPE_DISCRIMINATOR) {
+    return "eventListener";
+  }
   return type;
 }
 
 function renderDefinition(element: CmmnElement, model: CmmnCase, indent: number): string {
   const pad = " ".repeat(indent);
-  const attrs = attributeXml(element.attributes, element.plainAttributes);
+  const attrs = attributeXml(withDiscriminator(element), element.plainAttributes);
   const extra = indentBlock(element.extraChildren ?? [], indent + 2);
 
   /*
@@ -963,6 +1094,7 @@ type Preserved = Pick<
   | "extraRootChildren"
   | "diEdges"
   | "extraNamespaces"
+  | "rootAttributes"
 >;
 
 export const EMPTY_PRESERVED: Preserved = {
@@ -975,6 +1107,7 @@ export const EMPTY_PRESERVED: Preserved = {
   extraRootChildren: [],
   diEdges: [],
   extraNamespaces: {},
+  rootAttributes: {},
 };
 
 export function emptyCase(caseKey: string, caseName: string): CmmnCase {

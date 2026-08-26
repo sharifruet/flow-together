@@ -89,9 +89,7 @@ describe("validateCmmn", () => {
   );
 
   it("reports the fields an http task cannot run without", () => {
-    const http = { ...make("serviceTask", "Fetch"), attributes: { type: "http" } };
-
-    expect(messages(caseWith(http))).toEqual([
+    expect(messages(caseWith(make("httpTask", "Fetch")))).toEqual([
       'The HTTP task "Fetch" has no requestUrl field.',
       'The HTTP task "Fetch" has no requestMethod field.',
     ]);
@@ -99,14 +97,56 @@ describe("validateCmmn", () => {
 
   it("accepts an http task once both fields are set", () => {
     const http = {
-      ...make("serviceTask", "Fetch"),
-      attributes: { type: "http" },
+      ...make("httpTask", "Fetch"),
       fields: [
         { name: "requestUrl", valueKind: "string" as const, value: "https://example.test" },
         { name: "requestMethod", valueKind: "string" as const, value: "GET" },
       ],
     };
     expect(validateCmmn(caseWith(http))).toEqual([]);
+  });
+
+  /*
+   * The typed tasks and listeners P1 added. Each fails at runtime rather than at deployment
+   * if it is left unconfigured, which is why they are worth reporting here at all.
+   */
+  it("reports a script task with no script and no language", () => {
+    expect(messages(caseWith(make("scriptTask", "Compute")))).toEqual([
+      'The script task "Compute" has no script to run.',
+      'The script task "Compute" names no script language.',
+    ]);
+  });
+
+  it("accepts a script task once it has both", () => {
+    const script = {
+      ...make("scriptTask", "Compute"),
+      attributes: { scriptFormat: "groovy" },
+      fields: [{ name: "script", valueKind: "string" as const, value: "return 1" }],
+    };
+    expect(validateCmmn(caseWith(script))).toEqual([]);
+  });
+
+  it("reports a mail task with no recipient", () => {
+    expect(messages(caseWith(make("mailTask", "Notify")))).toContain(
+      'The mail task "Notify" has no recipient.',
+    );
+  });
+
+  it("reports a signal listener naming no signal", () => {
+    expect(messages(caseWith(make("signalEventListener", "Wait")))).toContain(
+      'The signal listener "Wait" names no signal, so it never fires.',
+    );
+  });
+
+  it("reports a variable listener naming no variable", () => {
+    expect(messages(caseWith(make("variableEventListener", "Watch")))).toContain(
+      'The variable listener "Watch" names no variable, so it never fires.',
+    );
+  });
+
+  it("asks nothing of an intent or reactivate listener, which carry no configuration", () => {
+    expect(validateCmmn(caseWith(make("intentEventListener", "Intent")))).toEqual([]);
+    expect(validateCmmn(caseWith(make("reactivateEventListener", "Again")))).toEqual([]);
   });
 
   it("reports an empty stage", () => {

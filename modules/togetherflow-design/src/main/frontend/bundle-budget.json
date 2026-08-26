@@ -7,8 +7,16 @@
     "Raising a budget is fine when the growth is deliberate — do it in the same",
     "commit as the change, so the increase is reviewed alongside what caused it."
   ],
+  "_index_note": [
+    "assets/index went 72 -> 78 when the CMMN panel gained the ~60 attribute and",
+    "field labels the engine reads (P1). It is user-facing copy in the message",
+    "catalogue, which every app loads at startup, so it lands in the entry chunk",
+    "rather than in CmmnEditor. Splitting catalogues per feature would put it",
+    "where it belongs; that is a change to how I18nProvider is fed, not to this",
+    "file, and is not worth doing for 2 kB on its own."
+  ],
   "groups": {
-    "assets/index": 72,
+    "assets/index": 78,
     "assets/BpmnEditor": 100,
     "assets/DmnEditor": 260,
     "assets/CmmnEditor": 12,

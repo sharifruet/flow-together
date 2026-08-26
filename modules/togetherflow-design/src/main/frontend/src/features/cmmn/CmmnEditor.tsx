@@ -29,6 +29,7 @@ import { canDeploy, issuesFromServer, type ValidationIssue } from "../bpmn/valid
 import { problemMarkers, validateCmmn } from "./validateCmmn";
 import {
   attributeGroupsFor,
+  taskFieldsFor,
   REPETITION_ATTRIBUTES,
   type CmmnAttributeGroup,
   type CmmnAttributeSpec,
@@ -92,10 +93,17 @@ const PALETTE: CmmnElementType[] = [
   "decisionTask",
   "caseTask",
   "serviceTask",
+  "scriptTask",
+  "httpTask",
+  "mailTask",
   "milestone",
   "timerEventListener",
   "userEventListener",
   "genericEventListener",
+  "signalEventListener",
+  "variableEventListener",
+  "intentEventListener",
+  "reactivateEventListener",
 ];
 
 export interface CmmnEditorProps {
@@ -1148,7 +1156,13 @@ function CmmnProperties({
         the moment it starts — "requestMethod is required" — so the type selector above is
         only half of what makes a service task work.
       */}
-      {element.type === "serviceTask" || element.type === "decisionTask" ? (
+      {taskFieldsFor(element.type).length > 0 ? (
+        <KnownFieldsSection element={element} disabled={disabled} onChangeElement={onChangeElement} />
+      ) : null}
+
+      {element.type === "serviceTask" ||
+      element.type === "decisionTask" ||
+      taskFieldsFor(element.type).length > 0 ? (
         <FieldSection t={t} element={element} disabled={disabled} onChangeElement={onChangeElement} />
       ) : null}
 
@@ -1592,10 +1606,21 @@ function FieldSection({
   disabled: boolean;
   onChangeElement: (patch: Partial<CmmnElement>) => void;
 }) {
-  const rows = element.fields ?? [];
+  const all = element.fields ?? [];
+  /*
+   * Only the fields the known-field editor above does not already own. Showing a field in
+   * two boxes means whichever is typed second wins and the other shows a stale value — the
+   * exact confusion the typed editors exist to remove.
+   */
+  const owned = new Set(taskFieldsFor(element.type));
+  const rows = all.filter((row) => !owned.has(row.name.trim()));
+
   const commit = (fields: CmmnField[]) => onChangeElement({ fields });
-  const update = (index: number, patch: Partial<CmmnField>) =>
-    commit(rows.map((row, i) => (i === index ? { ...row, ...patch } : row)));
+  /** Indices are into the filtered view; the model still holds the owned fields. */
+  const update = (index: number, patch: Partial<CmmnField>) => {
+    const target = rows[index];
+    commit(all.map((row) => (row === target ? { ...row, ...patch } : row)));
+  };
 
   return (
     <section className="tf-properties__section">
@@ -1637,7 +1662,7 @@ function FieldSection({
               variant="ghost"
               disabled={disabled}
               aria-label={t("cmmn.fields.remove", { index: index + 1 })}
-              onClick={() => commit(rows.filter((_, i) => i !== index))}
+              onClick={() => commit(all.filter((row) => row !== rows[index]))}
             >
               ×
             </Button>
@@ -1648,7 +1673,7 @@ function FieldSection({
       <Button
         variant="secondary"
         disabled={disabled}
-        onClick={() => commit([...rows, { name: "", valueKind: "stringValue", value: "" }])}
+        onClick={() => commit([...all, { name: "", valueKind: "stringValue", value: "" }])}
       >
         {t("cmmn.fields.add")}
       </Button>
@@ -1874,3 +1899,82 @@ function AttributeField({
     />
   );
 }
+
+/**
+ * The fields a typed task is actually configured with, named rather than guessed.
+ *
+ * Flowable's specialised tasks take almost everything as `<flowable:field>` children — a
+ * script task's script is a field called `script`, an HTTP task's URL a field called
+ * `requestUrl`. The generic field editor could always author them, but only if you already
+ * knew the names, and the engine does not tell you: a misspelt `requestMethods` is simply
+ * ignored, and the case fails when an instance reaches it.
+ *
+ * Fields not in the list stay in the generic editor below, so an imported case keeps
+ * whatever it carried.
+ */
+function KnownFieldsSection({
+  element,
+  disabled,
+  onChangeElement,
+}: {
+  element: CmmnElement;
+  disabled: boolean;
+  onChangeElement: (patch: Partial<CmmnElement>) => void;
+}) {
+  const t = useT();
+  const names = taskFieldsFor(element.type);
+  const rows = element.fields ?? [];
+  const valueOf = (name: string) => rows.find((row) => row.name.trim() === name)?.value ?? "";
+  const set = names.filter((name) => valueOf(name).trim() !== "");
+
+  const setField = (name: string, value: string) => {
+    const existing = rows.find((row) => row.name.trim() === name);
+    if (!value.trim()) {
+      onChangeElement({ fields: rows.filter((row) => row !== existing) });
+      return;
+    }
+    onChangeElement({
+      fields: existing
+        ? rows.map((row) => (row === existing ? { ...row, value } : row))
+        : /* Expressions are the common case for these, and `string` is the value form that
+             takes a CDATA body — which is what a script or a mail body needs. */
+          [...rows, { name, valueKind: "string" as const, value }],
+    });
+  };
+
+  return (
+    <details className="tf-properties__group tf-properties__section" open>
+      <summary>
+        {t(`cmmn.taskFields.${element.type}`)}
+        <span className="tf-properties__group-count">
+          {t("cmmn.group.count", { set: set.length, total: names.length })}
+        </span>
+      </summary>
+      {names.map((name) =>
+        MULTILINE_TASK_FIELDS.has(name) ? (
+          <TextAreaInput
+            key={name}
+            label={t(`cmmn.field.${name}`)}
+            value={valueOf(name)}
+            rows={name === "script" ? 8 : 3}
+            disabled={disabled}
+            hint={t(`cmmn.field.${name}.hint`)}
+            onChange={(event) => setField(name, event.target.value)}
+          />
+        ) : (
+          <TextInput
+            key={name}
+            label={t(`cmmn.field.${name}`)}
+            value={valueOf(name)}
+            disabled={disabled}
+            hint={t(`cmmn.field.${name}.hint`)}
+            onChange={(event) => setField(name, event.target.value)}
+          />
+        ),
+      )}
+    </details>
+  );
+}
+
+/** Fields that hold a body rather than a value, and need room to be read. */
+const MULTILINE_TASK_FIELDS = new Set(["script", "requestBody", "text", "html", "requestHeaders"]);

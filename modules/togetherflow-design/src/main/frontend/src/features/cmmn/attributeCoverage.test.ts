@@ -18,7 +18,12 @@ import { describe, expect, it } from "vitest";
 import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
 
-import { allAuthoredAttributeNames, attributeGroupsFor } from "./flowableAttributes";
+import {
+  allAuthoredAttributeNames,
+  attributeGroupsFor,
+  TASK_FIELDS,
+  taskFieldsFor,
+} from "./flowableAttributes";
 import { TYPE_LABELS, type CmmnElementType } from "./cmmnModel";
 import { designEn } from "../../i18n/messages";
 
@@ -104,6 +109,42 @@ describe("CMMN attribute coverage", () => {
     for (const id of ids) {
       expect(Object.keys(designEn), id).toContain(`cmmn.group.${id}`);
     }
+  });
+
+  /*
+   * Field names are not in `CmmnXmlConstants` — they are the delegates' own `Expression`
+   * field names, matched reflectively at runtime — so they cannot be checked against the
+   * constants file. What can be checked is that each has a label, and that no typed task
+   * offers the same field twice.
+   */
+  const fieldNames = [...new Set(Object.values(TASK_FIELDS).flat())].sort();
+
+  it.each(fieldNames)("the field %s has a label and a hint", (name) => {
+    expect(Object.keys(designEn)).toContain(`cmmn.field.${name}`);
+    expect(Object.keys(designEn)).toContain(`cmmn.field.${name}.hint`);
+  });
+
+  it("names the field group of every typed task", () => {
+    for (const type of Object.keys(TASK_FIELDS) as CmmnElementType[]) {
+      expect(Object.keys(designEn), type).toContain(`cmmn.taskFields.${type}`);
+    }
+  });
+
+  it("offers no field twice on one task", () => {
+    for (const type of Object.keys(TASK_FIELDS) as CmmnElementType[]) {
+      const names = taskFieldsFor(type);
+      expect(new Set(names).size, type).toBe(names.length);
+    }
+  });
+
+  it("has no field label no task uses", () => {
+    const declared = new Set(fieldNames);
+    const orphans = Object.keys(designEn)
+      .filter((key) => key.startsWith("cmmn.field."))
+      .map((key) => key.slice("cmmn.field.".length).replace(/\.hint$/, ""))
+      .filter((name) => !declared.has(name));
+
+    expect([...new Set(orphans)]).toEqual([]);
   });
 
   it("covers every element type in the palette", () => {

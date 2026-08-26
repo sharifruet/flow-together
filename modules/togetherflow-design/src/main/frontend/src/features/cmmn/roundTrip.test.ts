@@ -14,7 +14,7 @@
 import { describe, expect, it } from "vitest";
 import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
-import { parseCmmn, removeElement, serialiseCmmn } from "./cmmnModel";
+import { createElement, emptyCase, parseCmmn, removeElement, serialiseCmmn } from "./cmmnModel";
 
 const REPO = resolve(__dirname, "../../../../../../../..");
 
@@ -473,5 +473,171 @@ describe("exitEventType on an exit criterion", () => {
     };
 
     expect(serialiseCmmn(cleared)).not.toContain("exitEventType");
+  });
+});
+
+/*
+ * The typed tasks and listeners.
+ *
+ * None of these is its own element: Flowable's specialised tasks are all `<task>` with a
+ * `flowable:type`, and its typed listeners all `<eventListener>` with a
+ * `flowable:eventType`. So the thing that has to hold is that the discriminator survives in
+ * both directions and appears exactly once — it is derived from the element's type on the
+ * way out and stripped from the attribute map on the way in, precisely so the two cannot
+ * drift and produce a task that draws as one kind and deploys as another.
+ */
+describe("typed tasks and listeners", () => {
+  const cases: Array<[string, string, string]> = [
+    ["scriptTask", "task", 'flowable:type="script"'],
+    ["httpTask", "task", 'flowable:type="http"'],
+    ["mailTask", "task", 'flowable:type="mail"'],
+    ["signalEventListener", "eventListener", 'flowable:eventType="signal"'],
+    ["variableEventListener", "eventListener", 'flowable:eventType="variable"'],
+    ["intentEventListener", "eventListener", 'flowable:eventType="intent"'],
+    ["reactivateEventListener", "eventListener", 'flowable:eventType="reactivate"'],
+  ];
+
+  it.each(cases)("%s writes <%s> carrying %s", (type, tag, discriminator) => {
+    const base = emptyCase("c", "C");
+    const element = createElement(type as never, { x: 100, y: 100 }, base.planModelId);
+    const xml = serialiseCmmn({ ...base, elements: [element] });
+
+    expect(xml).toContain(`<${tag} `);
+    expect(xml).toContain(discriminator);
+    expect(xml.match(new RegExp(discriminator.replace(/[.*+?^${}()|[\]\\]/g, "\\$&"), "g")))
+      .toHaveLength(1);
+  });
+
+  it.each(cases)("%s is read back as itself", (type) => {
+    const base = emptyCase("c", "C");
+    const element = createElement(type as never, { x: 100, y: 100 }, base.planModelId);
+    const [parsed] = parseCmmn(serialiseCmmn({ ...base, elements: [element] })).elements;
+
+    expect(parsed.type).toBe(type);
+  });
+
+  it("keeps the discriminator out of the attribute map, so it cannot be edited into a lie", () => {
+    const base = emptyCase("c", "C");
+    const element = createElement("scriptTask", { x: 100, y: 100 }, base.planModelId);
+    const [parsed] = parseCmmn(serialiseCmmn({ ...base, elements: [element] })).elements;
+
+    expect(parsed.attributes.type).toBeUndefined();
+  });
+
+  it("still reads a plain <task> as a service task, and <eventListener> as the generic one", () => {
+    const xml = `<?xml version="1.0" encoding="UTF-8"?>
+<definitions xmlns="http://www.omg.org/spec/CMMN/20151109/MODEL" xmlns:flowable="http://flowable.org/cmmn" targetNamespace="http://flowable.org/cmmn">
+  <case id="c1" name="C">
+    <casePlanModel id="pm" name="PM">
+      <planItem id="pi1" name="T" definitionRef="t1" />
+      <planItem id="pi2" name="L" definitionRef="l1" />
+      <task id="t1" name="T" />
+      <eventListener id="l1" name="L" />
+    </casePlanModel>
+  </case>
+</definitions>`;
+    const types = parseCmmn(xml).elements.map((el) => el.type);
+
+    expect(types).toEqual(["serviceTask", "genericEventListener"]);
+  });
+
+  it("reads an unrecognised flowable:type as a service task rather than dropping the task", () => {
+    // A deployment can register its own task types. Losing the shape would be worse than
+    // showing it as the generic kind it is closest to.
+    const xml = `<?xml version="1.0" encoding="UTF-8"?>
+<definitions xmlns="http://www.omg.org/spec/CMMN/20151109/MODEL" xmlns:flowable="http://flowable.org/cmmn" targetNamespace="http://flowable.org/cmmn">
+  <case id="c1" name="C">
+    <casePlanModel id="pm" name="PM">
+      <planItem id="pi1" name="T" definitionRef="t1" />
+      <task id="t1" name="T" flowable:type="somethingCustom" />
+    </casePlanModel>
+  </case>
+</definitions>`;
+    const [parsed] = parseCmmn(xml).elements;
+
+    expect(parsed.type).toBe("serviceTask");
+    expect(parsed.attributes.type).toBe("somethingCustom");
+  });
+});
+
+/*
+ * Flowable's own converter fixtures, used as the oracle.
+ *
+ * Everything above proves this editor agrees with itself. These prove it agrees with the
+ * engine: the files are what upstream's converter tests parse, so if a discriminator is
+ * written in a form this editor does not recognise, it shows up here rather than after a
+ * deploy. It is also the check that settles the `flowable:eventType` question — an earlier
+ * version of this code recorded typed listeners as impossible to deploy, and this file
+ * is upstream demonstrating otherwise.
+ */
+describe.each([
+  ["signal-event-listener.cmmn", "signalEventListener"],
+  ["variable-event-listener.cmmn", "variableEventListener"],
+  ["script-task.cmmn", "scriptTask"],
+  ["http-service-task-parallelInSameTransaction.cmmn", "httpTask"],
+])("the engine's own %s", (file, expectedType) => {
+  const source = read(`modules/flowable-cmmn-converter/src/test/resources/org/flowable/test/cmmn/converter/${file}`);
+
+  it(`is recognised as a ${expectedType}`, () => {
+    expect(parseCmmn(source).elements.map((el) => el.type)).toContain(expectedType);
+  });
+
+  it("survives a save with every kind of element it had", () => {
+    const after = serialiseCmmn(parseCmmn(source));
+    const lost = [...elementNames(source)].filter((name) => !elementNames(after).has(name));
+
+    expect(lost, `elements deleted by a save: ${lost.join(", ")}`).toEqual([]);
+  });
+
+  it("survives a save with every attribute it had", () => {
+    const after = serialiseCmmn(parseCmmn(source));
+    const lost = [...attributeNames(source)].filter((name) => !attributeNames(after).has(name));
+
+    expect(lost, `attributes deleted by a save: ${lost.join(", ")}`).toEqual([]);
+  });
+});
+
+/*
+ * Attributes on `<definitions>` itself. The serialiser rebuilds the root element rather
+ * than editing it, so anything not modelled is gone on the first save — and none of these
+ * change behaviour, which is precisely why losing them goes unnoticed. Found by running
+ * this suite against the engine's own `script-task.cmmn`, which carries an
+ * `xsi:schemaLocation` the four files above happen not to.
+ */
+describe("attributes on the definitions element", () => {
+  const source = `<?xml version="1.0" encoding="UTF-8"?>
+<definitions xmlns="http://www.omg.org/spec/CMMN/20151109/MODEL"
+             xmlns:flowable="http://flowable.org/cmmn"
+             xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+             xsi:schemaLocation="http://www.omg.org/spec/CMMN/20151109/MODEL CMMN11.xsd"
+             exporter="Some Tool"
+             exporterVersion="4.2"
+             targetNamespace="http://flowable.org/cmmn">
+  <case id="c1" name="C">
+    <casePlanModel id="pm" name="PM" />
+  </case>
+</definitions>`;
+
+  it("keeps them", () => {
+    const after = serialiseCmmn(parseCmmn(source));
+
+    expect(after).toContain('xsi:schemaLocation="http://www.omg.org/spec/CMMN/20151109/MODEL CMMN11.xsd"');
+    expect(after).toContain('exporter="Some Tool"');
+    expect(after).toContain('exporterVersion="4.2"');
+  });
+
+  it("does not duplicate targetNamespace, which it writes itself", () => {
+    const after = serialiseCmmn(parseCmmn(source));
+
+    expect(after.match(/targetNamespace=/g)).toHaveLength(1);
+  });
+
+  it("writes none when the file had none", () => {
+    const plain = source
+      .replace(/\n\s+xsi:schemaLocation="[^"]*"/, "")
+      .replace(/\n\s+exporter="[^"]*"/, "")
+      .replace(/\n\s+exporterVersion="[^"]*"/, "");
+
+    expect(serialiseCmmn(parseCmmn(plain))).not.toContain("exporter=");
   });
 });

@@ -64,11 +64,18 @@ function kitchenSink(): CmmnCase {
     "caseTask",
     "decisionTask",
     "serviceTask",
+    "scriptTask",
+    "httpTask",
+    "mailTask",
     "milestone",
     "stage",
     "timerEventListener",
     "userEventListener",
     "genericEventListener",
+    "signalEventListener",
+    "variableEventListener",
+    "intentEventListener",
+    "reactivateEventListener",
   ];
 
   const base = emptyCase("kitchenSink", "Kitchen sink");
@@ -79,8 +86,23 @@ function kitchenSink(): CmmnCase {
       base.planModelId,
     ),
   );
-  const [human, process, subCase, decision, service, milestone, stage, timer, userEvent] =
-    elements;
+  const [
+    human,
+    process,
+    subCase,
+    decision,
+    service,
+    script,
+    http,
+    mail,
+    milestone,
+    stage,
+    timer,
+    userEvent,
+    ,
+    signal,
+    variable,
+  ] = elements;
 
   human.attributes = { assignee: "kermit", candidateGroups: "sales", formKey: "f1" };
   human.entrySentries = [{ id: "sentry_1", onParts: [], ifPart: "${ready}" }];
@@ -155,15 +177,32 @@ function kitchenSink(): CmmnCase {
     formFieldValidation: "true",
   };
   userEvent.attributes = { availableCondition: "${ready}" };
+
+  /*
+   * The typed kinds. Each is a shared element carrying a `flowable:` discriminator, so what
+   * the schema is being asked here is whether that discriminator — and everything it drags
+   * along — is legal where it lands. `flowable:eventType` in particular was once believed
+   * not to be; it is, and only the un-prefixed form is rejected.
+   */
+  script.attributes = { scriptFormat: "groovy", resultVariableName: "total", autoStoreVariables: "true" };
+  script.fields = [{ name: "script", valueKind: "string", value: "return 1 + 1" }];
+  http.attributes = { parallelInSameTransaction: "true" };
+  http.fields = [
+    { name: "requestUrl", valueKind: "string", value: "https://example.test" },
+    { name: "requestMethod", valueKind: "string", value: "POST" },
+    { name: "requestBody", valueKind: "expression", value: "${body}" },
+  ];
+  mail.fields = [
+    { name: "to", valueKind: "string", value: "someone@example.test" },
+    { name: "subject", valueKind: "string", value: "Hello" },
+    { name: "html", valueKind: "string", value: "<p>Hello</p>" },
+  ];
+  signal.attributes = { signalRef: "somethingHappened" };
+  variable.attributes = { variableName: "amount", variableChangeType: "update" };
   human.exitSentries[0].exitEventType = "forceComplete";
   subCase.plainAttributes = { caseRef: "someCase" };
   decision.plainAttributes = { decisionRef: "someDecision" };
-  service.attributes = { type: "http", storeResultVariableAsTransient: "true" };
-  service.fields = [
-    { name: "requestUrl", valueKind: "string", value: "https://example.test" },
-    { name: "requestMethod", valueKind: "string", value: "GET" },
-    { name: "requestHeaders", valueKind: "expression", value: "${headers}" },
-  ];
+  service.attributes = { class: "com.example.Delegate", storeResultVariableAsTransient: "true" };
   timer.timerExpression = "PT1H";
 
   // A stage the schema will see as a real stage, with a plan item inside it.

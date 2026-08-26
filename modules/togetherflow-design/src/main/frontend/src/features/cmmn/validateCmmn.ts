@@ -99,20 +99,48 @@ function checkReferences(element: CmmnElement, label: string, add: Add): void {
       add("error", `The task "${label}" has no implementation, so it fails when reached.`,
         element.planItemId);
     }
+  }
 
-    /*
-     * A typed task is configured through field injections, and the engine only complains
-     * when an instance reaches it — "requestMethod is required", thrown at runtime rather
-     * than at deployment.
-     */
-    if (type === "http") {
-      const names = new Set((element.fields ?? []).map((field) => field.name.trim()));
-      for (const required of REQUIRED_HTTP_FIELDS) {
-        if (!names.has(required)) {
-          add("error", `The HTTP task "${label}" has no ${required} field.`, element.planItemId);
-        }
+  /*
+   * A typed task is configured through field injections, and the engine only complains when
+   * an instance reaches it — "requestMethod is required", thrown at runtime rather than at
+   * deployment, which is the worst moment to find out.
+   */
+  if (element.type === "httpTask") {
+    const names = new Set((element.fields ?? []).map((field) => field.name.trim()));
+    for (const required of REQUIRED_HTTP_FIELDS) {
+      if (!names.has(required)) {
+        add("error", `The HTTP task "${label}" has no ${required} field.`, element.planItemId);
       }
     }
+  }
+
+  if (element.type === "scriptTask") {
+    const script = (element.fields ?? []).find((field) => field.name.trim() === "script");
+    if (!script?.value.trim()) {
+      // The engine parses and deploys a script task with no script, then fails on it.
+      add("error", `The script task "${label}" has no script to run.`, element.planItemId);
+    }
+    if (!element.attributes.scriptFormat?.trim()) {
+      add("error", `The script task "${label}" names no script language.`, element.planItemId);
+    }
+  }
+
+  if (element.type === "mailTask") {
+    const names = new Set((element.fields ?? []).map((field) => field.name.trim()));
+    if (!names.has("to")) {
+      add("error", `The mail task "${label}" has no recipient.`, element.planItemId);
+    }
+  }
+
+  if (element.type === "signalEventListener" && !element.attributes.signalRef?.trim()) {
+    add("error", `The signal listener "${label}" names no signal, so it never fires.`,
+      element.planItemId);
+  }
+
+  if (element.type === "variableEventListener" && !element.attributes.variableName?.trim()) {
+    add("error", `The variable listener "${label}" names no variable, so it never fires.`,
+      element.planItemId);
   }
 }
 

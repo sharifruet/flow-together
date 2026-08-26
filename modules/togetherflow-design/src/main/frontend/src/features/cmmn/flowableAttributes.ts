@@ -42,6 +42,7 @@ export interface CmmnAttributeGroup {
 export type CmmnAttributeName =
   | "async"
   | "asyncLeave"
+  | "autoStoreVariables"
   | "asyncLeaveExclusive"
   | "autoCompleteCondition"
   | "availableCondition"
@@ -50,6 +51,7 @@ export type CmmnAttributeName =
   | "collectionVariable"
   | "counterVariable"
   | "displayOrder"
+  | "doNotIncludeVariables"
   | "elementIndexVariable"
   | "elementVariable"
   | "fallbackToDefaultTenant"
@@ -63,10 +65,16 @@ export type CmmnAttributeName =
   | "isBlockingExpression"
   | "maxInstanceCount"
   | "milestoneVariable"
+  | "parallelInSameTransaction"
+  | "resultVariableName"
   | "sameDeployment"
+  | "scriptFormat"
+  | "signalRef"
   | "storeResultVariableAsTransient"
   | "taskCompleterVariableName"
-  | "taskIdVariableName";
+  | "taskIdVariableName"
+  | "variableChangeType"
+  | "variableName";
 
 /**
  * How a plan item runs, rather than what it does.
@@ -148,17 +156,53 @@ const LISTENER: CmmnAttributeGroup = {
   attributes: [{ name: "availableCondition", kind: "text" }],
 };
 
+/** A script task's own settings. The script body itself is a field, not an attribute. */
+const SCRIPT_TASK: CmmnAttributeGroup = {
+  id: "scriptTask",
+  attributes: [
+    { name: "scriptFormat", kind: "text" },
+    { name: "resultVariableName", kind: "text" },
+    { name: "autoStoreVariables", kind: "boolean" },
+    { name: "doNotIncludeVariables", kind: "boolean" },
+  ],
+};
+
+const HTTP_TASK: CmmnAttributeGroup = {
+  id: "httpTask",
+  attributes: [{ name: "parallelInSameTransaction", kind: "boolean" }],
+};
+
+const SIGNAL_LISTENER: CmmnAttributeGroup = {
+  id: "signalListener",
+  attributes: [{ name: "signalRef", kind: "text" }],
+};
+
+const VARIABLE_LISTENER: CmmnAttributeGroup = {
+  id: "variableListener",
+  attributes: [
+    { name: "variableName", kind: "text" },
+    { name: "variableChangeType", kind: "text" },
+  ],
+};
+
 const BY_TYPE: Record<CmmnElementType, CmmnAttributeGroup[]> = {
   humanTask: [HUMAN_TASK, EXECUTION],
   processTask: [CHILD_TASK, EXECUTION],
   caseTask: [CHILD_TASK, EXECUTION],
   decisionTask: [EXECUTION],
   serviceTask: [SERVICE_TASK, EXECUTION],
+  scriptTask: [SCRIPT_TASK, EXECUTION],
+  httpTask: [HTTP_TASK, SERVICE_TASK, EXECUTION],
+  mailTask: [EXECUTION],
   milestone: [MILESTONE],
   stage: [STAGE],
   timerEventListener: [LISTENER],
   userEventListener: [LISTENER],
   genericEventListener: [LISTENER],
+  signalEventListener: [SIGNAL_LISTENER, LISTENER],
+  variableEventListener: [VARIABLE_LISTENER, LISTENER],
+  intentEventListener: [LISTENER],
+  reactivateEventListener: [LISTENER],
 };
 
 export function attributeGroupsFor(type: CmmnElementType): CmmnAttributeGroup[] {
@@ -191,4 +235,58 @@ export function allAuthoredAttributeNames(): string[] {
   }
   for (const attribute of REPETITION_ATTRIBUTES) names.add(attribute.name);
   return [...names].sort();
+}
+
+/**
+ * The field injections each typed task is configured with.
+ *
+ * Flowable's specialised tasks take almost all of their configuration as
+ * `<flowable:field>` children rather than attributes — a script task's *script* is a field
+ * named `script`, and an HTTP task's URL is a field named `requestUrl`. The generic field
+ * editor could always author these, but only if you already knew the names, which is a
+ * poor way to learn that `requestMethod` is required and `requestMethods` is ignored.
+ *
+ * Names come from the engine's own delegates: `BaseHttpActivityDelegate`,
+ * `BaseMailActivityDelegate` and `ScriptServiceTask`.
+ */
+export const TASK_FIELDS: Partial<Record<CmmnElementType, string[]>> = {
+  scriptTask: ["script"],
+  httpTask: [
+    "requestMethod",
+    "requestUrl",
+    "requestHeaders",
+    "requestBody",
+    "requestBodyEncoding",
+    "requestTimeout",
+    "requestSecureHeaders",
+    "disallowRedirects",
+    "failStatusCodes",
+    "handleStatusCodes",
+    "ignoreException",
+    "saveRequestVariables",
+    "saveResponseParameters",
+    "saveResponseParametersTransient",
+    "saveResponseVariableAsJson",
+    "responseVariableName",
+    "resultVariablePrefix",
+  ],
+  mailTask: [
+    "to",
+    "from",
+    "cc",
+    "bcc",
+    "subject",
+    "text",
+    "html",
+    "charset",
+    "headers",
+    "attachments",
+    "ignoreException",
+    "exceptionVariableName",
+  ],
+};
+
+/** The fields a task of this kind is configured with, or none if it is not a typed task. */
+export function taskFieldsFor(type: CmmnElementType): string[] {
+  return TASK_FIELDS[type] ?? [];
 }

@@ -556,12 +556,19 @@ const ICONS: Record<CmmnElementType, string> = {
   caseTask: "▣",
   decisionTask: "▤",
   serviceTask: "⚙",
+  scriptTask: "⌨",
+  httpTask: "🌐",
+  mailTask: "✉",
   milestone: "",
   stage: "",
   timerEventListener: "⏱",
   userEventListener: "◉",
   // A generic listener waits for something the model does not name, so no specific glyph.
   genericEventListener: "◎",
+  signalEventListener: "◈",
+  variableEventListener: "𝑥",
+  intentEventListener: "◐",
+  reactivateEventListener: "↺",
 };
 
 /** CMMN draws the plan model and stages with the top corners cut. */
