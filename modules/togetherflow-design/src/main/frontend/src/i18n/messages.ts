@@ -672,6 +672,37 @@ export const designEn = {
   "cmmn.field.attachments.hint": "Expression resolving to a file, a list of files, or a data source.",
   "cmmn.field.exceptionVariableName": "Exception variable",
   "cmmn.field.exceptionVariableName.hint": "Case variable to hold the failure, when exceptions are ignored.",
+  "cmmn.defaultControl": "Default rules",
+  "cmmn.defaultControl.hint":
+    "Applied to any plan item pointing at this definition that has no rules of its own. Only worth setting where more than one plan item shares the definition.",
+
+  "cmmn.sendEvent": "Event",
+  "cmmn.sendEvent.eventType": "Event key",
+  "cmmn.sendEvent.eventType.hint":
+    "Key of the event definition in the event registry. Its outbound channel is resolved from there, so there is nothing to name here.",
+  "cmmn.sendEvent.in": "Sent with the event",
+  "cmmn.sendEvent.in.hint": "Case variables carried out into the event's payload.",
+  "cmmn.sendEvent.out": "Read back from the response",
+  "cmmn.sendEvent.out.hint": "Event fields carried back into case variables.",
+  "cmmn.sendEvent.source": "Variable",
+  "cmmn.sendEvent.sourceExpression": "Or expression",
+  "cmmn.sendEvent.target": "Maps to",
+  "cmmn.sendEvent.transient": "Transient",
+  "cmmn.sendEvent.remove": "Remove mapping {index}",
+  "cmmn.sendEvent.add.in": "Add a value to send",
+  "cmmn.sendEvent.add.out": "Add a value to read back",
+
+  "cmmn.group.externalWorkerTask": "External worker",
+  "cmmn.group.casePageTask": "Page",
+
+  "cmmn.attr.topic": "Topic",
+  "cmmn.attr.topic.hint":
+    "Queue an external worker polls for this work. Required — nothing picks the task up without it.",
+  "cmmn.attr.label": "Tab label",
+  "cmmn.attr.label.hint": "Shown on the tab in the case UI. Falls back to the task's name.",
+  "cmmn.attr.icon": "Icon",
+  "cmmn.attr.icon.hint": "Icon name for the tab, as your case UI understands it.",
+
   "cmmn.group.scriptTask": "Script",
   "cmmn.group.httpTask": "HTTP",
   "cmmn.group.signalListener": "Signal",

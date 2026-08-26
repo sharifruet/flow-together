@@ -58,11 +58,13 @@ export type CmmnAttributeName =
   | "formFieldValidation"
   | "formKey"
   | "exclusive"
+  | "icon"
   | "idVariableName"
   | "ignoreCounterVariable"
   | "includeInStageOverview"
   | "inheritBusinessKey"
   | "isBlockingExpression"
+  | "label"
   | "maxInstanceCount"
   | "milestoneVariable"
   | "parallelInSameTransaction"
@@ -73,6 +75,7 @@ export type CmmnAttributeName =
   | "storeResultVariableAsTransient"
   | "taskCompleterVariableName"
   | "taskIdVariableName"
+  | "topic"
   | "variableChangeType"
   | "variableName";
 
@@ -172,6 +175,28 @@ const HTTP_TASK: CmmnAttributeGroup = {
   attributes: [{ name: "parallelInSameTransaction", kind: "boolean" }],
 };
 
+const EXTERNAL_WORKER_TASK: CmmnAttributeGroup = {
+  id: "externalWorkerTask",
+  attributes: [
+    { name: "topic", kind: "text" },
+    { name: "doNotIncludeVariables", kind: "boolean" },
+  ],
+};
+
+/**
+ * A case page task is a tab inside the case's own UI rather than work the engine performs,
+ * so its settings are all about how it appears and who may see it.
+ */
+const CASE_PAGE_TASK: CmmnAttributeGroup = {
+  id: "casePageTask",
+  attributes: [
+    { name: "formKey", kind: "text" },
+    { name: "label", kind: "text" },
+    { name: "icon", kind: "text" },
+    { name: "sameDeployment", kind: "boolean" },
+  ],
+};
+
 const SIGNAL_LISTENER: CmmnAttributeGroup = {
   id: "signalListener",
   attributes: [{ name: "signalRef", kind: "text" }],
@@ -194,8 +219,13 @@ const BY_TYPE: Record<CmmnElementType, CmmnAttributeGroup[]> = {
   scriptTask: [SCRIPT_TASK, EXECUTION],
   httpTask: [HTTP_TASK, SERVICE_TASK, EXECUTION],
   mailTask: [EXECUTION],
+  externalWorkerTask: [EXTERNAL_WORKER_TASK, EXECUTION],
+  casePageTask: [CASE_PAGE_TASK],
+  sendEventTask: [EXECUTION],
   milestone: [MILESTONE],
   stage: [STAGE],
+  // A plan fragment has no lifecycle, so none of the stage attributes apply to it.
+  planFragment: [],
   timerEventListener: [LISTENER],
   userEventListener: [LISTENER],
   genericEventListener: [LISTENER],

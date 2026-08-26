@@ -133,6 +133,20 @@ function checkReferences(element: CmmnElement, label: string, add: Add): void {
     }
   }
 
+  if (element.type === "sendEventTask" && !element.eventType?.trim()) {
+    // With no event key there is nothing to look up, so nothing is ever sent.
+    add("error", `The send event task "${label}" names no event.`, element.planItemId);
+  }
+
+  if (element.type === "externalWorkerTask" && !element.attributes.topic?.trim()) {
+    // Nothing polls for work with no topic, so the case waits on it for ever.
+    add("error", `The external worker task "${label}" names no topic.`, element.planItemId);
+  }
+
+  if (element.type === "casePageTask" && !element.attributes.formKey?.trim()) {
+    add("error", `The case page task "${label}" names no form to show.`, element.planItemId);
+  }
+
   if (element.type === "signalEventListener" && !element.attributes.signalRef?.trim()) {
     add("error", `The signal listener "${label}" names no signal, so it never fires.`,
       element.planItemId);

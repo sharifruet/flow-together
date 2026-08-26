@@ -559,8 +559,12 @@ const ICONS: Record<CmmnElementType, string> = {
   scriptTask: "⌨",
   httpTask: "🌐",
   mailTask: "✉",
+  externalWorkerTask: "🛠",
+  casePageTask: "▥",
+  sendEventTask: "📤",
   milestone: "",
   stage: "",
+  planFragment: "",
   timerEventListener: "⏱",
   userEventListener: "◉",
   // A generic listener waits for something the model does not name, so no specific glyph.

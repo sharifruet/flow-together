@@ -144,6 +144,29 @@ describe("validateCmmn", () => {
     );
   });
 
+  it("reports an external worker task with no topic", () => {
+    expect(messages(caseWith(make("externalWorkerTask", "Pick")))).toContain(
+      'The external worker task "Pick" names no topic.',
+    );
+  });
+
+  it("reports a case page task with no form", () => {
+    expect(messages(caseWith(make("casePageTask", "Overview")))).toContain(
+      'The case page task "Overview" names no form to show.',
+    );
+  });
+
+  it("reports a send event task naming no event", () => {
+    expect(messages(caseWith(make("sendEventTask", "Publish")))).toContain(
+      'The send event task "Publish" names no event.',
+    );
+  });
+
+  it("accepts a send event task once it names one", () => {
+    const send = { ...make("sendEventTask", "Publish"), eventType: "orderPlaced" };
+    expect(validateCmmn(caseWith(send))).toEqual([]);
+  });
+
   it("asks nothing of an intent or reactivate listener, which carry no configuration", () => {
     expect(validateCmmn(caseWith(make("intentEventListener", "Intent")))).toEqual([]);
     expect(validateCmmn(caseWith(make("reactivateEventListener", "Again")))).toEqual([]);

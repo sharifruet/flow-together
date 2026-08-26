@@ -67,8 +67,12 @@ function kitchenSink(): CmmnCase {
     "scriptTask",
     "httpTask",
     "mailTask",
+    "externalWorkerTask",
+    "casePageTask",
+    "sendEventTask",
     "milestone",
     "stage",
+    "planFragment",
     "timerEventListener",
     "userEventListener",
     "genericEventListener",
@@ -95,8 +99,12 @@ function kitchenSink(): CmmnCase {
     script,
     http,
     mail,
+    externalWorker,
+    casePage,
+    sendEvent,
     milestone,
     stage,
+    fragment,
     timer,
     userEvent,
     ,
@@ -197,6 +205,14 @@ function kitchenSink(): CmmnCase {
     { name: "subject", valueKind: "string", value: "Hello" },
     { name: "html", valueKind: "string", value: "<p>Hello</p>" },
   ];
+  externalWorker.attributes = { topic: "orderPicking", doNotIncludeVariables: "true" };
+  casePage.attributes = { formKey: "overview", label: "Overview", icon: "chart", sameDeployment: "true" };
+  sendEvent.eventType = "orderPlaced";
+  sendEvent.eventInParameters = [
+    { source: "orderId", target: "id" },
+    { sourceExpression: "${total}", target: "amount" },
+  ];
+  sendEvent.eventOutParameters = [{ source: "status", target: "orderStatus", transient: true }];
   signal.attributes = { signalRef: "somethingHappened" };
   variable.attributes = { variableName: "amount", variableChangeType: "update" };
   human.exitSentries[0].exitEventType = "forceComplete";
@@ -209,7 +225,17 @@ function kitchenSink(): CmmnCase {
   const inside = createElement("humanTask", { x: 140, y: 260 }, stage.planItemId);
   inside.name = "Inside the stage";
 
-  return { ...base, elements: [...elements, inside] };
+  /*
+   * A plan fragment holding a task. The schema gives `tPlanFragment` `planItem` and
+   * `sentry` only — no `planItemDefinition` — so this is the case that proves the
+   * fragment's definition is written by the enclosing plan model rather than inside it.
+   */
+  const inFragment = createElement("humanTask", { x: 140, y: 400 }, fragment.planItemId);
+  inFragment.name = "Inside the fragment";
+
+  human.defaultControl = { required: { enabled: true }, manualActivation: { enabled: true } };
+
+  return { ...base, elements: [...elements, inside, inFragment] };
 }
 
 describe("CMMN schema validity", () => {

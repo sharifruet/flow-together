@@ -147,10 +147,21 @@ describe("CMMN attribute coverage", () => {
     expect([...new Set(orphans)]).toEqual([]);
   });
 
+  /*
+   * A type with no group is almost always an oversight — a shape you can draw and not
+   * configure, which is the gap this whole table exists to close. The exception is listed
+   * rather than assumed, so adding a kind and forgetting its attributes still fails.
+   */
+  const NO_FLOWABLE_ATTRIBUTES: CmmnElementType[] = [
+    // A plan fragment has no lifecycle of its own: it groups plan items so they enter the
+    // plan together, and the engine reads no `flowable:` attribute from it.
+    "planFragment",
+  ];
+
   it("covers every element type in the palette", () => {
     const uncovered = (Object.keys(TYPE_LABELS) as CmmnElementType[]).filter(
       (type) => attributeGroupsFor(type).length === 0,
     );
-    expect(uncovered).toEqual([]);
+    expect(uncovered).toEqual(NO_FLOWABLE_ATTRIBUTES);
   });
 });

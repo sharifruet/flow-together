@@ -48,6 +48,7 @@ import {
   type CmmnElementType,
   type CmmnField,
   type CmmnFieldValueKind,
+  type EventParameter,
   type ItemControl,
   type LifecycleListener,
   type RuleConfig,
@@ -88,6 +89,7 @@ const EXIT_EVENT_TYPES = ["", "exit", "complete", "forceComplete"] as const;
 
 const PALETTE: CmmnElementType[] = [
   "stage",
+  "planFragment",
   "humanTask",
   "processTask",
   "decisionTask",
@@ -96,6 +98,9 @@ const PALETTE: CmmnElementType[] = [
   "scriptTask",
   "httpTask",
   "mailTask",
+  "externalWorkerTask",
+  "casePageTask",
+  "sendEventTask",
   "milestone",
   "timerEventListener",
   "userEventListener",
@@ -1156,6 +1161,10 @@ function CmmnProperties({
         the moment it starts — "requestMethod is required" — so the type selector above is
         only half of what makes a service task work.
       */}
+      {element.type === "sendEventTask" ? (
+        <SendEventSection t={t} element={element} disabled={disabled} onChangeElement={onChangeElement} />
+      ) : null}
+
       {taskFieldsFor(element.type).length > 0 ? (
         <KnownFieldsSection element={element} disabled={disabled} onChangeElement={onChangeElement} />
       ) : null}
@@ -1192,6 +1201,14 @@ function CmmnProperties({
 
       <ItemControlSection
         t={t}
+        element={element}
+        disabled={disabled}
+        onChangeElement={onChangeElement}
+      />
+
+      <ItemControlSection
+        t={t}
+        which="defaultControl"
         element={element}
         disabled={disabled}
         onChangeElement={onChangeElement}
@@ -1476,18 +1493,28 @@ export { emptyCase };
  * — a bare `<requiredRule/>` means always, and one with a `<condition>` means sometimes.
  * The condition input therefore appears only once the rule is switched on.
  */
+/**
+ * The rules on a plan item, or the defaults on its definition.
+ *
+ * `<itemControl>` sits on the plan item and governs that one occurrence; `<defaultControl>`
+ * sits on the definition and governs every plan item referencing it that carries no control
+ * of its own. Same content model, so the same editor, told apart by `which`.
+ */
 function ItemControlSection({
   t,
+  which = "itemControl",
   element,
   disabled,
   onChangeElement,
 }: {
   t: TFunction;
+  which?: "itemControl" | "defaultControl";
   element: CmmnElement;
   disabled: boolean;
   onChangeElement: (patch: Partial<CmmnElement>) => void;
 }) {
-  const control = element.itemControl ?? {};
+  const control = element[which] ?? {};
+  const commit = (next: ItemControl | undefined) => onChangeElement({ [which]: next });
 
   const setRule = (key: keyof typeof RULE_LABELS, patch: Partial<RuleConfig>) => {
     const next: ItemControl = {
@@ -1500,7 +1527,7 @@ function ItemControlSection({
     const anyOn = Object.keys(RULE_LABELS).some(
       (name) => next[name as keyof typeof RULE_LABELS]?.enabled,
     );
-    onChangeElement({ itemControl: anyOn ? next : undefined });
+    commit(anyOn ? next : undefined);
   };
 
   const setRepetitionAttribute = (name: string, value: string) => {
@@ -1508,18 +1535,13 @@ function ItemControlSection({
     const next = value.trim()
       ? { ...current, [name]: value }
       : Object.fromEntries(Object.entries(current).filter(([key]) => key !== name));
-    onChangeElement({
-      itemControl: {
-        ...control,
-        repetitionAttributes: Object.keys(next).length > 0 ? next : undefined,
-      },
-    });
+    commit({ ...control, repetitionAttributes: Object.keys(next).length > 0 ? next : undefined });
   };
 
   return (
     <section className="tf-properties__section">
-      <h3 className="tf-properties__section-title">{t("cmmn.itemControl")}</h3>
-      <p className="tf-muted tf-properties__hint">{t("cmmn.itemControl.hint")}</p>
+      <h3 className="tf-properties__section-title">{t(`cmmn.${which}`)}</h3>
+      <p className="tf-muted tf-properties__hint">{t(`cmmn.${which}.hint`)}</p>
 
       {(Object.keys(RULE_LABELS) as Array<keyof typeof RULE_LABELS>).map((key) => {
         const rule = control[key];
@@ -1978,3 +2000,145 @@ function KnownFieldsSection({
 
 /** Fields that hold a body rather than a value, and need room to be read. */
 const MULTILINE_TASK_FIELDS = new Set(["script", "requestBody", "text", "html", "requestHeaders"]);
+
+/**
+ * What a send-event task actually sends.
+ *
+ * `<flowable:eventType>` names the registry event — not to be confused with the
+ * `flowable:eventType` *attribute*, which on an event listener names the listener's kind.
+ * The engine reuses the name for two unrelated things, so the label here says "event key"
+ * rather than repeating it.
+ *
+ * The parameters map between case variables and the event's payload: in-parameters carry
+ * variables out into the event, out-parameters carry received fields back in. Each side is
+ * either a plain name or an expression, and the engine reads whichever is set.
+ */
+function SendEventSection({
+  t,
+  element,
+  disabled,
+  onChangeElement,
+}: {
+  t: TFunction;
+  element: CmmnElement;
+  disabled: boolean;
+  onChangeElement: (patch: Partial<CmmnElement>) => void;
+}) {
+  return (
+    <section className="tf-properties__section">
+      <h3 className="tf-properties__section-title">{t("cmmn.sendEvent")}</h3>
+
+      <TextInput
+        label={t("cmmn.sendEvent.eventType")}
+        value={element.eventType ?? ""}
+        disabled={disabled}
+        hint={t("cmmn.sendEvent.eventType.hint")}
+        onChange={(event) =>
+          onChangeElement({ eventType: event.target.value.trim() ? event.target.value : undefined })
+        }
+      />
+
+      <EventParameterRows
+        t={t}
+        kind="in"
+        rows={element.eventInParameters ?? []}
+        disabled={disabled}
+        onChange={(eventInParameters) => onChangeElement({ eventInParameters })}
+      />
+      <EventParameterRows
+        t={t}
+        kind="out"
+        rows={element.eventOutParameters ?? []}
+        disabled={disabled}
+        onChange={(eventOutParameters) => onChangeElement({ eventOutParameters })}
+      />
+    </section>
+  );
+}
+
+function EventParameterRows({
+  t,
+  kind,
+  rows,
+  disabled,
+  onChange,
+}: {
+  t: TFunction;
+  kind: "in" | "out";
+  rows: EventParameter[];
+  disabled: boolean;
+  onChange: (rows: EventParameter[]) => void;
+}) {
+  const update = (index: number, patch: Partial<EventParameter>) =>
+    onChange(rows.map((row, i) => (i === index ? { ...row, ...patch } : row)));
+
+  return (
+    <div className="tf-properties__subsection">
+      <h4 className="tf-properties__subsection-title">{t(`cmmn.sendEvent.${kind}`)}</h4>
+      <p className="tf-muted tf-properties__hint">{t(`cmmn.sendEvent.${kind}.hint`)}</p>
+
+      <ul className="tf-properties__rows">
+        {rows.map((row, index) => (
+          <li className="tf-properties__row" key={index}>
+            <input
+              className="tf-input"
+              aria-label={t("cmmn.sendEvent.source")}
+              placeholder={t("cmmn.sendEvent.source")}
+              value={row.source ?? ""}
+              disabled={disabled}
+              onChange={(event) =>
+                update(index, { source: event.target.value || undefined })
+              }
+            />
+            <input
+              className="tf-input"
+              aria-label={t("cmmn.sendEvent.sourceExpression")}
+              placeholder={t("cmmn.sendEvent.sourceExpression")}
+              value={row.sourceExpression ?? ""}
+              disabled={disabled}
+              onChange={(event) =>
+                update(index, { sourceExpression: event.target.value || undefined })
+              }
+            />
+            <input
+              className="tf-input"
+              aria-label={t("cmmn.sendEvent.target")}
+              placeholder={t("cmmn.sendEvent.target")}
+              value={row.target ?? ""}
+              disabled={disabled}
+              onChange={(event) => update(index, { target: event.target.value || undefined })}
+            />
+            {kind === "out" ? (
+              <label className="tf-checkbox">
+                <input
+                  type="checkbox"
+                  checked={row.transient === true}
+                  disabled={disabled}
+                  onChange={(event) => update(index, { transient: event.target.checked || undefined })}
+                />
+                {t("cmmn.sendEvent.transient")}
+              </label>
+            ) : null}
+            <button
+              type="button"
+              className="tf-chip-item__remove"
+              aria-label={t("cmmn.sendEvent.remove", { index: index + 1 })}
+              disabled={disabled}
+              onClick={() => onChange(rows.filter((_, i) => i !== index))}
+            >
+              ×
+            </button>
+          </li>
+        ))}
+      </ul>
+
+      <Button
+        variant="secondary"
+        disabled={disabled}
+        onClick={() => onChange([...rows, {}])}
+      >
+        {t(`cmmn.sendEvent.add.${kind}`)}
+      </Button>
+    </div>
+  );
+}

@@ -491,6 +491,9 @@ describe("typed tasks and listeners", () => {
     ["scriptTask", "task", 'flowable:type="script"'],
     ["httpTask", "task", 'flowable:type="http"'],
     ["mailTask", "task", 'flowable:type="mail"'],
+    ["externalWorkerTask", "task", 'flowable:type="external-worker"'],
+    ["casePageTask", "task", 'flowable:type="casePage"'],
+    ["sendEventTask", "task", 'flowable:type="send-event"'],
     ["signalEventListener", "eventListener", 'flowable:eventType="signal"'],
     ["variableEventListener", "eventListener", 'flowable:eventType="variable"'],
     ["intentEventListener", "eventListener", 'flowable:eventType="intent"'],
@@ -639,5 +642,252 @@ describe("attributes on the definitions element", () => {
       .replace(/\n\s+exporterVersion="[^"]*"/, "");
 
     expect(serialiseCmmn(parseCmmn(plain))).not.toContain("exporter=");
+  });
+});
+
+/*
+ * A stage used to absorb its first child task's children.
+ *
+ * Every read on a definition went through `firstByLocalName`, which searches *descendants*.
+ * On a leaf task that is the same as reading its own children; on a stage it is not, so a
+ * stage took the first task inside it as its own `extensionElements` and `timerExpression`
+ * — and then serialised them onto itself, so a save duplicated every field injection in the
+ * case onto the stage containing it.
+ *
+ * Not caught before because the four repository files have no stage whose children carry
+ * extension elements, and because the symptom is additive: nothing is lost, so a
+ * "keeps everything it had" test passes.
+ */
+describe("a stage's own children", () => {
+  const source = `<?xml version="1.0" encoding="UTF-8"?>
+<definitions xmlns="http://www.omg.org/spec/CMMN/20151109/MODEL" xmlns:flowable="http://flowable.org/cmmn" targetNamespace="http://flowable.org/cmmn">
+  <case id="c1" name="C">
+    <casePlanModel id="pm" name="PM">
+      <planItem id="pis" name="S" definitionRef="st1" />
+      <stage id="st1" name="S">
+        <planItem id="pi1" name="T" definitionRef="ht1" />
+        <humanTask id="ht1" name="T">
+          <extensionElements>
+            <flowable:field name="inner"><flowable:string><![CDATA[x]]></flowable:string></flowable:field>
+          </extensionElements>
+        </humanTask>
+      </stage>
+    </casePlanModel>
+  </case>
+</definitions>`;
+
+  const byId = new Map(parseCmmn(source).elements.map((el) => [el.definitionId, el]));
+
+  it("does not take the field injections of the task inside it", () => {
+    expect(byId.get("st1")?.fields).toEqual([]);
+    expect(byId.get("ht1")?.fields).toHaveLength(1);
+  });
+
+  it("does not duplicate them on save", () => {
+    const after = serialiseCmmn(parseCmmn(source));
+
+    expect(after.match(/flowable:field /g)).toHaveLength(1);
+  });
+
+  it("does not take a nested timer's expression either", () => {
+    const withTimer = source.replace(
+      '<humanTask id="ht1" name="T">',
+      `<timerEventListener id="tl1" name="L"><timerExpression>PT1H</timerExpression></timerEventListener>
+        <humanTask id="ht1" name="T">`,
+    );
+    const parsed = new Map(parseCmmn(withTimer).elements.map((el) => [el.definitionId, el]));
+
+    expect(parsed.get("st1")?.timerExpression).toBeUndefined();
+  });
+});
+
+/*
+ * A send-event task's event key and parameter mappings. All three live inside
+ * `extensionElements` — the key as `<flowable:eventType>`, which is a different thing from
+ * the `flowable:eventType` *attribute* that names a listener's kind. They round-tripped
+ * before as opaque preserved children; modelling them means they must not now be written
+ * twice, once from the model and once from the passthrough.
+ */
+describe("send event task mappings", () => {
+  const source = `<?xml version="1.0" encoding="UTF-8"?>
+<definitions xmlns="http://www.omg.org/spec/CMMN/20151109/MODEL" xmlns:flowable="http://flowable.org/cmmn" targetNamespace="http://flowable.org/cmmn">
+  <case id="c1" name="C">
+    <casePlanModel id="pm" name="PM">
+      <planItem id="pi1" name="Publish" definitionRef="t1" />
+      <task id="t1" name="Publish" flowable:type="send-event">
+        <extensionElements>
+          <flowable:eventType>orderPlaced</flowable:eventType>
+          <flowable:eventInParameter source="orderId" target="id" />
+          <flowable:eventInParameter sourceExpression="\${total}" target="amount" />
+          <flowable:eventOutParameter source="status" target="orderStatus" transient="true" />
+        </extensionElements>
+      </task>
+    </casePlanModel>
+  </case>
+</definitions>`;
+
+  const [task] = parseCmmn(source).elements;
+
+  it("reads the event key", () => {
+    expect(task.type).toBe("sendEventTask");
+    expect(task.eventType).toBe("orderPlaced");
+  });
+
+  it("reads both directions of mapping", () => {
+    expect(task.eventInParameters).toEqual([
+      { source: "orderId", sourceExpression: undefined, target: "id", targetType: undefined, transient: undefined },
+      { source: undefined, sourceExpression: "${total}", target: "amount", targetType: undefined, transient: undefined },
+    ]);
+    expect(task.eventOutParameters?.[0].transient).toBe(true);
+  });
+
+  it("writes each of them exactly once", () => {
+    const after = serialiseCmmn(parseCmmn(source));
+
+    expect(after.match(/<flowable:eventType>/g)).toHaveLength(1);
+    expect(after.match(/<flowable:eventInParameter /g)).toHaveLength(2);
+    expect(after.match(/<flowable:eventOutParameter /g)).toHaveLength(1);
+  });
+
+  it("drops a mapping with no source, which the engine would read as a mapping", () => {
+    const model = parseCmmn(source);
+    const withEmpty = {
+      ...model,
+      elements: model.elements.map((el) => ({
+        ...el,
+        eventInParameters: [...(el.eventInParameters ?? []), { target: "nothing" }],
+      })),
+    };
+
+    expect(serialiseCmmn(withEmpty).match(/<flowable:eventInParameter /g)).toHaveLength(2);
+  });
+});
+
+/*
+ * `<planFragment>` and `<defaultControl>`.
+ *
+ * A plan fragment is a stage without a lifecycle — same content model, so the editor draws
+ * it the same way and only the panel tells them apart. `<defaultControl>` is the item
+ * control one level up, on the definition rather than the plan item, and the schema puts it
+ * after documentation and extensionElements and before whatever the subtype adds. Both
+ * round-tripped as opaque preserved children before; now they are modelled, so the risk is
+ * writing them twice.
+ */
+describe("plan fragments and default controls", () => {
+  const source = `<?xml version="1.0" encoding="UTF-8"?>
+<definitions xmlns="http://www.omg.org/spec/CMMN/20151109/MODEL" xmlns:flowable="http://flowable.org/cmmn" targetNamespace="http://flowable.org/cmmn">
+  <case id="c1" name="C">
+    <casePlanModel id="pm" name="PM">
+      <planItem id="pif" name="F" definitionRef="pf1" />
+      <planFragment id="pf1" name="F">
+        <planItem id="pi1" name="T" definitionRef="ht1" />
+      </planFragment>
+      <humanTask id="ht1" name="T">
+        <defaultControl>
+          <repetitionRule flowable:counterVariable="n" />
+          <requiredRule />
+        </defaultControl>
+      </humanTask>
+    </casePlanModel>
+  </case>
+</definitions>`;
+
+  it("reads the plan fragment as a container holding its plan item", () => {
+    const model = parseCmmn(source);
+    const fragment = model.elements.find((el) => el.type === "planFragment");
+    const task = model.elements.find((el) => el.type === "humanTask");
+
+    expect(fragment).toBeDefined();
+    expect(task?.parentId).toBe(fragment!.planItemId);
+  });
+
+  it("writes it back as planFragment, not as a stage", () => {
+    const after = serialiseCmmn(parseCmmn(source));
+
+    expect(after).toContain("<planFragment ");
+    expect(after).not.toContain("<stage ");
+  });
+
+  it("reads the default control's rules and its repetition attributes", () => {
+    const task = parseCmmn(source).elements.find((el) => el.type === "humanTask");
+
+    expect(task?.defaultControl?.repetition?.enabled).toBe(true);
+    expect(task?.defaultControl?.required?.enabled).toBe(true);
+    expect(task?.defaultControl?.repetitionAttributes).toEqual({ counterVariable: "n" });
+  });
+
+  it("writes the default control exactly once, and not as an itemControl", () => {
+    const after = serialiseCmmn(parseCmmn(source));
+
+    expect(after.match(/<defaultControl>/g)).toHaveLength(1);
+    expect(after).not.toContain("<itemControl>");
+  });
+
+  it("keeps the item control and the default control apart", () => {
+    const model = parseCmmn(source);
+    const task = model.elements.find((el) => el.type === "humanTask")!;
+    const withBoth = {
+      ...model,
+      elements: model.elements.map((el) =>
+        el === task ? { ...el, itemControl: { manualActivation: { enabled: true } } } : el,
+      ),
+    };
+    const after = serialiseCmmn(withBoth);
+
+    expect(after.match(/<defaultControl>/g)).toHaveLength(1);
+    expect(after.match(/<itemControl>/g)).toHaveLength(1);
+    expect(after.indexOf("<itemControl>")).toBeLessThan(after.indexOf("<defaultControl>"));
+  });
+});
+
+/*
+ * Where a plan fragment's definitions are declared.
+ *
+ * `tPlanFragment` has `planItem` and `sentry` in its content model and no
+ * `planItemDefinition`, so the definition of a task inside a fragment belongs to the
+ * enclosing stage. Getting this wrong is not a subtle failure: writing the definition
+ * inside the fragment fails schema validation, and resolving a plan item only against its
+ * immediate container drops the task from the diagram entirely.
+ */
+describe("where a plan fragment's definitions live", () => {
+  function nestedCase() {
+    const base = emptyCase("c", "C");
+    const fragment = createElement("planFragment", { x: 80, y: 80 }, base.planModelId);
+    const task = createElement("humanTask", { x: 120, y: 140 }, fragment.planItemId);
+    return { ...base, elements: [fragment, task] };
+  }
+
+  it("writes them in the plan model, not inside the fragment", () => {
+    const xml = serialiseCmmn(nestedCase());
+    const fragmentBody = xml.slice(xml.indexOf("<planFragment"), xml.indexOf("</planFragment>"));
+
+    expect(fragmentBody).toContain("<planItem ");
+    expect(fragmentBody).not.toContain("<humanTask ");
+    expect(xml).toContain("<humanTask ");
+  });
+
+  it("reads the task back inside the fragment", () => {
+    const parsed = parseCmmn(serialiseCmmn(nestedCase()));
+    const fragment = parsed.elements.find((el) => el.type === "planFragment")!;
+    const task = parsed.elements.find((el) => el.type === "humanTask");
+
+    expect(task?.parentId).toBe(fragment.planItemId);
+  });
+
+  it("writes each definition exactly once", () => {
+    const xml = serialiseCmmn(nestedCase());
+
+    expect(xml.match(/<humanTask /g)).toHaveLength(1);
+    expect(xml.match(/<planFragment /g)).toHaveLength(1);
+  });
+
+  it("still lets a nested stage declare its own", () => {
+    const base = emptyCase("c", "C");
+    const stage = createElement("stage", { x: 80, y: 80 }, base.planModelId);
+    const task = createElement("humanTask", { x: 120, y: 140 }, stage.planItemId);
+    const xml = serialiseCmmn({ ...base, elements: [stage, task] });
+    const stageBody = xml.slice(xml.indexOf("<stage"), xml.indexOf("</stage>"));
+
+    expect(stageBody).toContain("<humanTask ");
   });
 });

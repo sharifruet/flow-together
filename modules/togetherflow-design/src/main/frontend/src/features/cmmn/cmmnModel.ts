@@ -35,8 +35,12 @@ export type CmmnElementType =
   | "scriptTask"
   | "httpTask"
   | "mailTask"
+  | "externalWorkerTask"
+  | "casePageTask"
+  | "sendEventTask"
   | "milestone"
   | "stage"
+  | "planFragment"
   | "timerEventListener"
   | "userEventListener"
   | "genericEventListener"
@@ -53,6 +57,9 @@ export const TASK_TYPE_DISCRIMINATOR: Partial<Record<CmmnElementType, string>> =
   scriptTask: "script",
   httpTask: "http",
   mailTask: "mail",
+  externalWorkerTask: "external-worker",
+  casePageTask: "casePage",
+  sendEventTask: "send-event",
 };
 
 /** `flowable:eventType` on an `<eventListener>`, for the four typed listeners. */
@@ -63,7 +70,15 @@ export const LISTENER_TYPE_DISCRIMINATOR: Partial<Record<CmmnElementType, string
   reactivateEventListener: "reactivate",
 };
 
-export const CONTAINER_TYPES: ReadonlySet<CmmnElementType> = new Set(["stage"]);
+/**
+ * Kinds drawn as a box that holds other plan items.
+ *
+ * A plan fragment is a stage without a lifecycle: it groups plan items and sentries so they
+ * enter the plan as a unit, but it does not itself start, complete or terminate. The
+ * schema gives it the same content model as a stage, so the canvas treats them alike and
+ * only the properties panel tells them apart.
+ */
+export const CONTAINER_TYPES: ReadonlySet<CmmnElementType> = new Set(["stage", "planFragment"]);
 
 export interface Bounds {
   x: number;
@@ -114,6 +129,27 @@ export interface CmmnElement {
    * task names doing the job of documentation.
    */
   documentation?: string;
+  /**
+   * `<defaultControl>` — the item control applied to any plan item referencing this
+   * definition that carries none of its own.
+   *
+   * Same content as `itemControl`, one level up. Useful where a definition is referenced by
+   * several plan items and they should behave alike; the schema puts it on the definition,
+   * before whatever the subtype adds.
+   */
+  defaultControl?: ItemControl;
+  /**
+   * `<flowable:eventType>` — the *registry event key* this task sends.
+   *
+   * Not to be confused with the `flowable:eventType` **attribute**, which on an
+   * `<eventListener>` names the listener's kind. The engine reuses the name for two
+   * unrelated things; this is the element form, and it lives inside `extensionElements`.
+   */
+  eventType?: string;
+  /** Case variables carried out into the event payload. */
+  eventInParameters?: EventParameter[];
+  /** Event fields carried back into case variables. */
+  eventOutParameters?: EventParameter[];
   extraChildren: string[];
   /** `isBlocking` on task types. */
   blocking?: boolean;
@@ -215,6 +251,22 @@ export interface LifecycleListener {
   value: string;
 }
 
+/**
+ * One `<flowable:eventInParameter>` or `<flowable:eventOutParameter>` on a send-event task.
+ *
+ * In-parameters carry case variables out into the event's payload; out-parameters carry
+ * fields of a received event back into case variables. Either side can be a plain name or
+ * an expression, and only one of the pair is meaningful at a time.
+ */
+export interface EventParameter {
+  source?: string;
+  sourceExpression?: string;
+  target?: string;
+  targetType?: string;
+  /** Out-parameters only: the variable lives for the transaction and is not persisted. */
+  transient?: boolean;
+}
+
 export interface Sentry {
   id: string;
   /** Everything this criterion waits for. All of them must happen. */
@@ -287,8 +339,12 @@ export const DEFAULT_SIZES: Record<CmmnElementType, { width: number; height: num
   scriptTask: { width: 140, height: 80 },
   httpTask: { width: 140, height: 80 },
   mailTask: { width: 140, height: 80 },
+  externalWorkerTask: { width: 140, height: 80 },
+  casePageTask: { width: 140, height: 80 },
+  sendEventTask: { width: 140, height: 80 },
   milestone: { width: 140, height: 50 },
   stage: { width: 260, height: 180 },
+  planFragment: { width: 240, height: 160 },
   timerEventListener: { width: 40, height: 40 },
   userEventListener: { width: 40, height: 40 },
   genericEventListener: { width: 40, height: 40 },
@@ -307,8 +363,12 @@ export const TYPE_LABELS: Record<CmmnElementType, string> = {
   scriptTask: "Script task",
   httpTask: "HTTP task",
   mailTask: "Mail task",
+  externalWorkerTask: "External worker task",
+  casePageTask: "Case page task",
+  sendEventTask: "Send event task",
   milestone: "Milestone",
   stage: "Stage",
+  planFragment: "Plan fragment",
   timerEventListener: "Timer event listener",
   userEventListener: "User event listener",
   genericEventListener: "Event listener",
@@ -383,8 +443,10 @@ const KNOWN_DEFINITION_ELEMENTS = [
   "task",
   "milestone",
   "stage",
+  "planFragment",
   "timerEventListener",
   "userEventListener",
+  "eventListener",
 ];
 
 function serialiseNode(node: Element): string {
@@ -478,23 +540,33 @@ function collectElements(
       plainAttributes: plainAttributes(definition, ["id", "name", "isBlocking"]),
       documentation:
         firstChildByLocalName(definition, "documentation")?.textContent?.trim() || undefined,
+      defaultControl: readControl(firstChildByLocalName(definition, "defaultControl")),
       extraChildren:
-        type === "stage"
+        CONTAINER_TYPES.has(type)
           ? rawChildrenExcept(definition, [
               "planItem",
               "sentry",
               "documentation",
+              "defaultControl",
               ...KNOWN_DEFINITION_ELEMENTS,
             ])
           // `timerExpression`, `extensionElements` and `documentation` are excluded
           // because all three are modelled below; leaving them here too would emit each
           // twice.
-          : rawChildrenExcept(definition, ["timerExpression", "extensionElements", "documentation"]),
+          : rawChildrenExcept(definition, [
+              "timerExpression",
+              "extensionElements",
+              "documentation",
+              "defaultControl",
+            ]),
       fields: readFields(definition),
+      eventType: readEventType(definition),
+      eventInParameters: readEventParameters(definition, "eventInParameter"),
+      eventOutParameters: readEventParameters(definition, "eventOutParameter"),
       lifecycleListeners: readLifecycleListeners(definition),
       extraExtensionChildren: readExtraExtensionChildren(definition),
       timerExpression:
-        firstByLocalName(definition, "timerExpression")?.textContent?.trim() || undefined,
+        firstChildByLocalName(definition, "timerExpression")?.textContent?.trim() || undefined,
       itemControl: readItemControl(planItem),
       extraPlanItemChildren: rawChildrenExcept(planItem, [
         "entryCriterion",
@@ -507,7 +579,7 @@ function collectElements(
     };
     out.push(element);
 
-    if (type === "stage") {
+    if (CONTAINER_TYPES.has(type)) {
       collectElements(definition, planItemId, shapes, out);
     }
   }
@@ -532,7 +604,7 @@ const FIELD_VALUE_ATTRIBUTES: Record<string, CmmnFieldValueKind> = {
 
 /** Reads `<flowable:field>` entries, whichever of the four value forms each one uses. */
 function readFields(definition: Element): CmmnField[] {
-  const extensions = firstByLocalName(definition, "extensionElements");
+  const extensions = firstChildByLocalName(definition, "extensionElements");
   if (!extensions) return [];
 
   return childrenByLocalName(extensions, "field").map((field) => {
@@ -557,10 +629,30 @@ function readFields(definition: Element): CmmnField[] {
   });
 }
 
+/** `<flowable:eventType>` inside `extensionElements` — the registry event key. */
+function readEventType(definition: Element): string | undefined {
+  const extensions = firstChildByLocalName(definition, "extensionElements");
+  if (!extensions) return undefined;
+  return childrenByLocalName(extensions, "eventType")[0]?.textContent?.trim() || undefined;
+}
+
+function readEventParameters(definition: Element, localName: string): EventParameter[] {
+  const extensions = firstChildByLocalName(definition, "extensionElements");
+  if (!extensions) return [];
+
+  return childrenByLocalName(extensions, localName).map((parameter) => ({
+    source: parameter.getAttribute("source") ?? undefined,
+    sourceExpression: parameter.getAttribute("sourceExpression") ?? undefined,
+    target: parameter.getAttribute("target") ?? undefined,
+    targetType: parameter.getAttribute("targetType") ?? undefined,
+    transient: parameter.getAttribute("transient") === "true" || undefined,
+  }));
+}
+
 const LISTENER_IMPLEMENTATIONS = ["class", "delegateExpression", "expression"] as const;
 
 function readLifecycleListeners(definition: Element): LifecycleListener[] {
-  const extensions = firstByLocalName(definition, "extensionElements");
+  const extensions = firstChildByLocalName(definition, "extensionElements");
   if (!extensions) return [];
 
   return childrenByLocalName(extensions, "planItemLifecycleListener").map((listener) => {
@@ -578,9 +670,15 @@ function readLifecycleListeners(definition: Element): LifecycleListener[] {
 
 /** Everything inside `<extensionElements>` this model does not model itself. */
 function readExtraExtensionChildren(definition: Element): string[] {
-  const extensions = firstByLocalName(definition, "extensionElements");
+  const extensions = firstChildByLocalName(definition, "extensionElements");
   return extensions
-    ? rawChildrenExcept(extensions, ["field", "planItemLifecycleListener"])
+    ? rawChildrenExcept(extensions, [
+        "field",
+        "planItemLifecycleListener",
+        "eventType",
+        "eventInParameter",
+        "eventOutParameter",
+      ])
     : [];
 }
 
@@ -611,8 +709,25 @@ function renderExtensionElements(element: CmmnElement, indent: number): string {
       return `${pad}  <flowable:planItemLifecycleListener${states} ${listener.implementationType}="${esc(listener.value.trim())}" />`;
     });
 
+  /*
+   * `<flowable:eventType>` first: it names the event the parameters map onto, and reading a
+   * mapping before knowing what it maps to is needless work for whoever opens the file.
+   */
+  const eventType = element.eventType?.trim()
+    ? [`${pad}  <flowable:eventType>${esc(element.eventType.trim())}</flowable:eventType>`]
+    : [];
+  const inParameters = renderEventParameters(element.eventInParameters, "eventInParameter", pad);
+  const outParameters = renderEventParameters(element.eventOutParameters, "eventOutParameter", pad);
+
   const others = (element.extraExtensionChildren ?? []).map((chunk) => `${pad}  ${chunk}`);
-  const body = [...fields, ...listeners, ...others].join("\n");
+  const body = [
+    ...fields,
+    ...eventType,
+    ...inParameters,
+    ...outParameters,
+    ...listeners,
+    ...others,
+  ].join("\n");
   return body ? `${pad}<extensionElements>\n${body}\n${pad}</extensionElements>` : "";
 }
 
@@ -624,7 +739,11 @@ const RULE_ELEMENTS = {
 } as const;
 
 function readItemControl(planItem: Element): ItemControl | undefined {
-  const control = firstByLocalName(planItem, "itemControl");
+  return readControl(firstChildByLocalName(planItem, "itemControl"));
+}
+
+/** The rules inside an `<itemControl>` or a `<defaultControl>`; both have the same content. */
+function readControl(control: Element | undefined): ItemControl | undefined {
   if (!control) return undefined;
 
   const result: ItemControl = {};
@@ -640,8 +759,22 @@ function readItemControl(planItem: Element): ItemControl | undefined {
   return Object.keys(result).length > 0 ? result : undefined;
 }
 
+/** Emits `<defaultControl>` on a definition, or nothing. Same content as `<itemControl>`. */
+function renderDefaultControl(element: CmmnElement, indent: number): string {
+  const xml = renderControl(element.defaultControl, "defaultControl", indent);
+  return xml ? xml + "\n" : "";
+}
+
 /** Emits `<itemControl>`, or nothing when no rule is on. */
 function renderItemControl(control: ItemControl | undefined, indent: number): string {
+  return renderControl(control, "itemControl", indent);
+}
+
+function renderControl(
+  control: ItemControl | undefined,
+  tag: string,
+  indent: number,
+): string {
   if (!control) return "";
   const pad = " ".repeat(indent);
   const rules = Object.entries(RULE_ELEMENTS)
@@ -663,7 +796,7 @@ function renderItemControl(control: ItemControl | undefined, indent: number): st
     .filter(Boolean)
     .join("\n");
 
-  return rules ? `${pad}<itemControl>\n${rules}\n${pad}</itemControl>` : "";
+  return rules ? `${pad}<${tag}>\n${rules}\n${pad}</${tag}>` : "";
 }
 
 function readSentries(planItem: Element, container: Element, kind: string): Sentry[] {
@@ -703,10 +836,25 @@ function readSentries(planItem: Element, container: Element, kind: string): Sent
   });
 }
 
+/**
+ * The definition a plan item points at, searched outwards from its own container.
+ *
+ * A `<planFragment>` holds plan items and sentries but, per the schema, **not** plan item
+ * definitions — `tPlanFragment` has no `planItemDefinition` in its content model, while
+ * `tStage` adds one. So a plan item inside a fragment references a definition declared in
+ * the enclosing stage, and looking only at the immediate container finds nothing and drops
+ * the element from the diagram entirely.
+ */
 function findDefinition(container: Element, id: string): Element | undefined {
-  return Array.from(container.children).find(
-    (child) => child.getAttribute("id") === id && typeOf(child) !== null,
-  );
+  for (let scope: Element | null = container; scope; scope = scope.parentElement) {
+    const found = Array.from(scope.children).find(
+      (child) => child.getAttribute("id") === id && typeOf(child) !== null,
+    );
+    if (found) return found;
+    // Stop at the case: beyond it is `<definitions>`, whose children are other cases.
+    if (scope.localName === "case") break;
+  }
+  return undefined;
 }
 
 /**
@@ -732,6 +880,7 @@ function typeOf(definition: Element): CmmnElementType | null {
     case "serviceTask":
     case "milestone":
     case "stage":
+    case "planFragment":
       return localName;
     case "timerEventListener":
       return "timerEventListener";
@@ -917,13 +1066,44 @@ function renderContainerBody(
   elements: CmmnElement[],
   model: CmmnCase,
   indent: number,
+  /**
+   * Whether this container may declare plan item definitions.
+   *
+   * A stage and the case plan model may; a plan fragment may not — the schema gives it
+   * `planItem` and `sentry` only. So a fragment's definitions are written by the nearest
+   * enclosing stage instead, which is what {@link definitionsOwnedBy} collects.
+   */
+  declaresDefinitions = true,
 ): string {
   const planItems = elements.map((el) => renderPlanItem(el, indent)).join("\n");
   const sentries = renderSentries(elements, model, indent);
-  const definitions = elements.map((el) => renderDefinition(el, model, indent)).join("\n");
+  const definitions = declaresDefinitions
+    ? definitionsOwnedBy(elements, model)
+        .map((el) => renderDefinition(el, model, indent))
+        .join("\n")
+    : "";
   return [planItems, sentries.trimEnd(), definitions]
     .filter((part) => part.length > 0)
     .join("\n") + "\n";
+}
+
+/**
+ * The definitions a stage has to declare: its own children's, plus those of everything
+ * inside any plan fragment beneath it, however deep.
+ *
+ * Nested stages stop the walk — a stage declares its own.
+ */
+function definitionsOwnedBy(children: CmmnElement[], model: CmmnCase): CmmnElement[] {
+  const owned: CmmnElement[] = [];
+  const walk = (elements: CmmnElement[]) => {
+    for (const element of elements) {
+      owned.push(element);
+      if (element.type !== "planFragment") continue;
+      walk(model.elements.filter((el) => el.parentId === element.planItemId));
+    }
+  };
+  walk(children);
+  return owned;
 }
 
 function renderPlanItem(element: CmmnElement, indent: number): string {
@@ -997,11 +1177,12 @@ function renderDefinition(element: CmmnElement, model: CmmnCase, indent: number)
     ? `${" ".repeat(indent + 2)}<documentation>${esc(element.documentation.trim())}</documentation>\n`
     : "";
 
-  if (element.type === "stage") {
+  if (CONTAINER_TYPES.has(element.type)) {
+    const tag = element.type;
     const children = model.elements.filter((el) => el.parentId === element.planItemId);
-    const inner = renderContainerBody(children, model, indent + 2);
-    return `${pad}<stage id="${esc(element.definitionId)}" name="${esc(element.name)}"${attrs}>
-${documentation}${inner}${extra}${pad}</stage>`;
+    const inner = renderContainerBody(children, model, indent + 2, element.type !== "planFragment");
+    return `${pad}<${tag} id="${esc(element.definitionId)}" name="${esc(element.name)}"${attrs}>
+${documentation}${renderDefaultControl(element, indent + 2)}${inner}${extra}${pad}</${tag}>`;
   }
 
   const timer =
@@ -1021,9 +1202,40 @@ ${documentation}${inner}${extra}${pad}</stage>`;
    * schedule — leaving a timer that never fires.
    */
   const extensions = renderExtensionElements(element, indent + 2);
-  // documentation, then extensionElements, then the subtype's own children.
-  const children = documentation + (extensions ? extensions + "\n" : "") + timer + extra;
+  /*
+   * The schema's order: documentation and extensionElements come from `tCmmnElement`,
+   * `defaultControl` from `tPlanItemDefinition`, and only then whatever the subtype adds.
+   * All three parse fine in any order and fail validation in the wrong one.
+   */
+  const children =
+    documentation +
+    (extensions ? extensions + "\n" : "") +
+    renderDefaultControl(element, indent + 2) +
+    timer +
+    extra;
   return children ? `${head}>\n${children}${pad}</${tag}>` : `${head} />`;
+}
+
+function renderEventParameters(
+  parameters: EventParameter[] | undefined,
+  localName: string,
+  pad: string,
+): string[] {
+  return (parameters ?? [])
+    // A mapping with neither end named does nothing, and the engine reads it as a mapping.
+    .filter((parameter) => (parameter.source ?? parameter.sourceExpression ?? "").trim() !== "")
+    .map((parameter) => {
+      const attributes = [
+        parameter.source?.trim() ? ` source="${esc(parameter.source.trim())}"` : "",
+        parameter.sourceExpression?.trim()
+          ? ` sourceExpression="${esc(parameter.sourceExpression.trim())}"`
+          : "",
+        parameter.target?.trim() ? ` target="${esc(parameter.target.trim())}"` : "",
+        parameter.targetType?.trim() ? ` targetType="${esc(parameter.targetType.trim())}"` : "",
+        parameter.transient ? ` transient="true"` : "",
+      ].join("");
+      return `${pad}  <flowable:${localName}${attributes} />`;
+    });
 }
 
 /** Sentries are declared as siblings of the plan items that reference them. */
@@ -1196,15 +1408,15 @@ function withoutDoomedParts(sentries: Sentry[], doomed: Set<string>): Sentry[] {
     .filter((sentry) => sentry.onParts.length > 0 || sentry.ifPart);
 }
 
-/** Which container a point falls in — innermost stage wins, else the plan model. */
+/** Which container a point falls in — innermost wins, else the plan model. */
 export function containerAt(
   model: CmmnCase,
   point: { x: number; y: number },
   ignoreId?: string,
 ): string {
   const stages = model.elements
-    .filter((el) => el.type === "stage" && el.planItemId !== ignoreId)
-    // Smallest area first so a nested stage beats its parent.
+    .filter((el) => CONTAINER_TYPES.has(el.type) && el.planItemId !== ignoreId)
+    // Smallest area first so a nested container beats its parent.
     .sort((a, b) => a.bounds.width * a.bounds.height - b.bounds.width * b.bounds.height);
 
   for (const stage of stages) {

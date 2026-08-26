@@ -675,6 +675,17 @@
   padding-top: var(--tf-space-3);
   border-top: 1px solid var(--tf-border);
 }
+/* A group inside a section — the send-event task's two parameter lists. */
+.tf-properties__subsection {
+  margin-top: var(--tf-space-3);
+}
+.tf-properties__subsection-title {
+  margin: 0 0 var(--tf-space-1);
+  font-size: var(--tf-text-sm);
+  font-weight: 600;
+  color: var(--tf-text);
+}
+
 .tf-properties__section-title {
   margin: 0 0 var(--tf-space-3);
   font-size: var(--tf-text-sm);
