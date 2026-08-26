@@ -220,6 +220,8 @@ function kitchenSink(): CmmnCase {
   decision.plainAttributes = { decisionRef: "someDecision" };
   service.attributes = { class: "com.example.Delegate", storeResultVariableAsTransient: "true" };
   timer.timerExpression = "PT1H";
+  // A start trigger is an xsd:IDREF, so the schema resolves it — a dangling one fails here.
+  timer.timerStartTrigger = { sourceRef: human.planItemId, standardEvent: "complete" };
 
   // A stage the schema will see as a real stage, with a plan item inside it.
   const inside = createElement("humanTask", { x: 140, y: 260 }, stage.planItemId);

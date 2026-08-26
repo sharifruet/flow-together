@@ -146,6 +146,16 @@ export interface CmmnElement {
    * unrelated things; this is the element form, and it lives inside `extensionElements`.
    */
   eventType?: string;
+  /**
+   * `<planItemStartTrigger>` — what starts a timer, as opposed to when it fires.
+   *
+   * A timer event listener with a `timerExpression` alone starts when its stage becomes
+   * available. With a start trigger it waits for another plan item to reach a lifecycle
+   * event first — "three days after the review completes" rather than "three days after the
+   * case begins", which is usually what a deadline actually means. The schema puts it
+   * immediately after `<timerExpression>`.
+   */
+  timerStartTrigger?: OnPart;
   /** Case variables carried out into the event payload. */
   eventInParameters?: EventParameter[];
   /** Event fields carried back into case variables. */
@@ -555,6 +565,7 @@ function collectElements(
           // twice.
           : rawChildrenExcept(definition, [
               "timerExpression",
+              "planItemStartTrigger",
               "extensionElements",
               "documentation",
               "defaultControl",
@@ -565,6 +576,7 @@ function collectElements(
       eventOutParameters: readEventParameters(definition, "eventOutParameter"),
       lifecycleListeners: readLifecycleListeners(definition),
       extraExtensionChildren: readExtraExtensionChildren(definition),
+      timerStartTrigger: readStartTrigger(definition),
       timerExpression:
         firstChildByLocalName(definition, "timerExpression")?.textContent?.trim() || undefined,
       itemControl: readItemControl(planItem),
@@ -627,6 +639,19 @@ function readFields(definition: Element): CmmnField[] {
       value: expressionChild?.textContent ?? "",
     };
   });
+}
+
+/** `<planItemStartTrigger sourceRef="..."><standardEvent>…` on a timer event listener. */
+function readStartTrigger(definition: Element): OnPart | undefined {
+  const trigger = firstChildByLocalName(definition, "planItemStartTrigger");
+  const sourceRef = trigger?.getAttribute("sourceRef");
+  if (!trigger || !sourceRef) return undefined;
+
+  return {
+    sourceRef,
+    standardEvent:
+      firstChildByLocalName(trigger, "standardEvent")?.textContent?.trim() || "complete",
+  };
 }
 
 /** `<flowable:eventType>` inside `extensionElements` — the registry event key. */
@@ -1190,6 +1215,18 @@ ${documentation}${renderDefaultControl(element, indent + 2)}${inner}${extra}${pa
       ? `${" ".repeat(indent + 2)}<timerExpression>${esc(element.timerExpression)}</timerExpression>\n`
       : "";
 
+  /*
+   * After `<timerExpression>`, which is where `tTimerEventListener` puts it — and only when
+   * the plan item it names still exists, since a dangling `sourceRef` is rejected as an
+   * unresolvable IDREF before the engine sees the document at all.
+   */
+  const startTrigger =
+    element.type === "timerEventListener" &&
+    element.timerStartTrigger?.sourceRef &&
+    model.elements.some((el) => el.planItemId === element.timerStartTrigger!.sourceRef)
+      ? `${" ".repeat(indent + 2)}<planItemStartTrigger sourceRef="${esc(element.timerStartTrigger.sourceRef)}">\n${" ".repeat(indent + 4)}<standardEvent>${esc(element.timerStartTrigger.standardEvent || "complete")}</standardEvent>\n${" ".repeat(indent + 2)}</planItemStartTrigger>\n`
+      : "";
+
   const tag = xmlElementName(element.type);
   const head =
     element.type === "milestone" || element.type.endsWith("EventListener")
@@ -1212,6 +1249,7 @@ ${documentation}${renderDefaultControl(element, indent + 2)}${inner}${extra}${pa
     (extensions ? extensions + "\n" : "") +
     renderDefaultControl(element, indent + 2) +
     timer +
+    startTrigger +
     extra;
   return children ? `${head}>\n${children}${pad}</${tag}>` : `${head} />`;
 }
@@ -1394,6 +1432,12 @@ export function removeElement(model: CmmnCase, planItemId: string): CmmnCase {
         ...element,
         entrySentries: withoutDoomedParts(element.entrySentries, doomed),
         exitSentries: withoutDoomedParts(element.exitSentries, doomed),
+        // A timer waiting on a deleted plan item would never start. The serialiser drops a
+        // dangling trigger too, but the model should not carry one in the first place.
+        timerStartTrigger:
+          element.timerStartTrigger && doomed.has(element.timerStartTrigger.sourceRef)
+            ? undefined
+            : element.timerStartTrigger,
       })),
   };
 }

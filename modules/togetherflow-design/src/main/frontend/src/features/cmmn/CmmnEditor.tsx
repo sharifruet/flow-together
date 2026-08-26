@@ -1123,6 +1123,68 @@ function CmmnProperties({
         />
       ) : null}
 
+      {/*
+        `<planItemStartTrigger>` — what starts the clock, as opposed to when it fires. A
+        timer with an expression alone starts when its stage becomes available; with a
+        trigger it waits for another plan item first, which is what "three days after the
+        review completes" actually means.
+      */}
+      {element.type === "timerEventListener" ? (
+        <div className="tf-properties__subsection">
+          <h4 className="tf-properties__subsection-title">{t("cmmn.startTrigger")}</h4>
+          <p className="tf-muted tf-properties__hint">{t("cmmn.startTrigger.hint")}</p>
+          <div className="tf-sentries__part">
+            <select
+              className="tf-input tf-select"
+              aria-label={t("cmmn.startTrigger.source")}
+              value={element.timerStartTrigger?.sourceRef ?? ""}
+              disabled={disabled}
+              onChange={(event) =>
+                onChangeElement({
+                  timerStartTrigger: event.target.value
+                    ? {
+                        sourceRef: event.target.value,
+                        standardEvent: element.timerStartTrigger?.standardEvent || "complete",
+                      }
+                    : undefined,
+                })
+              }
+            >
+              <option value="">{t("cmmn.startTrigger.none")}</option>
+              {model.elements
+                .filter((el) => el.planItemId !== element.planItemId)
+                .map((el) => (
+                  <option key={el.planItemId} value={el.planItemId}>
+                    {el.name || el.definitionId}
+                  </option>
+                ))}
+            </select>
+            {element.timerStartTrigger ? (
+              <select
+                className="tf-input tf-select"
+                aria-label={t("cmmn.onEvent")}
+                value={element.timerStartTrigger.standardEvent || "complete"}
+                disabled={disabled}
+                onChange={(event) =>
+                  onChangeElement({
+                    timerStartTrigger: {
+                      ...element.timerStartTrigger!,
+                      standardEvent: event.target.value,
+                    },
+                  })
+                }
+              >
+                {STANDARD_EVENTS.map((name) => (
+                  <option key={name} value={name}>
+                    {name}
+                  </option>
+                ))}
+              </select>
+            ) : null}
+          </div>
+        </div>
+      ) : null}
+
       {!element.type.endsWith("EventListener") && element.type !== "milestone" ? (
         <label className="tf-checkbox tf-checkbox--block">
           <input

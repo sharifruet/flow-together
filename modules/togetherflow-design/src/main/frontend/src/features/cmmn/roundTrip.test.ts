@@ -891,3 +891,69 @@ describe("where a plan fragment's definitions live", () => {
     expect(stageBody).toContain("<humanTask ");
   });
 });
+
+/*
+ * `<planItemStartTrigger>` on a timer event listener — what starts the clock, as distinct
+ * from `<timerExpression>`, which says when it fires once started.
+ *
+ * The `sourceRef` is an `xsd:IDREF`, so one pointing at a plan item that no longer exists
+ * makes the whole document unresolvable — rejected before the engine reads a line of it.
+ * That is why deleting the referenced item clears the trigger, and why the serialiser drops
+ * a dangling one as a second line of defence.
+ */
+describe("timer start triggers", () => {
+  const source = `<?xml version="1.0" encoding="UTF-8"?>
+<definitions xmlns="http://www.omg.org/spec/CMMN/20151109/MODEL" xmlns:flowable="http://flowable.org/cmmn" targetNamespace="http://flowable.org/cmmn">
+  <case id="c1" name="C">
+    <casePlanModel id="pm" name="PM">
+      <planItem id="pi1" name="Review" definitionRef="ht1" />
+      <planItem id="pi2" name="Deadline" definitionRef="tl1" />
+      <humanTask id="ht1" name="Review" />
+      <timerEventListener id="tl1" name="Deadline">
+        <timerExpression>P3D</timerExpression>
+        <planItemStartTrigger sourceRef="pi1">
+          <standardEvent>complete</standardEvent>
+        </planItemStartTrigger>
+      </timerEventListener>
+    </casePlanModel>
+  </case>
+</definitions>`;
+
+  it("reads the source and the event", () => {
+    const timer = parseCmmn(source).elements.find((el) => el.type === "timerEventListener");
+
+    expect(timer?.timerStartTrigger).toEqual({ sourceRef: "pi1", standardEvent: "complete" });
+    expect(timer?.timerExpression).toBe("P3D");
+  });
+
+  it("writes it after the expression, which is where the schema puts it", () => {
+    const after = serialiseCmmn(parseCmmn(source));
+
+    expect(after.match(/<planItemStartTrigger /g)).toHaveLength(1);
+    expect(after.indexOf("<timerExpression>")).toBeLessThan(after.indexOf("<planItemStartTrigger"));
+  });
+
+  it("drops a trigger whose source has been deleted", () => {
+    const model = parseCmmn(source);
+    const review = model.elements.find((el) => el.type === "humanTask")!;
+    const without = removeElement(model, review.planItemId);
+    const timer = without.elements.find((el) => el.type === "timerEventListener");
+
+    expect(timer?.timerStartTrigger).toBeUndefined();
+    expect(serialiseCmmn(without)).not.toContain("planItemStartTrigger");
+  });
+
+  it("does not write one that survived deletion some other way", () => {
+    // Belt and braces: even handed a model with a dangling reference, the serialiser must
+    // not emit an IDREF that resolves to nothing.
+    const model = parseCmmn(source);
+    const dangling = {
+      ...model,
+      elements: model.elements
+        .filter((el) => el.type !== "humanTask")
+        .map((el) => ({ ...el, timerStartTrigger: { sourceRef: "gone", standardEvent: "complete" } })),
+    };
+
+    expect(serialiseCmmn(dangling)).not.toContain("planItemStartTrigger");
+  });
+});

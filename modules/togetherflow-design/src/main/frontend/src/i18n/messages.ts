@@ -672,6 +672,12 @@ export const designEn = {
   "cmmn.field.attachments.hint": "Expression resolving to a file, a list of files, or a data source.",
   "cmmn.field.exceptionVariableName": "Exception variable",
   "cmmn.field.exceptionVariableName.hint": "Case variable to hold the failure, when exceptions are ignored.",
+  "cmmn.startTrigger": "Starts after",
+  "cmmn.startTrigger.hint":
+    "Which plan item has to happen before the clock starts. Left unset, the timer starts as soon as its stage is available.",
+  "cmmn.startTrigger.source": "Start after this element",
+  "cmmn.startTrigger.none": "Nothing — start with the stage",
+
   "cmmn.defaultControl": "Default rules",
   "cmmn.defaultControl.hint":
     "Applied to any plan item pointing at this definition that has no rules of its own. Only worth setting where more than one plan item shares the definition.",

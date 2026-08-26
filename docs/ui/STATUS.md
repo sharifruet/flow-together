@@ -24,11 +24,11 @@ are substantially built but **not verified end to end**; §5 is explicit about w
 | `togetherflow-work` | Task and case inbox | 84 |
 | `togetherflow-control` | Runtime operations | 71 |
 | `togetherflow-identity` | Users, groups, privileges | 41 |
-| `togetherflow-design` | Model authoring across six model types | 147 |
+| `togetherflow-design` | Model authoring across six model types | 487 |
 | `togetherflow-attachment-gateway` | Optional attachment storage (Java) | 38 |
 | `togetherflow-event-recorder` | Optional inbound event log (Java) | 36 |
 
-**577 frontend tests across 59 files.** Lint, typecheck, production build and bundle
+**917 frontend tests.** Lint, typecheck, production build and bundle
 budget pass for every module; the component gallery builds. On the Java side, the
 model-validation resources add 9 REST tests against a real engine, and the attachment
 gateway went from 13 tests to 38; the new event recorder adds 36.
@@ -353,6 +353,84 @@ verified the same way.
 
 ---
 
+## 2f. CMMN: everything the engine reads
+
+An audit of `flowable-cmmn-converter` against the case panel, because "you can draw it but
+you cannot configure it" was still true of most of the palette. The panel bound 18
+attributes; the engine reads about 40 more, and the palette had 10 kinds where the engine
+has 21.
+
+Nothing was being **lost** — the model round-trips whatever it does not understand — so this
+was purely an authoring gap. A milestone, for one, had none of its four attributes reachable.
+
+**P0 — the missing attributes.** `documentation` on every element; the five execution
+attributes on every task (`isBlockingExpression`, `async`, `exclusive`, `asyncLeave`,
+`asyncLeaveExclusive`); business-key and deployment behaviour on process and case tasks; the
+human task's own variables; all four milestone attributes; the stage's overview attributes;
+`availableCondition`; `exitEventType`; and all six repetition variables, which had
+round-tripped since repetition was added without a repeating item ever being able to name the
+collection it repeats over.
+
+These come from a declarative table, not 25 hand-written boxes, because a misspelt attribute
+is invisible: it is written, it round-trips, the schema accepts it — unknown
+foreign-namespace attributes are legal — the case deploys, and the setting silently does
+nothing. `attributeCoverage.test.ts` checks every name against `CmmnXmlConstants.java`. The
+names are not guessable: the blocking override is `isBlockingExpression`, and CMMN's service
+task result is `resultVariableName` where BPMN's is `resultVariable`, a difference that
+already shipped once as a bug.
+
+**P1 and P2 — eleven kinds.** Script, HTTP, mail, external worker, case page and send event
+tasks; the signal, variable, intent and reactivate event listeners; and the plan fragment.
+None of the first ten is its own element — Flowable's specialised tasks are all `<task>` with
+a `flowable:type`, its typed listeners all `<eventListener>` with a `flowable:eventType` — so
+the discriminator is derived from the element's type on the way out and stripped on the way
+in, and the two cannot drift into a task that draws as one kind and deploys as another.
+
+Their configuration is mostly field injections rather than attributes, and the engine does
+not tell you the names: a misspelt `requestMethods` is ignored and the case fails when an
+instance reaches it. Each typed task now names its own fields, taken from the engine's
+delegates.
+
+Also: `<defaultControl>` (the item control on the definition rather than the plan item) and
+`<planItemStartTrigger>` (what starts a timer, as opposed to when it fires — "three days
+after the review completes" rather than "three days after the case begins").
+
+**Two things deliberately not built.**
+
+*Text annotations and associations.* Both are declared in the CMMN 1.1 schema and appear in
+**no content model** — not `tCase`, not `tStage`. Verified by putting one in each and running
+`xmllint`; both fail. `CmmnDeployer.validateXml()` schema-validates every new deployment
+unless `disableCmmnXmlValidation` is set, so an annotated case could not be deployed. Flowable
+has converters for them, which is the fifth instance of its parser being more permissive than
+the gate in front of it.
+
+*The case file model.* Schema-valid — `tCase` does allow `caseFileModel` — but `caseFileItem`
+appears nowhere in Flowable outside the XSD itself: no converter, no model class, no engine
+support. An editor for it would produce configuration that looks meaningful and does nothing.
+It is preserved on round trip and left alone. `caseFileItemOnPart` in sentries is unbuildable
+for the same reason.
+
+**Three bugs found by writing the tests.**
+
+- `firstByLocalName` searches *descendants*, so a case took the first task's
+  `<documentation>` as its own, and a stage absorbed its first child task's
+  `extensionElements` and `timerExpression` — then serialised them onto itself, duplicating
+  every field injection in the case onto the stage containing it. Additive rather than
+  lossy, which is why "keeps everything it had" passed.
+- Plan fragments do not declare their own definitions: `tPlanFragment` has `planItem` and
+  `sentry` and no `planItemDefinition`, so a task inside a fragment is defined by the
+  enclosing stage. Resolving against the immediate container only dropped the task from the
+  diagram entirely.
+- `xsi:schemaLocation`, `exporter` and `exporterVersion` on `<definitions>` were dropped on
+  every save. Found by running the round-trip suite against the engine's own converter
+  fixtures rather than only the four repository files, which happen to carry none of them.
+
+296 tests to 487. Every kind and every attribute goes through the kitchen-sink schema case,
+so the set is proven deployable rather than assumed. `assets/index` budget 72 → 78 kB: the
+new labels are user-facing copy in the catalogue every app loads at startup.
+
+---
+
 ## 3. Verification status — read this before trusting anything
 
 **Verified locally**: lint, typecheck, unit and component tests, production builds, bundle
@@ -412,7 +490,12 @@ the one that rejected four earlier versions of this serialiser.
   editor; error/signal/message reference a process-level definition, which is separate
   scope.
 - **CMMN**: draggable sentry placement, align, copy-paste, and auto-layout for models
-  arriving without CMMNDI.
+  arriving without CMMNDI. The authoring gap is closed (§2f); what is left here is diagram
+  ergonomics.
+- **CMMN text annotations, associations and the case file model** — *not* a backlog item.
+  The first two are in no content model in the CMMN 1.1 schema and cannot be deployed; the
+  third is schema-valid but Flowable implements none of it. Both are recorded in §2f so
+  nobody re-derives them.
 - **Version diffing** — deliberately absent. A real BPMN diff is a graph comparison; a text
   diff of serialised XML would mostly report attribute reordering.
 
