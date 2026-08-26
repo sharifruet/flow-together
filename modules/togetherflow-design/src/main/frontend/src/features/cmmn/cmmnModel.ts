@@ -71,6 +71,16 @@ export interface CmmnElement {
    * here is deleted the first time a case is saved — which is how a timer event listener
    * lost its schedule.
    */
+  /**
+   * `<documentation>` on the plan item definition.
+   *
+   * Schema-wise this is the *first* child of every CMMN element, before
+   * `extensionElements`, so the serialiser writes it there rather than wherever it is
+   * convenient. Round-tripped before this was modelled — it landed in `extraChildren` —
+   * but there was nowhere to write one, which is the whole reason a case ends up with
+   * task names doing the job of documentation.
+   */
+  documentation?: string;
   extraChildren: string[];
   /** `isBlocking` on task types. */
   blocking?: boolean;
@@ -188,6 +198,16 @@ export interface Sentry {
    * one, which is not something the default makes obvious.
    */
   exitType?: string;
+  /**
+   * Exit criteria only: `flowable:exitEventType` — how the stage or case plan model this
+   * criterion sits on is ended.
+   *
+   * `exit` (the default) terminates it; `complete` and `forceComplete` end it as a normal
+   * completion instead, which is what decides whether the case counts as completed or
+   * terminated afterwards. Round-tripped before it was authorable, so an imported file
+   * kept its own; there was no way to set one.
+   */
+  exitEventType?: string;
 }
 
 export interface CmmnCase {
@@ -269,7 +289,7 @@ export function parseCmmn(xml: string): CmmnCase {
   return {
     caseId: caseEl.getAttribute("id") ?? "case1",
     caseName: caseEl.getAttribute("name") ?? "Case",
-    documentation: firstByLocalName(caseEl, "documentation")?.textContent?.trim() || undefined,
+    documentation: firstChildByLocalName(caseEl, "documentation")?.textContent?.trim() || undefined,
     planModelId: planModel.getAttribute("id") ?? "casePlanModel",
     planModelName: planModel.getAttribute("name") ?? "Case plan model",
     planModelBounds:
@@ -388,12 +408,20 @@ function collectElements(
       parentId,
       attributes: flowableAttributes(definition),
       plainAttributes: plainAttributes(definition, ["id", "name", "isBlocking"]),
+      documentation:
+        firstChildByLocalName(definition, "documentation")?.textContent?.trim() || undefined,
       extraChildren:
         type === "stage"
-          ? rawChildrenExcept(definition, ["planItem", "sentry", ...KNOWN_DEFINITION_ELEMENTS])
-          // `timerExpression` and `extensionElements` are excluded because both are
-          // modelled below; leaving them here too would emit each twice.
-          : rawChildrenExcept(definition, ["timerExpression", "extensionElements"]),
+          ? rawChildrenExcept(definition, [
+              "planItem",
+              "sentry",
+              "documentation",
+              ...KNOWN_DEFINITION_ELEMENTS,
+            ])
+          // `timerExpression`, `extensionElements` and `documentation` are excluded
+          // because all three are modelled below; leaving them here too would emit each
+          // twice.
+          : rawChildrenExcept(definition, ["timerExpression", "extensionElements", "documentation"]),
       fields: readFields(definition),
       lifecycleListeners: readLifecycleListeners(definition),
       extraExtensionChildren: readExtraExtensionChildren(definition),
@@ -595,6 +623,10 @@ function readSentries(planItem: Element, container: Element, kind: string): Sent
       ifPart: ifPart
         ? firstByLocalName(ifPart, "condition")?.textContent?.trim() || undefined
         : undefined,
+      exitEventType:
+        criterion.getAttributeNS(FLOWABLE_CMMN_NS, "exitEventType") ||
+        criterion.getAttribute("flowable:exitEventType") ||
+        undefined,
       exitType:
         criterion.getAttributeNS(FLOWABLE_CMMN_NS, "exitType") ||
         criterion.getAttribute("flowable:exitType") ||
@@ -668,6 +700,19 @@ function readShapes(doc: Document): Map<string, Bounds> {
 
 function firstByLocalName(parent: Element, localName: string): Element | undefined {
   return Array.from(parent.getElementsByTagName("*")).find((el) => el.localName === localName);
+}
+
+/**
+ * The first *direct child* with this name.
+ *
+ * Distinct from {@link firstByLocalName}, which searches descendants — fine for finding a
+ * `<timerExpression>` somewhere under a listener, wrong for anything an element and its
+ * children both have. `<documentation>` is exactly that: reading it with a descendant
+ * search gave a case the documentation of the first task inside it, and would have given a
+ * stage the documentation of the first task inside *it*.
+ */
+function firstChildByLocalName(parent: Element, localName: string): Element | undefined {
+  return childrenByLocalName(parent, localName)[0];
 }
 
 function childrenByLocalName(parent: Element, localName: string): Element[] {
@@ -778,6 +823,8 @@ function renderPlanItem(element: CmmnElement, indent: number): string {
       (s) =>
         `${pad}  <exitCriterion id="${esc(s.id)}" sentryRef="sentry_${esc(s.id)}"${
           s.exitType ? ` flowable:exitType="${esc(s.exitType)}"` : ""
+        }${
+          s.exitEventType ? ` flowable:exitEventType="${esc(s.exitEventType)}"` : ""
         } />`,
     ),
     ...(element.extraPlanItemChildren ?? []).map((chunk) => `${pad}  ${chunk}`),
@@ -810,11 +857,20 @@ function renderDefinition(element: CmmnElement, model: CmmnCase, indent: number)
   const attrs = attributeXml(element.attributes, element.plainAttributes);
   const extra = indentBlock(element.extraChildren ?? [], indent + 2);
 
+  /*
+   * `tCmmnElement`'s sequence is documentation, then extensionElements, then whatever the
+   * subtype adds. Emitting it anywhere else parses fine and fails schema validation, which
+   * is the gate a deployment runs first.
+   */
+  const documentation = element.documentation?.trim()
+    ? `${" ".repeat(indent + 2)}<documentation>${esc(element.documentation.trim())}</documentation>\n`
+    : "";
+
   if (element.type === "stage") {
     const children = model.elements.filter((el) => el.parentId === element.planItemId);
     const inner = renderContainerBody(children, model, indent + 2);
     return `${pad}<stage id="${esc(element.definitionId)}" name="${esc(element.name)}"${attrs}>
-${inner}${extra}${pad}</stage>`;
+${documentation}${inner}${extra}${pad}</stage>`;
   }
 
   const timer =
@@ -834,8 +890,8 @@ ${inner}${extra}${pad}</stage>`;
    * schedule — leaving a timer that never fires.
    */
   const extensions = renderExtensionElements(element, indent + 2);
-  // `extensionElements` comes first in every CMMN element's content model.
-  const children = (extensions ? extensions + "\n" : "") + timer + extra;
+  // documentation, then extensionElements, then the subtype's own children.
+  const children = documentation + (extensions ? extensions + "\n" : "") + timer + extra;
   return children ? `${head}>\n${children}${pad}</${tag}>` : `${head} />`;
 }
 

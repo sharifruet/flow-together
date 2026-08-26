@@ -522,6 +522,100 @@ export const designEn = {
     "These checks ran in the browser only \u2014 the engine has not seen this model, so passing here does not guarantee it will accept it.",
   "cmmn.xmlTitle": "CMMN XML",
   "cmmn.xmlDescription": "Exactly what will be deployed. Read-only \u2014 edit the diagram, not the text.",
+  "cmmn.documentation": "Documentation",
+  "cmmn.documentation.hint":
+    "Why this element exists. Kept in the model as <documentation>, so it travels with the case rather than living in a wiki.",
+
+  // Collapsible groups of `flowable:` attributes, rendered from flowableAttributes.ts.
+  "cmmn.group.execution": "Execution",
+  "cmmn.group.childTask": "What it starts",
+  "cmmn.group.humanTask": "Task variables",
+  "cmmn.group.serviceTask": "Result",
+  "cmmn.group.stage": "Stage behaviour",
+  "cmmn.group.milestone": "Milestone",
+  "cmmn.group.listener": "Availability",
+  "cmmn.group.repetition": "Repetition variables",
+  "cmmn.group.count": "{set} of {total} set",
+
+  "cmmn.attr.isBlockingExpression": "Blocking expression",
+  "cmmn.attr.isBlockingExpression.hint":
+    "Decides blocking per instance, overriding the checkbox above. Note the name: the engine reads isBlockingExpression.",
+  "cmmn.attr.async": "Run asynchronously",
+  "cmmn.attr.async.hint":
+    "The engine hands the work to a job instead of running it on the thread that triggered it.",
+  "cmmn.attr.exclusive": "Exclusive",
+  "cmmn.attr.exclusive.hint":
+    "Asynchronous jobs for this case instance do not run at the same time as each other.",
+  "cmmn.attr.asyncLeave": "Leave asynchronously",
+  "cmmn.attr.asyncLeave.hint": "The same, applied to finishing rather than starting.",
+  "cmmn.attr.asyncLeaveExclusive": "Exclusive on leave",
+  "cmmn.attr.asyncLeaveExclusive.hint": "Exclusivity for the leave job.",
+
+  "cmmn.attr.businessKey": "Business key",
+  "cmmn.attr.businessKey.hint": "Expression giving the business key of what this starts.",
+  "cmmn.attr.inheritBusinessKey": "Inherit the business key",
+  "cmmn.attr.inheritBusinessKey.hint": "Pass this case's business key down instead.",
+  "cmmn.attr.sameDeployment": "Resolve in the same deployment",
+  "cmmn.attr.sameDeployment.hint":
+    "Look for the referenced definition in this case's own deployment before the latest version anywhere.",
+  "cmmn.attr.fallbackToDefaultTenant": "Fall back to the default tenant",
+  "cmmn.attr.fallbackToDefaultTenant.hint":
+    "If this tenant has no such definition, use the default tenant's.",
+  "cmmn.attr.idVariableName": "Id variable",
+  "cmmn.attr.idVariableName.hint":
+    "Case variable to hold the id of the process or case instance this starts.",
+
+  "cmmn.attr.taskIdVariableName": "Task id variable",
+  "cmmn.attr.taskIdVariableName.hint": "Case variable to hold the created task's id.",
+  "cmmn.attr.taskCompleterVariableName": "Completed-by variable",
+  "cmmn.attr.taskCompleterVariableName.hint":
+    "Case variable to hold the id of whoever completed the task.",
+
+  "cmmn.attr.storeResultVariableAsTransient": "Result is transient",
+  "cmmn.attr.storeResultVariableAsTransient.hint":
+    "The result variable lives for this transaction only and is never persisted.",
+
+  "cmmn.attr.autoCompleteCondition": "Auto-complete condition",
+  "cmmn.attr.autoCompleteCondition.hint":
+    "Expression deciding auto-completion per instance, rather than the fixed checkbox.",
+  "cmmn.attr.businessStatus": "Business status",
+  "cmmn.attr.businessStatus.hint": "Status this contributes to the case's stage overview.",
+  "cmmn.attr.displayOrder": "Display order",
+  "cmmn.attr.displayOrder.hint": "Position in the stage overview. Lower comes first.",
+  "cmmn.attr.includeInStageOverview": "Show in the stage overview",
+  "cmmn.attr.includeInStageOverview.hint":
+    "Whether the engine's stage overview lists this at all.",
+  "cmmn.attr.milestoneVariable": "Milestone variable",
+  "cmmn.attr.milestoneVariable.hint": "Case variable set when the milestone is reached.",
+  "cmmn.attr.formKey": "Form key",
+  "cmmn.attr.formKey.hint": "Form shown for the stage itself.",
+  "cmmn.attr.formFieldValidation": "Validate form fields",
+  "cmmn.attr.formFieldValidation.hint": "Enforce the form's own validation on submit.",
+
+  "cmmn.attr.availableCondition": "Available condition",
+  "cmmn.attr.availableCondition.hint":
+    "Expression deciding when the listener becomes available — which is not the same as when it fires.",
+
+  "cmmn.attr.counterVariable": "Counter variable",
+  "cmmn.attr.counterVariable.hint": "Case variable holding the repetition count.",
+  "cmmn.attr.collectionVariable": "Collection variable",
+  "cmmn.attr.collectionVariable.hint": "Collection to repeat over: one instance per entry.",
+  "cmmn.attr.elementVariable": "Element variable",
+  "cmmn.attr.elementVariable.hint": "Case variable holding this instance's entry.",
+  "cmmn.attr.elementIndexVariable": "Element index variable",
+  "cmmn.attr.elementIndexVariable.hint": "Case variable holding this instance's position.",
+  "cmmn.attr.maxInstanceCount": "Maximum instances",
+  "cmmn.attr.maxInstanceCount.hint": "Cap on how many instances repetition may create.",
+  "cmmn.attr.ignoreCounterVariable": "Ignore the counter variable",
+  "cmmn.attr.ignoreCounterVariable.hint":
+    "Do not maintain a repetition counter, which is cheaper when nothing reads it.",
+
+  "cmmn.exitEventType": "Ends the stage as",
+  "cmmn.exitEventType.default": "Terminated (default)",
+  "cmmn.exitEventType.exit": "Terminated",
+  "cmmn.exitEventType.complete": "Completed",
+  "cmmn.exitEventType.forceComplete": "Completed, even if work remains",
+
   "cmmn.elementLabel": "{name} ({type})",
   "cmmn.deploy.title": "Deploy this case?",
   "cmmn.deploy.description":

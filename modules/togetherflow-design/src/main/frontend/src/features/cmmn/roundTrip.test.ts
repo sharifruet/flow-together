@@ -342,3 +342,136 @@ describe("generic event listener", () => {
     expect(after).not.toContain("<genericEventListener");
   });
 });
+
+/*
+ * Per-element `<documentation>`. It used to survive only by falling into `extraChildren`,
+ * which round-tripped it but gave the panel nothing to bind to — so a case ended up using
+ * task names to say what documentation should have said. Now it is modelled, and the thing
+ * that has to hold is its *position*: `tCmmnElement`'s sequence puts it before
+ * `extensionElements`, and the wrong order parses fine and fails the schema.
+ */
+describe("documentation on a plan item definition", () => {
+  const source = `<?xml version="1.0" encoding="UTF-8"?>
+<definitions xmlns="http://www.omg.org/spec/CMMN/20151109/MODEL" xmlns:flowable="http://flowable.org/cmmn" targetNamespace="http://flowable.org/cmmn">
+  <case id="c1" name="C">
+    <casePlanModel id="pm" name="PM">
+      <planItem id="pi1" name="T" definitionRef="ht1" />
+      <humanTask id="ht1" name="T" flowable:assignee="kermit">
+        <documentation>Why this task exists.</documentation>
+        <extensionElements>
+          <flowable:field name="note"><flowable:string><![CDATA[hi]]></flowable:string></flowable:field>
+        </extensionElements>
+      </humanTask>
+    </casePlanModel>
+  </case>
+</definitions>`;
+
+  it("reads it onto the element rather than into the preserved children", () => {
+    const [task] = parseCmmn(source).elements;
+
+    expect(task.documentation).toBe("Why this task exists.");
+    expect(task.extraChildren.join("")).not.toContain("documentation");
+  });
+
+  it("writes it exactly once", () => {
+    const after = serialiseCmmn(parseCmmn(source));
+
+    expect(after.match(/<documentation>/g)).toHaveLength(1);
+    expect(after).toContain("Why this task exists.");
+  });
+
+  it("writes it before extensionElements, which is where the schema puts it", () => {
+    const after = serialiseCmmn(parseCmmn(source));
+
+    expect(after.indexOf("<documentation>")).toBeLessThan(after.indexOf("<extensionElements>"));
+  });
+
+  /*
+   * `firstByLocalName` searches descendants, so reading the case's own documentation with
+   * it handed back the first *task's* instead — and a stage would have taken its first
+   * child task's. Both now use a direct-child lookup.
+   */
+  it("does not let a task's documentation become the case's", () => {
+    const model = parseCmmn(source);
+
+    expect(model.documentation).toBeUndefined();
+    expect(model.elements[0].documentation).toBe("Why this task exists.");
+  });
+
+  it("does not let a task's documentation become its stage's", () => {
+    const nested = source.replace(
+      '<planItem id="pi1" name="T" definitionRef="ht1" />',
+      '<planItem id="pis" name="S" definitionRef="st1" />',
+    ).replace(
+      '<humanTask id="ht1"',
+      `<stage id="st1" name="S">
+        <planItem id="pi1" name="T" definitionRef="ht1" />
+        <humanTask id="ht1"`,
+    ).replace("</humanTask>", "</humanTask>\n      </stage>");
+
+    const byId = new Map(parseCmmn(nested).elements.map((el) => [el.definitionId, el]));
+
+    expect(byId.get("st1")?.documentation).toBeUndefined();
+    expect(byId.get("ht1")?.documentation).toBe("Why this task exists.");
+  });
+
+  it("omits the element entirely when there is nothing to say", () => {
+    const model = parseCmmn(source);
+    const stripped = {
+      ...model,
+      elements: model.elements.map((el) => ({ ...el, documentation: "   " })),
+    };
+
+    expect(serialiseCmmn(stripped)).not.toContain("<documentation>");
+  });
+});
+
+/*
+ * `flowable:exitEventType` decides whether the stage an exit criterion fires on ends as
+ * terminated or as completed — the difference between a case that reads as finished and one
+ * that reads as abandoned. Round-tripped before it was authorable; now it is set from the
+ * panel, so both directions matter.
+ */
+describe("exitEventType on an exit criterion", () => {
+  const source = `<?xml version="1.0" encoding="UTF-8"?>
+<definitions xmlns="http://www.omg.org/spec/CMMN/20151109/MODEL" xmlns:flowable="http://flowable.org/cmmn" targetNamespace="http://flowable.org/cmmn">
+  <case id="c1" name="C">
+    <casePlanModel id="pm" name="PM">
+      <planItem id="pi1" name="T" definitionRef="ht1">
+        <exitCriterion id="ec1" sentryRef="s1" flowable:exitType="activeInstances" flowable:exitEventType="forceComplete" />
+      </planItem>
+      <sentry id="s1">
+        <planItemOnPart id="op1" sourceRef="pi1"><standardEvent>complete</standardEvent></planItemOnPart>
+      </sentry>
+      <humanTask id="ht1" name="T" />
+    </casePlanModel>
+  </case>
+</definitions>`;
+
+  it("reads it onto the criterion", () => {
+    const [task] = parseCmmn(source).elements;
+
+    expect(task.exitSentries[0].exitEventType).toBe("forceComplete");
+    expect(task.exitSentries[0].exitType).toBe("activeInstances");
+  });
+
+  it("writes it back beside exitType", () => {
+    const after = serialiseCmmn(parseCmmn(source));
+
+    expect(after).toContain('flowable:exitEventType="forceComplete"');
+    expect(after).toContain('flowable:exitType="activeInstances"');
+  });
+
+  it("omits it when unset, rather than writing the default out", () => {
+    const model = parseCmmn(source);
+    const cleared = {
+      ...model,
+      elements: model.elements.map((el) => ({
+        ...el,
+        exitSentries: el.exitSentries.map((s) => ({ ...s, exitEventType: undefined })),
+      })),
+    };
+
+    expect(serialiseCmmn(cleared)).not.toContain("exitEventType");
+  });
+});

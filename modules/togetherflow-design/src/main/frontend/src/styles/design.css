@@ -402,6 +402,18 @@
   display: flex;
   margin: var(--tf-space-3) 0;
 }
+/* A boolean attribute needs its explanation as much as a text one does. */
+.tf-checkbox--block > input {
+  margin-top: 0.15em;
+  align-self: flex-start;
+  flex: none;
+}
+.tf-checkbox__hint {
+  display: block;
+  margin-top: 2px;
+  font-size: var(--tf-text-xs);
+  color: var(--tf-text-muted);
+}
 .tf-badge--warning {
   background: var(--tf-warning-bg);
   color: var(--tf-warning);
@@ -669,6 +681,66 @@
   text-transform: uppercase;
   letter-spacing: 0.04em;
   color: var(--tf-text-muted);
+}
+
+/*
+ * Collapsible sections, on `<details>` rather than React state.
+ *
+ * The panel is long — it has to be, because the engine reads this many attributes — so the
+ * groups that are rarely touched start closed. `<details>` gives the disclosure, the
+ * keyboard behaviour and the open/closed semantics for a screen reader without any of them
+ * being re-implemented, and a closed section still finds on Ctrl-F in every current browser.
+ */
+.tf-properties__group > summary {
+  display: flex;
+  align-items: center;
+  gap: var(--tf-space-2);
+  cursor: pointer;
+  list-style: none;
+  margin: 0 0 var(--tf-space-3);
+  font-size: var(--tf-text-sm);
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: var(--tf-text-muted);
+}
+.tf-properties__group > summary::-webkit-details-marker {
+  display: none;
+}
+/* The marker is drawn rather than inherited, so it can rotate and meet the 3:1 rule. */
+.tf-properties__group > summary::before {
+  content: "";
+  width: 0;
+  height: 0;
+  border-left: 5px solid currentColor;
+  border-top: 4px solid transparent;
+  border-bottom: 4px solid transparent;
+  transition: transform 120ms ease;
+}
+.tf-properties__group[open] > summary::before {
+  transform: rotate(90deg);
+}
+.tf-properties__group > summary:hover,
+.tf-properties__group[open] > summary {
+  color: var(--tf-text);
+}
+.tf-properties__group > summary:focus-visible {
+  outline: 2px solid var(--tf-accent);
+  outline-offset: 2px;
+  border-radius: var(--tf-radius-sm);
+}
+/* Says how many of the group's boxes are filled, so a closed one is not a blind spot. */
+.tf-properties__group-count {
+  margin-left: auto;
+  font-variant-numeric: tabular-nums;
+  text-transform: none;
+  letter-spacing: 0;
+  color: var(--tf-text-muted);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .tf-properties__group > summary::before {
+    transition: none;
+  }
 }
 
 /*

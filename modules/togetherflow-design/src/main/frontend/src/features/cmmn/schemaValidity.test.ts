@@ -79,7 +79,8 @@ function kitchenSink(): CmmnCase {
       base.planModelId,
     ),
   );
-  const [human, process, subCase, decision, service, , stage, timer] = elements;
+  const [human, process, subCase, decision, service, milestone, stage, timer, userEvent] =
+    elements;
 
   human.attributes = { assignee: "kermit", candidateGroups: "sales", formKey: "f1" };
   human.entrySentries = [{ id: "sentry_1", onParts: [], ifPart: "${ready}" }];
@@ -98,17 +99,66 @@ function kitchenSink(): CmmnCase {
       value: "com.example.Listener",
     },
   ];
+  human.documentation = "Why this task exists, for whoever inherits the case.";
   human.itemControl = {
     repetition: { enabled: true, condition: "${again}" },
     required: { enabled: true, condition: "${mandatory}" },
     manualActivation: { enabled: true },
-    repetitionAttributes: { counterVariable: "loopCounter", collectionVariable: "items" },
+    repetitionAttributes: {
+      counterVariable: "loopCounter",
+      collectionVariable: "items",
+      elementVariable: "item",
+      elementIndexVariable: "itemIndex",
+      maxInstanceCount: "10",
+      ignoreCounterVariable: "true",
+    },
+  };
+
+  /*
+   * Everything the attribute table can author, so the schema sees the full set rather than
+   * the handful an example happens to use. These are all foreign-namespace attributes, and
+   * `anyAttribute namespace="##other"` accepts them — which is exactly why a misspelt one
+   * is invisible here and has to be caught by `attributeCoverage.test.ts` instead.
+   */
+  human.attributes = {
+    ...human.attributes,
+    isBlockingExpression: "${blocking}",
+    async: "true",
+    exclusive: "true",
+    asyncLeave: "true",
+    asyncLeaveExclusive: "true",
+    sameDeployment: "true",
+    taskIdVariableName: "taskId",
+    taskCompleterVariableName: "completedBy",
   };
 
   process.plainAttributes = { processRef: "someProcess" };
+  process.attributes = {
+    businessKey: "${key}",
+    inheritBusinessKey: "true",
+    sameDeployment: "true",
+    fallbackToDefaultTenant: "true",
+    idVariableName: "startedProcessId",
+  };
+  milestone.attributes = {
+    businessStatus: "reviewed",
+    displayOrder: "2",
+    includeInStageOverview: "true",
+    milestoneVariable: "reviewedAt",
+  };
+  stage.attributes = {
+    autoCompleteCondition: "${done}",
+    businessStatus: "in-review",
+    displayOrder: "1",
+    includeInStageOverview: "true",
+    formKey: "stageForm",
+    formFieldValidation: "true",
+  };
+  userEvent.attributes = { availableCondition: "${ready}" };
+  human.exitSentries[0].exitEventType = "forceComplete";
   subCase.plainAttributes = { caseRef: "someCase" };
   decision.plainAttributes = { decisionRef: "someDecision" };
-  service.attributes = { type: "http" };
+  service.attributes = { type: "http", storeResultVariableAsTransient: "true" };
   service.fields = [
     { name: "requestUrl", valueKind: "string", value: "https://example.test" },
     { name: "requestMethod", valueKind: "string", value: "GET" },

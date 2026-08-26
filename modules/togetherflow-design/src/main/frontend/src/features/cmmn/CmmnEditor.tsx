@@ -15,6 +15,7 @@ import {
   ErrorState,
   SelectInput,
   Skeleton,
+  TextAreaInput,
   TextInput,
   useI18n,
   useT,
@@ -26,6 +27,12 @@ import {
 } from "@togetherflow/common";
 import { canDeploy, issuesFromServer, type ValidationIssue } from "../bpmn/validateBpmn";
 import { problemMarkers, validateCmmn } from "./validateCmmn";
+import {
+  attributeGroupsFor,
+  REPETITION_ATTRIBUTES,
+  type CmmnAttributeGroup,
+  type CmmnAttributeSpec,
+} from "./flowableAttributes";
 import { CmmnCanvas, DEFAULT_VIEWPORT, type Viewport } from "./CmmnCanvas";
 import { downloadFile } from "../library/importExport";
 import {
@@ -68,6 +75,15 @@ const CMMN_TASK_TYPES = [
 
 /** `flowable:exitType` values. Empty is the engine's default. */
 const EXIT_TYPES = ["", "activeInstances", "activeAndEnabledInstances"] as const;
+
+/**
+ * `flowable:exitEventType` values, from `Criterion`'s own constants.
+ *
+ * This decides whether the stage or case the criterion exits ends as *terminated* or as
+ * *completed*, which is the difference between a case that shows as finished and one that
+ * shows as abandoned. Empty is the engine's default, `exit`.
+ */
+const EXIT_EVENT_TYPES = ["", "exit", "complete", "forceComplete"] as const;
 
 const PALETTE: CmmnElementType[] = [
   "stage",
@@ -911,6 +927,21 @@ function CmmnProperties({
         disabled={disabled}
         onChange={(event) => onChangeElement({ name: event.target.value })}
       />
+      {/*
+        `<documentation>` — the schema's own place for "why does this exist", and until now
+        reachable by nothing, which is how cases end up with the explanation crammed into
+        the task name.
+      */}
+      <TextAreaInput
+        label={t("cmmn.documentation")}
+        value={element.documentation ?? ""}
+        rows={2}
+        disabled={disabled}
+        hint={t("cmmn.documentation.hint")}
+        onChange={(event) =>
+          onChangeElement({ documentation: event.target.value.trim() ? event.target.value : undefined })
+        }
+      />
 
       {element.type === "humanTask" ? (
         <section className="tf-properties__section">
@@ -1120,6 +1151,23 @@ function CmmnProperties({
       {element.type === "serviceTask" || element.type === "decisionTask" ? (
         <FieldSection t={t} element={element} disabled={disabled} onChangeElement={onChangeElement} />
       ) : null}
+
+      {/*
+        The `flowable:` attributes this element type has, from the table in
+        `flowableAttributes.ts`. Everything above is hand-written because it needs something
+        the table cannot express — identity autosuggest on assignee, a reference picker on
+        processRef. Everything the engine merely reads as a string belongs here, where the
+        names are checked against `CmmnXmlConstants.java` rather than typed twice.
+      */}
+      {attributeGroupsFor(element.type).map((group) => (
+        <AttributeGroup
+          key={group.id}
+          group={group}
+          values={element.attributes}
+          disabled={disabled}
+          onChange={setAttr}
+        />
+      ))}
 
       <LifecycleListenerSection
         t={t}
@@ -1338,6 +1386,30 @@ function CriteriaSection({
                   </select>
                 ) : null}
 
+                {kind === "exit" ? (
+                  <select
+                    className="tf-input tf-select"
+                    aria-label={t("cmmn.exitEventType")}
+                    value={sentry.exitEventType ?? ""}
+                    disabled={disabled}
+                    onChange={(event) =>
+                      commit(
+                        sentries.map((s) =>
+                          s.id === sentry.id
+                            ? { ...s, exitEventType: event.target.value || undefined }
+                            : s,
+                        ),
+                      )
+                    }
+                  >
+                    {EXIT_EVENT_TYPES.map((value) => (
+                      <option key={value || "default"} value={value}>
+                        {t(`cmmn.exitEventType.${value || "default"}`)}
+                      </option>
+                    ))}
+                  </select>
+                ) : null}
+
                 <button
                   type="button"
                   className="tf-chip-item__remove"
@@ -1417,6 +1489,19 @@ function ItemControlSection({
     onChangeElement({ itemControl: anyOn ? next : undefined });
   };
 
+  const setRepetitionAttribute = (name: string, value: string) => {
+    const current = control.repetitionAttributes ?? {};
+    const next = value.trim()
+      ? { ...current, [name]: value }
+      : Object.fromEntries(Object.entries(current).filter(([key]) => key !== name));
+    onChangeElement({
+      itemControl: {
+        ...control,
+        repetitionAttributes: Object.keys(next).length > 0 ? next : undefined,
+      },
+    });
+  };
+
   return (
     <section className="tf-properties__section">
       <h3 className="tf-properties__section-title">{t("cmmn.itemControl")}</h3>
@@ -1444,6 +1529,20 @@ function ItemControlSection({
                 onChange={(event) =>
                   setRule(key, { condition: event.target.value.trim() || undefined })
                 }
+              />
+            ) : null}
+            {/*
+              Repetition's own `flowable:` attributes, shown only while repetition is on
+              because that is the only time they mean anything. The model has round-tripped
+              all six since repetition was added; none of them had anywhere to be typed, so
+              a repeating item could not name the collection it repeats over.
+            */}
+            {key === "repetition" && rule?.enabled ? (
+              <AttributeGroup
+                group={{ id: "repetition", attributes: REPETITION_ATTRIBUTES }}
+                values={control.repetitionAttributes ?? {}}
+                disabled={disabled}
+                onChange={setRepetitionAttribute}
               />
             ) : null}
           </div>
@@ -1677,5 +1776,101 @@ function LifecycleListenerSection({
         {t("cmmn.lifecycleListeners.add")}
       </Button>
     </section>
+  );
+}
+
+/**
+ * One collapsible group of `flowable:` attributes.
+ *
+ * Rendered from the table in `flowableAttributes.ts` rather than written out per field.
+ * Twenty-five hand-written boxes is twenty-five chances to misspell an attribute the
+ * engine matches exactly, and a misspelt one is silent — see `attributeCoverage.test.ts`.
+ *
+ * Groups start closed. The panel is long because the engine reads this much, and a wall of
+ * empty boxes is how a panel stops being read; the count on the summary means a closed
+ * group is still not a blind spot.
+ */
+function AttributeGroup({
+  group,
+  values,
+  disabled,
+  onChange,
+}: {
+  group: CmmnAttributeGroup;
+  values: Record<string, string>;
+  disabled: boolean;
+  onChange: (name: string, value: string) => void;
+}) {
+  const t = useT();
+  const set = group.attributes.filter((attribute) => (values[attribute.name] ?? "").trim() !== "");
+
+  return (
+    <details className="tf-properties__group tf-properties__section" open={set.length > 0}>
+      <summary>
+        {t(`cmmn.group.${group.id}`)}
+        {set.length > 0 ? (
+          <span className="tf-properties__group-count">
+            {t("cmmn.group.count", { set: set.length, total: group.attributes.length })}
+          </span>
+        ) : null}
+      </summary>
+      {group.attributes.map((attribute) => (
+        <AttributeField
+          key={attribute.name}
+          attribute={attribute}
+          value={values[attribute.name] ?? ""}
+          disabled={disabled}
+          onChange={onChange}
+        />
+      ))}
+    </details>
+  );
+}
+
+/** One attribute, as the box its kind calls for. */
+function AttributeField({
+  attribute,
+  value,
+  disabled,
+  onChange,
+}: {
+  attribute: CmmnAttributeSpec;
+  value: string;
+  disabled: boolean;
+  onChange: (name: string, value: string) => void;
+}) {
+  const t = useT();
+  const label = t(`cmmn.attr.${attribute.name}`);
+  const hint = t(`cmmn.attr.${attribute.name}.hint`);
+
+  if (attribute.kind === "boolean") {
+    return (
+      <label className="tf-checkbox tf-checkbox--block">
+        <input
+          type="checkbox"
+          checked={value === "true"}
+          disabled={disabled}
+          /* Absent and "false" mean the same thing to the engine, so unchecking removes
+             the attribute rather than writing false — the file stays as short as what it
+             actually says. */
+          onChange={(event) => onChange(attribute.name, event.target.checked ? "true" : "")}
+        />
+        <span>
+          {label}
+          <span className="tf-checkbox__hint">{hint}</span>
+        </span>
+      </label>
+    );
+  }
+
+  return (
+    <TextInput
+      label={label}
+      value={value}
+      disabled={disabled}
+      hint={hint}
+      inputMode={attribute.kind === "number" ? "numeric" : undefined}
+      onChange={(event) => onChange(attribute.name, event.target.value)}
+    />
   );
 }
