@@ -13,6 +13,7 @@ import {
   Button,
   ConfirmDialog,
   ErrorState,
+  SelectInput,
   Skeleton,
   TextInput,
   useI18n,
@@ -24,7 +25,9 @@ import {
   type TFunction,
 } from "@togetherflow/common";
 import { canDeploy, issuesFromServer, type ValidationIssue } from "../bpmn/validateBpmn";
+import { problemMarkers, validateCmmn } from "./validateCmmn";
 import { CmmnCanvas, DEFAULT_VIEWPORT, type Viewport } from "./CmmnCanvas";
+import { downloadFile } from "../library/importExport";
 import {
   TYPE_LABELS,
   createElement,
@@ -35,11 +38,36 @@ import {
   type CmmnCase,
   type CmmnElement,
   type CmmnElementType,
+  type CmmnField,
+  type CmmnFieldValueKind,
+  type ItemControl,
+  type LifecycleListener,
+  type RuleConfig,
   type Sentry,
 } from "./cmmnModel";
 
 const AUTOSAVE_IDLE_MS = 4000;
 const UNDO_LIMIT = 50;
+
+/**
+ * Flowable's task subtypes in CMMN, expressed through `flowable:type` on `<task>`.
+ *
+ * A shorter list than BPMN's: CMMN has dedicated elements for the process, case and
+ * decision variants, so only these reach a plain task.
+ */
+const CMMN_TASK_TYPES = [
+  "",
+  "http",
+  "mail",
+  "script",
+  "send-event",
+  "external-worker",
+  // A case page task is a `<task>` with this type, so it needs no palette entry of its own.
+  "casePage",
+] as const;
+
+/** `flowable:exitType` values. Empty is the engine's default. */
+const EXIT_TYPES = ["", "activeInstances", "activeAndEnabledInstances"] as const;
 
 const PALETTE: CmmnElementType[] = [
   "stage",
@@ -51,6 +79,7 @@ const PALETTE: CmmnElementType[] = [
   "milestone",
   "timerEventListener",
   "userEventListener",
+  "genericEventListener",
 ];
 
 export interface CmmnEditorProps {
@@ -151,6 +180,23 @@ export function CmmnEditor({
   const [confirmLeave, setConfirmLeave] = useState(false);
   const [confirmDeploy, setConfirmDeploy] = useState(false);
   const [issues, setIssues] = useState<ValidationIssue[] | null>(null);
+  /**
+   * Re-check as the model changes rather than only when asked (§14.3).
+   *
+   * Browser checks only. Asking the engine on every edit would be a request per keystroke,
+   * and its verdict still arrives on an explicit check or a deploy.
+   */
+  const [liveChecking, setLiveChecking] = useState(true);
+  /** Whether the shown problems include the engine's verdict, which the caveat has to say. */
+  const [engineChecked, setEngineChecked] = useState(false);
+  /**
+   * Read-only view of the XML the engine will actually receive (§7.4.3).
+   *
+   * This editor keeps things it cannot itself author — case file items, unknown extension
+   * elements, `flowable:` attributes it has no field for — so that a round trip loses
+   * nothing. Being able to read the output is how that claim is checked without deploying.
+   */
+  const [sourceXml, setSourceXml] = useState<string | null>(null);
   const [checking, setChecking] = useState(false);
 
   /** A committed change: pushes the previous state onto the undo stack. */
@@ -247,13 +293,24 @@ export function CmmnEditor({
    * be waved through on the strength of a failed request.
    */
   const runChecks = useCallback(async (): Promise<ValidationIssue[] | null> => {
-    if (!caseModel || !validationApi) return null;
+    if (!caseModel) return null;
+
+    // Browser checks first: they need no round trip and are the only answer available when
+    // the engine cannot be reached.
+    const local = validateCmmn(caseModel);
+    if (!validationApi) {
+      setEngineChecked(false);
+      return local;
+    }
+
     try {
       const verdict = await validationApi.validateCmmn(serialiseCmmn(caseModel));
-      return issuesFromServer(verdict);
+      setEngineChecked(true);
+      return [...issuesFromServer(verdict), ...local];
     } catch {
+      setEngineChecked(false);
       push({ tone: "warning", message: t("cmmn.checks.unreachable") });
-      return null;
+      return local;
     }
   }, [caseModel, push, t, validationApi]);
 
@@ -267,6 +324,43 @@ export function CmmnEditor({
       setChecking(false);
     }
   }, [push, runChecks, t]);
+
+  const markers = useMemo(() => problemMarkers(issues, caseModel), [issues, caseModel]);
+
+  /**
+   * Which model has already been seen load, so opening a case is not counted as a change.
+   *
+   * Without this the checks would fire on mount and an existing case would greet whoever
+   * opened it with a panel of problems they had not touched. The BPMN editor gets this for
+   * free by subscribing to the modeller's change events; here the model is state, so the
+   * load has to be told apart from an edit explicitly.
+   */
+  const loadedForRef = useRef<string | null>(null);
+
+  /*
+   * Re-run the browser checks as the model changes.
+   *
+   * Debounced, because dragging a shape fires a change per frame. Engine-sourced problems
+   * are dropped on the first edit: they described the model as it was, and keeping a stale
+   * verdict beside fresh ones would be worse than showing fewer.
+   */
+  useEffect(() => {
+    if (!caseModel) return;
+
+    // The first run for a model is its load, not an edit. Record it and stop.
+    if (loadedForRef.current !== model.id) {
+      loadedForRef.current = model.id;
+      return;
+    }
+    if (!liveChecking) return;
+
+    const timer = setTimeout(() => {
+      const found = validateCmmn(caseModel);
+      setEngineChecked(false);
+      setIssues(found.length > 0 ? found : null);
+    }, 400);
+    return () => clearTimeout(timer);
+  }, [liveChecking, caseModel, model.id]);
 
   /** Deploying validates first; blocking problems stop it before the round trip. */
   const startDeploy = useCallback(async () => {
@@ -357,8 +451,20 @@ export function CmmnEditor({
     return () => window.removeEventListener("beforeunload", onBeforeUnload);
   }, [dirty]);
 
+  const dialogOpen = sourceXml !== null || confirmLeave || confirmDeploy;
+
   useEffect(() => {
     const onKeyDown = (event: KeyboardEvent) => {
+      /*
+       * A dialog owns the keyboard while it is up. Without this, Backspace behind an open
+       * dialog deletes the selected element where nobody can see it happen, and Cmd-Z
+       * undoes an edit the reader is not looking at.
+       */
+      if (dialogOpen) {
+        if (event.key === "Escape" && sourceXml !== null) setSourceXml(null);
+        return;
+      }
+
       const target = event.target as HTMLElement | null;
       const typing =
         target && (target.tagName === "INPUT" || target.tagName === "TEXTAREA");
@@ -377,7 +483,7 @@ export function CmmnEditor({
     };
     document.addEventListener("keydown", onKeyDown);
     return () => document.removeEventListener("keydown", onKeyDown);
-  }, [save, undo, redo, deleteSelected]);
+  }, [save, undo, redo, deleteSelected, dialogOpen, sourceXml]);
 
   const deploy = async () => {
     if (!caseModel) return;
@@ -458,6 +564,13 @@ export function CmmnEditor({
           </div>
           <Button
             variant="secondary"
+            disabled={!caseModel}
+            onClick={() => caseModel && setSourceXml(serialiseCmmn(caseModel))}
+          >
+            {t("cmmn.xmlTitle")}
+          </Button>
+          <Button
+            variant="secondary"
             loading={checking}
             disabled={!caseModel || !validationApi}
             onClick={() => void check()}
@@ -503,6 +616,9 @@ export function CmmnEditor({
                 key={`${issue.elementId ?? ""}-${index}`}
               >
                 <span className="tf-issues__severity">{issue.severity}</span>
+                <span className={`tf-issues__source tf-issues__source--${issue.source ?? "browser"}`}>
+                  {t(`cmmn.checks.source.${issue.source ?? "browser"}`)}
+                </span>
                 <span>{issue.message}</span>
                 {issue.elementId ? (
                   <button
@@ -516,7 +632,17 @@ export function CmmnEditor({
               </li>
             ))}
           </ul>
-          <p className="tf-issues__caveat">{t("cmmn.checks.caveat")}</p>
+          <p className="tf-issues__caveat">
+            {engineChecked ? t("cmmn.checks.caveat.engine") : t("cmmn.checks.caveat.browserOnly")}
+          </p>
+          <label className="tf-checkbox tf-issues__live">
+            <input
+              type="checkbox"
+              checked={liveChecking}
+              onChange={(event) => setLiveChecking(event.target.checked)}
+            />
+            {t("bpmn.checks.live")}
+          </label>
           <Button variant="secondary" onClick={() => setIssues(null)}>
             {t("action.dismiss")}
           </Button>
@@ -561,6 +687,7 @@ export function CmmnEditor({
               onViewportChange={setViewport}
               onCommit={commit}
               onPreview={preview}
+              problems={markers}
             />
           </div>
 
@@ -573,6 +700,35 @@ export function CmmnEditor({
             onChangeCase={(changes) => commit({ ...caseModel, ...changes })}
             onDelete={deleteSelected}
           />
+        </div>
+      ) : null}
+
+      {sourceXml !== null ? (
+        <div className="tf-dialog-backdrop" onMouseDown={() => setSourceXml(null)}>
+          <div
+            className="tf-dialog tf-dialog--wide"
+            role="dialog"
+            aria-modal="true"
+            aria-label={t("cmmn.xmlTitle")}
+            onMouseDown={(event) => event.stopPropagation()}
+          >
+            <h2 className="tf-dialog__title">{t("cmmn.xmlTitle")}</h2>
+            <p className="tf-dialog__description">{t("cmmn.xmlDescription")}</p>
+            <pre className="tf-source">{sourceXml}</pre>
+            <div className="tf-dialog__actions">
+              <Button
+                variant="secondary"
+                onClick={() =>
+                  downloadFile(`${model.key ?? model.id}.cmmn.xml`, sourceXml, "application/xml")
+                }
+              >
+                {t("action.download")}
+              </Button>
+              <Button variant="secondary" onClick={() => setSourceXml(null)}>
+                {t("action.close")}
+              </Button>
+            </div>
+          </div>
         </div>
       ) : null}
 
@@ -644,6 +800,53 @@ function CmmnProperties({
           disabled={disabled}
           onChange={(event) => onChangeCase({ caseName: event.target.value })}
         />
+        {/*
+          Case-level `flowable:` attributes. These decide who may start the case and where
+          the starter's id lands — the case equivalent of a process's candidate starters,
+          and previously reachable by nothing.
+        */}
+        {(["candidateStarterUsers", "candidateStarterGroups", "initiatorVariableName"] as const).map(
+          (key) => (
+            <TextInput
+              key={key}
+              label={t(`cmmn.${key}`)}
+              value={model.caseAttributes[key] ?? ""}
+              disabled={disabled}
+              hint={t(`cmmn.${key}.hint`)}
+              onChange={(event) =>
+                onChangeCase({
+                  caseAttributes: event.target.value.trim()
+                    ? { ...model.caseAttributes, [key]: event.target.value }
+                    : Object.fromEntries(
+                        Object.entries(model.caseAttributes).filter(([k]) => k !== key),
+                      ),
+                })
+              }
+            />
+          ),
+        )}
+
+        {/* The case plan model is a stage, and auto-completion applies to it too. */}
+        <label className="tf-checkbox tf-checkbox--block">
+          <input
+            type="checkbox"
+            checked={model.planModelPlainAttributes.autoComplete === "true"}
+            disabled={disabled}
+            onChange={(event) =>
+              onChangeCase({
+                planModelPlainAttributes: event.target.checked
+                  ? { ...model.planModelPlainAttributes, autoComplete: "true" }
+                  : Object.fromEntries(
+                      Object.entries(model.planModelPlainAttributes).filter(
+                        ([k]) => k !== "autoComplete",
+                      ),
+                    ),
+              })
+            }
+          />
+          {t("cmmn.autoComplete")}
+        </label>
+
         <TextInput
           label={t("cmmn.planModelName")}
           value={model.planModelName}
@@ -664,11 +867,28 @@ function CmmnProperties({
     );
   }
 
+  /** A `flowable:`-prefixed attribute. */
   const setAttr = (key: string, value: string) =>
     onChangeElement({
       attributes: value.trim()
         ? { ...element.attributes, [key]: value }
         : Object.fromEntries(Object.entries(element.attributes).filter(([k]) => k !== key)),
+    });
+
+  /**
+   * An unprefixed CMMN attribute.
+   *
+   * Separate from `setAttr` because the namespace decides whether the engine reads it at
+   * all: `processRef`, `decisionRef` and `caseRef` are looked up with a null namespace, so
+   * a `flowable:`-prefixed one is invisible to it.
+   */
+  const setPlainAttr = (key: string, value: string) =>
+    onChangeElement({
+      plainAttributes: value.trim()
+        ? { ...element.plainAttributes, [key]: value }
+        : Object.fromEntries(
+            Object.entries(element.plainAttributes).filter(([k]) => k !== key),
+          ),
     });
 
   return (
@@ -703,6 +923,19 @@ function CmmnProperties({
             onChange={(event) => setAttr("assignee", event.target.value)}
           />
           <TextInput
+            label={t("properties.owner")}
+            value={element.attributes.owner ?? ""}
+            disabled={disabled}
+            hint={t("properties.owner.hint")}
+            onChange={(event) => setAttr("owner", event.target.value)}
+          />
+          <TextInput
+            label={t("properties.candidateUsers")}
+            value={element.attributes.candidateUsers ?? ""}
+            disabled={disabled}
+            onChange={(event) => setAttr("candidateUsers", event.target.value)}
+          />
+          <TextInput
             label={t("properties.candidateGroups")}
             value={element.attributes.candidateGroups ?? ""}
             disabled={disabled}
@@ -714,26 +947,135 @@ function CmmnProperties({
             disabled={disabled}
             onChange={(event) => setAttr("formKey", event.target.value)}
           />
+          <TextInput
+            label={t("properties.dueDate")}
+            value={element.attributes.dueDate ?? ""}
+            disabled={disabled}
+            hint={t("properties.dueDate.hint")}
+            onChange={(event) => setAttr("dueDate", event.target.value)}
+          />
+          <TextInput
+            label={t("properties.priority")}
+            value={element.attributes.priority ?? ""}
+            disabled={disabled}
+            hint={t("properties.priority.hint")}
+            onChange={(event) => setAttr("priority", event.target.value)}
+          />
+          <TextInput
+            label={t("properties.category")}
+            value={element.attributes.category ?? ""}
+            disabled={disabled}
+            hint={t("properties.category.hint")}
+            onChange={(event) => setAttr("category", event.target.value)}
+          />
+          <label className="tf-checkbox tf-checkbox--block">
+            <input
+              type="checkbox"
+              checked={element.attributes.formFieldValidation === "true"}
+              disabled={disabled}
+              onChange={(event) =>
+                setAttr("formFieldValidation", event.target.checked ? "true" : "")
+              }
+            />
+            {t("properties.formFieldValidation")}
+          </label>
         </section>
       ) : null}
 
       {element.type === "processTask" ? (
         <TextInput
           label={t("cmmn.processRef")}
-          value={element.attributes.processRef ?? ""}
+          value={element.plainAttributes.processRef ?? ""}
           disabled={disabled}
           hint={t("cmmn.processRef.hint")}
-          onChange={(event) => setAttr("processRef", event.target.value)}
+          onChange={(event) => setPlainAttr("processRef", event.target.value)}
         />
       ) : null}
 
       {element.type === "decisionTask" ? (
         <TextInput
           label={t("cmmn.decisionRef")}
-          value={element.attributes.decisionRef ?? ""}
+          value={element.plainAttributes.decisionRef ?? ""}
           disabled={disabled}
           hint={t("cmmn.decisionRef.hint")}
-          onChange={(event) => setAttr("decisionRef", event.target.value)}
+          onChange={(event) => setPlainAttr("decisionRef", event.target.value)}
+        />
+      ) : null}
+
+      {/* A case task was in the palette with nothing to point it at. */}
+      {element.type === "caseTask" ? (
+        <TextInput
+          label={t("cmmn.caseRef")}
+          value={element.plainAttributes.caseRef ?? ""}
+          disabled={disabled}
+          hint={t("cmmn.caseRef.hint")}
+          onChange={(event) => setPlainAttr("caseRef", event.target.value)}
+        />
+      ) : null}
+
+      {/*
+        A service task could be drawn but never given an implementation, so it was a shape
+        that did nothing. These are all `flowable:`-prefixed, unlike the refs above.
+      */}
+      {element.type === "serviceTask" ? (
+        <section className="tf-properties__section">
+          <h3 className="tf-properties__section-title">{t("cmmn.implementation")}</h3>
+          {/*
+            As in BPMN, Flowable's task subtypes are one element told apart by
+            `flowable:type`. Without this the http, mail and script variants could not be
+            expressed at all.
+          */}
+          <SelectInput
+            label={t("properties.taskType")}
+            value={element.attributes.type ?? ""}
+            disabled={disabled}
+            hint={t("cmmn.taskType.hint")}
+            onChange={(event) => setAttr("type", event.target.value)}
+          >
+            {CMMN_TASK_TYPES.map((value) => (
+              <option key={value || "default"} value={value}>
+                {t(`properties.taskType.${value || "default"}`)}
+              </option>
+            ))}
+          </SelectInput>
+          <TextInput
+            label={t("properties.class")}
+            value={element.attributes.class ?? ""}
+            disabled={disabled}
+            hint={t("cmmn.implementation.hint")}
+            onChange={(event) => setAttr("class", event.target.value)}
+          />
+          <TextInput
+            label={t("properties.expression")}
+            value={element.attributes.expression ?? ""}
+            disabled={disabled}
+            onChange={(event) => setAttr("expression", event.target.value)}
+          />
+          <TextInput
+            label={t("properties.delegateExpression")}
+            value={element.attributes.delegateExpression ?? ""}
+            disabled={disabled}
+            onChange={(event) => setAttr("delegateExpression", event.target.value)}
+          />
+          <TextInput
+            label={t("properties.resultVariableName")}
+            value={element.attributes.resultVariableName ?? ""}
+            disabled={disabled}
+            onChange={(event) => setAttr("resultVariableName", event.target.value)}
+          />
+        </section>
+      ) : null}
+
+      {/* Without a schedule a timer event listener never fires. */}
+      {element.type === "timerEventListener" ? (
+        <TextInput
+          label={t("cmmn.timerExpression")}
+          value={element.timerExpression ?? ""}
+          disabled={disabled}
+          hint={t("cmmn.timerExpression.hint")}
+          onChange={(event) =>
+            onChangeElement({ timerExpression: event.target.value.trim() || undefined })
+          }
         />
       ) : null}
 
@@ -748,6 +1090,50 @@ function CmmnProperties({
           {t("cmmn.blocking")}
         </label>
       ) : null}
+
+      {/*
+        A stage that does not auto-complete waits for every required item, which is often
+        not what the modeller intends and was previously unreachable.
+      */}
+      {element.type === "stage" ? (
+        <>
+          <label className="tf-checkbox tf-checkbox--block">
+            <input
+              type="checkbox"
+              checked={element.plainAttributes.autoComplete === "true"}
+              disabled={disabled}
+              onChange={(event) =>
+                setPlainAttr("autoComplete", event.target.checked ? "true" : "")
+              }
+            />
+            {t("cmmn.autoComplete")}
+          </label>
+          <p className="tf-muted tf-properties__hint">{t("cmmn.autoComplete.hint")}</p>
+        </>
+      ) : null}
+
+      {/*
+        Field injections. Typing a task as `http` without these deploys a case that fails
+        the moment it starts — "requestMethod is required" — so the type selector above is
+        only half of what makes a service task work.
+      */}
+      {element.type === "serviceTask" || element.type === "decisionTask" ? (
+        <FieldSection t={t} element={element} disabled={disabled} onChangeElement={onChangeElement} />
+      ) : null}
+
+      <LifecycleListenerSection
+        t={t}
+        element={element}
+        disabled={disabled}
+        onChangeElement={onChangeElement}
+      />
+
+      <ItemControlSection
+        t={t}
+        element={element}
+        disabled={disabled}
+        onChangeElement={onChangeElement}
+      />
 
       {/*
         Entry and exit criteria are the same shape — a sentry watching another plan item —
@@ -819,58 +1205,149 @@ function CriteriaSection({
         <ul className="tf-sentries">
           {sentries.map((sentry) => (
             <li key={sentry.id} className="tf-sentries__item">
-              <select
-                className="tf-input tf-select"
-                aria-label={t("cmmn.waitFor")}
-                value={sentry.sourceRef ?? ""}
-                disabled={disabled}
-                onChange={(event) =>
-                  commit(
-                    sentries.map((s) =>
-                      s.id === sentry.id
-                        ? { ...s, sourceRef: event.target.value || undefined }
-                        : s,
-                    ),
-                  )
-                }
-              >
-                <option value="">{t("cmmn.chooseElement")}</option>
-                {model.elements
-                  .filter((el) => el.planItemId !== element.planItemId)
-                  .map((el) => (
-                    <option key={el.planItemId} value={el.planItemId}>
-                      {el.name || el.definitionId}
-                    </option>
-                  ))}
-              </select>
-              <select
-                className="tf-input tf-select"
-                aria-label={t("cmmn.onEvent")}
-                value={sentry.standardEvent || "complete"}
-                disabled={disabled}
-                onChange={(event) =>
-                  commit(
-                    sentries.map((s) =>
-                      s.id === sentry.id ? { ...s, standardEvent: event.target.value } : s,
-                    ),
-                  )
-                }
-              >
-                {STANDARD_EVENTS.map((name) => (
-                  <option key={name} value={name}>
-                    {name}
-                  </option>
-                ))}
-              </select>
-              <button
-                type="button"
-                className="tf-chip-item__remove"
-                aria-label={t("cmmn.removeCriterion")}
-                disabled={disabled}
-                onClick={() => commit(sentries.filter((s) => s.id !== sentry.id))}
-              >
-                ×
-              </button>
+              {/*
+                One row per on-part. A sentry with several waits for all of them, so they
+                read as an AND — which is why they are listed rather than being a single
+                source picker.
+              */}
+              {(sentry.onParts ?? []).map((part, partIndex) => (
+                <div className="tf-sentries__part" key={partIndex}>
+                  <select
+                    className="tf-input tf-select"
+                    aria-label={t("cmmn.waitFor")}
+                    value={part.sourceRef}
+                    disabled={disabled}
+                    onChange={(event) =>
+                      commit(
+                        sentries.map((s) =>
+                          s.id === sentry.id
+                            ? {
+                                ...s,
+                                onParts: s.onParts.map((existing, i) =>
+                                  i === partIndex
+                                    ? { ...existing, sourceRef: event.target.value }
+                                    : existing,
+                                ),
+                              }
+                            : s,
+                        ),
+                      )
+                    }
+                  >
+                    <option value="">{t("cmmn.chooseElement")}</option>
+                    {model.elements
+                      .filter((el) => el.planItemId !== element.planItemId)
+                      .map((el) => (
+                        <option key={el.planItemId} value={el.planItemId}>
+                          {el.name || el.definitionId}
+                        </option>
+                      ))}
+                  </select>
+                  <select
+                    className="tf-input tf-select"
+                    aria-label={t("cmmn.onEvent")}
+                    value={part.standardEvent || "complete"}
+                    disabled={disabled}
+                    onChange={(event) =>
+                      commit(
+                        sentries.map((s) =>
+                          s.id === sentry.id
+                            ? {
+                                ...s,
+                                onParts: s.onParts.map((existing, i) =>
+                                  i === partIndex
+                                    ? { ...existing, standardEvent: event.target.value }
+                                    : existing,
+                                ),
+                              }
+                            : s,
+                        ),
+                      )
+                    }
+                  >
+                    {STANDARD_EVENTS.map((name) => (
+                      <option key={name} value={name}>
+                        {name}
+                      </option>
+                    ))}
+                  </select>
+                  <button
+                    type="button"
+                    className="tf-chip-item__remove"
+                    aria-label={t("cmmn.removePart")}
+                    disabled={disabled}
+                    onClick={() =>
+                      commit(
+                        sentries.map((s) =>
+                          s.id === sentry.id
+                            ? { ...s, onParts: s.onParts.filter((_, i) => i !== partIndex) }
+                            : s,
+                        ),
+                      )
+                    }
+                  >
+                    ×
+                  </button>
+                </div>
+              ))}
+
+              <div className="tf-sentries__actions">
+                <Button
+                  variant="ghost"
+                  disabled={disabled}
+                  onClick={() =>
+                    commit(
+                      sentries.map((s) =>
+                        s.id === sentry.id
+                          ? {
+                              ...s,
+                              onParts: [
+                                ...(s.onParts ?? []),
+                                { sourceRef: "", standardEvent: "complete" },
+                              ],
+                            }
+                          : s,
+                      ),
+                    )
+                  }
+                >
+                  {t("cmmn.addPart")}
+                </Button>
+
+                {kind === "exit" ? (
+                  <select
+                    className="tf-input tf-select"
+                    aria-label={t("cmmn.exitType")}
+                    value={sentry.exitType ?? ""}
+                    disabled={disabled}
+                    onChange={(event) =>
+                      commit(
+                        sentries.map((s) =>
+                          s.id === sentry.id
+                            ? { ...s, exitType: event.target.value || undefined }
+                            : s,
+                        ),
+                      )
+                    }
+                  >
+                    {EXIT_TYPES.map((value) => (
+                      <option key={value || "default"} value={value}>
+                        {t(`cmmn.exitType.${value || "default"}`)}
+                      </option>
+                    ))}
+                  </select>
+                ) : null}
+
+                <button
+                  type="button"
+                  className="tf-chip-item__remove"
+                  aria-label={t("cmmn.removeCriterion")}
+                  disabled={disabled}
+                  onClick={() => commit(sentries.filter((s) => s.id !== sentry.id))}
+                >
+                  ×
+                </button>
+              </div>
             </li>
           ))}
         </ul>
@@ -881,7 +1358,10 @@ function CriteriaSection({
         onClick={() =>
           commit([
             ...sentries,
-            { id: `crit_${Date.now().toString(36)}`, standardEvent: "complete" },
+            {
+              id: `crit_${Date.now().toString(36)}`,
+              onParts: [{ sourceRef: "", standardEvent: "complete" }],
+            },
           ])
         }
       >
@@ -898,3 +1378,304 @@ function CriteriaSection({
 const STANDARD_EVENTS = ["complete", "terminate", "disable", "enable", "start", "occur"];
 
 export { emptyCase };
+
+/**
+ * The plan item's control rules (§7.4.3).
+ *
+ * These are what make a case a case rather than a flowchart: whether an item must be done
+ * before its stage can complete, whether it can repeat, and whether a person has to start
+ * it. All four were absent, so the editor could draw a case but not say how it behaves.
+ *
+ * Each rule is a presence plus an optional condition, which is exactly how CMMN models it
+ * — a bare `<requiredRule/>` means always, and one with a `<condition>` means sometimes.
+ * The condition input therefore appears only once the rule is switched on.
+ */
+function ItemControlSection({
+  t,
+  element,
+  disabled,
+  onChangeElement,
+}: {
+  t: TFunction;
+  element: CmmnElement;
+  disabled: boolean;
+  onChangeElement: (patch: Partial<CmmnElement>) => void;
+}) {
+  const control = element.itemControl ?? {};
+
+  const setRule = (key: keyof typeof RULE_LABELS, patch: Partial<RuleConfig>) => {
+    const next: ItemControl = {
+      ...control,
+      [key]: { ...(control[key] ?? { enabled: false }), ...patch },
+    };
+    // A rule switched off carries no condition; keeping one would resurface if it were
+    // switched back on, which is not what "off" looked like when it was turned off.
+    if (next[key] && !next[key]!.enabled) next[key] = { enabled: false };
+    const anyOn = Object.keys(RULE_LABELS).some(
+      (name) => next[name as keyof typeof RULE_LABELS]?.enabled,
+    );
+    onChangeElement({ itemControl: anyOn ? next : undefined });
+  };
+
+  return (
+    <section className="tf-properties__section">
+      <h3 className="tf-properties__section-title">{t("cmmn.itemControl")}</h3>
+      <p className="tf-muted tf-properties__hint">{t("cmmn.itemControl.hint")}</p>
+
+      {(Object.keys(RULE_LABELS) as Array<keyof typeof RULE_LABELS>).map((key) => {
+        const rule = control[key];
+        return (
+          <div key={key}>
+            <label className="tf-checkbox tf-checkbox--block">
+              <input
+                type="checkbox"
+                checked={rule?.enabled === true}
+                disabled={disabled}
+                onChange={(event) => setRule(key, { enabled: event.target.checked })}
+              />
+              {t(`cmmn.itemControl.${key}`)}
+            </label>
+            {rule?.enabled ? (
+              <TextInput
+                label={t("cmmn.itemControl.condition")}
+                value={rule.condition ?? ""}
+                disabled={disabled}
+                hint={t("cmmn.itemControl.condition.hint")}
+                onChange={(event) =>
+                  setRule(key, { condition: event.target.value.trim() || undefined })
+                }
+              />
+            ) : null}
+          </div>
+        );
+      })}
+    </section>
+  );
+}
+
+/**
+ * The rules the editor offers.
+ *
+ * `completionNeutralRule` is absent on purpose: Flowable's parser understands it, but it
+ * is in no CMMN schema, and deployment validates against the schema before parsing — so a
+ * case carrying one cannot be deployed at all. An imported file keeps its own; this
+ * editor will not create one.
+ */
+const RULE_LABELS = {
+  required: "required",
+  repetition: "repetition",
+  manualActivation: "manualActivation",
+} as const;
+
+/** The four value forms the engine reads, so an imported field keeps the one it had. */
+const FIELD_VALUE_KINDS: CmmnFieldValueKind[] = [
+  "stringValue",
+  "expression",
+  "string",
+  "expressionElement",
+];
+
+/**
+ * `<flowable:field>` entries on a task.
+ *
+ * The same repeating-row shape as the criteria editor above. Values can be an attribute or
+ * a child element, and a literal or an expression — the kind is offered rather than
+ * inferred, because an imported field must keep the form it arrived in.
+ */
+function FieldSection({
+  t,
+  element,
+  disabled,
+  onChangeElement,
+}: {
+  t: TFunction;
+  element: CmmnElement;
+  disabled: boolean;
+  onChangeElement: (patch: Partial<CmmnElement>) => void;
+}) {
+  const rows = element.fields ?? [];
+  const commit = (fields: CmmnField[]) => onChangeElement({ fields });
+  const update = (index: number, patch: Partial<CmmnField>) =>
+    commit(rows.map((row, i) => (i === index ? { ...row, ...patch } : row)));
+
+  return (
+    <section className="tf-properties__section">
+      <h3 className="tf-properties__section-title">{t("cmmn.fields")}</h3>
+      <p className="tf-muted tf-properties__hint">{t("cmmn.fields.hint")}</p>
+
+      {rows.length === 0 ? <p className="tf-muted">{t("cmmn.fields.none")}</p> : null}
+
+      <ul className="tf-properties__rows">
+        {rows.map((row, index) => (
+          <li className="tf-properties__row" key={index}>
+            <TextInput
+              label={t("cmmn.fields.name")}
+              value={row.name}
+              disabled={disabled}
+              onChange={(event) => update(index, { name: event.target.value })}
+            />
+            <SelectInput
+              label={t("cmmn.fields.kind")}
+              value={row.valueKind}
+              disabled={disabled}
+              onChange={(event) =>
+                update(index, { valueKind: event.target.value as CmmnFieldValueKind })
+              }
+            >
+              {FIELD_VALUE_KINDS.map((kind) => (
+                <option key={kind} value={kind}>
+                  {t(`cmmn.fields.kind.${kind}`)}
+                </option>
+              ))}
+            </SelectInput>
+            <TextInput
+              label={t("cmmn.fields.value")}
+              value={row.value}
+              disabled={disabled}
+              onChange={(event) => update(index, { value: event.target.value })}
+            />
+            <Button
+              variant="ghost"
+              disabled={disabled}
+              aria-label={t("cmmn.fields.remove", { index: index + 1 })}
+              onClick={() => commit(rows.filter((_, i) => i !== index))}
+            >
+              ×
+            </Button>
+          </li>
+        ))}
+      </ul>
+
+      <Button
+        variant="secondary"
+        disabled={disabled}
+        onClick={() => commit([...rows, { name: "", valueKind: "stringValue", value: "" }])}
+      >
+        {t("cmmn.fields.add")}
+      </Button>
+    </section>
+  );
+}
+
+/** Plan item lifecycle states, as the engine names them. */
+const LIFECYCLE_STATES = [
+  "",
+  "available",
+  "enabled",
+  "disabled",
+  "active",
+  "suspended",
+  "completed",
+  "terminated",
+  "failed",
+];
+
+const LISTENER_IMPLEMENTATIONS = ["class", "delegateExpression", "expression"] as const;
+
+/**
+ * Lifecycle listeners on a plan item.
+ *
+ * They fire as the item moves between states — available to active, active to completed.
+ * Both bounds are optional and an empty one means "any", which is why the selects carry a
+ * blank entry rather than defaulting to a state.
+ */
+function LifecycleListenerSection({
+  t,
+  element,
+  disabled,
+  onChangeElement,
+}: {
+  t: TFunction;
+  element: CmmnElement;
+  disabled: boolean;
+  onChangeElement: (patch: Partial<CmmnElement>) => void;
+}) {
+  const rows = element.lifecycleListeners ?? [];
+  const commit = (lifecycleListeners: LifecycleListener[]) => onChangeElement({ lifecycleListeners });
+  const update = (index: number, patch: Partial<LifecycleListener>) =>
+    commit(rows.map((row, i) => (i === index ? { ...row, ...patch } : row)));
+
+  return (
+    <section className="tf-properties__section">
+      <h3 className="tf-properties__section-title">{t("cmmn.lifecycleListeners")}</h3>
+      <p className="tf-muted tf-properties__hint">{t("cmmn.lifecycleListeners.hint")}</p>
+
+      {rows.length === 0 ? <p className="tf-muted">{t("cmmn.lifecycleListeners.none")}</p> : null}
+
+      <ul className="tf-properties__rows">
+        {rows.map((row, index) => (
+          <li className="tf-properties__row" key={index}>
+            <SelectInput
+              label={t("cmmn.lifecycleListeners.from")}
+              value={row.sourceState}
+              disabled={disabled}
+              onChange={(event) => update(index, { sourceState: event.target.value })}
+            >
+              {LIFECYCLE_STATES.map((state) => (
+                <option key={state || "any"} value={state}>
+                  {state || t("cmmn.lifecycleListeners.anyState")}
+                </option>
+              ))}
+            </SelectInput>
+            <SelectInput
+              label={t("cmmn.lifecycleListeners.to")}
+              value={row.targetState}
+              disabled={disabled}
+              onChange={(event) => update(index, { targetState: event.target.value })}
+            >
+              {LIFECYCLE_STATES.map((state) => (
+                <option key={state || "any"} value={state}>
+                  {state || t("cmmn.lifecycleListeners.anyState")}
+                </option>
+              ))}
+            </SelectInput>
+            <SelectInput
+              label={t("properties.listeners.implementation")}
+              value={row.implementationType}
+              disabled={disabled}
+              onChange={(event) =>
+                update(index, {
+                  implementationType: event.target
+                    .value as LifecycleListener["implementationType"],
+                })
+              }
+            >
+              {LISTENER_IMPLEMENTATIONS.map((kind) => (
+                <option key={kind} value={kind}>
+                  {t(`properties.${kind}`)}
+                </option>
+              ))}
+            </SelectInput>
+            <TextInput
+              label={t("properties.listeners.value")}
+              value={row.value}
+              disabled={disabled}
+              onChange={(event) => update(index, { value: event.target.value })}
+            />
+            <Button
+              variant="ghost"
+              disabled={disabled}
+              aria-label={t("cmmn.lifecycleListeners.remove", { index: index + 1 })}
+              onClick={() => commit(rows.filter((_, i) => i !== index))}
+            >
+              ×
+            </Button>
+          </li>
+        ))}
+      </ul>
+
+      <Button
+        variant="secondary"
+        disabled={disabled}
+        onClick={() =>
+          commit([
+            ...rows,
+            { sourceState: "", targetState: "", implementationType: "class", value: "" },
+          ])
+        }
+      >
+        {t("cmmn.lifecycleListeners.add")}
+      </Button>
+    </section>
+  );
+}

@@ -1155,6 +1155,26 @@
   stroke-dasharray: 6 3 !important;
 }
 
+/*
+ * The CMMN canvas is hand-rolled SVG rather than diagram-js, so the same marker has to
+ * be aimed at its own shape classes. Same two signals as above — colour plus a heavier
+ * stroke — so the two editors mark a problem the same way.
+ */
+.tf-cmmn__shape.tf-problem--error > .tf-cmmn__task,
+.tf-cmmn__shape.tf-problem--error > .tf-cmmn__stage,
+.tf-cmmn__shape.tf-problem--error > .tf-cmmn__milestone,
+.tf-cmmn__shape.tf-problem--error > .tf-cmmn__listener {
+  stroke: var(--tf-danger);
+  stroke-width: 2.5px;
+}
+.tf-cmmn__shape.tf-problem--warning > .tf-cmmn__task,
+.tf-cmmn__shape.tf-problem--warning > .tf-cmmn__stage,
+.tf-cmmn__shape.tf-problem--warning > .tf-cmmn__milestone,
+.tf-cmmn__shape.tf-problem--warning > .tf-cmmn__listener {
+  stroke: var(--tf-warning, #b26a00);
+  stroke-width: 2.5px;
+}
+
 .tf-issues__source {
   font-size: 0.72rem;
   text-transform: uppercase;

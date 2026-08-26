@@ -63,6 +63,13 @@ jobs:
         working-directory: modules/togetherflow-common/src/main/frontend
         run: npm ci --no-audit --no-fund
 
+      # Design's CMMN schema test runs the real CMMN 1.1 XSD over the XML its serialiser
+      # produces. It fails rather than skips when xmllint is missing, so the tool has to be
+      # here — a check that quietly does not run is what let four schema bugs reach a deploy.
+      - name: Install xmllint
+        if: matrix.module == 'togetherflow-design'
+        run: sudo apt-get update && sudo apt-get install -y libxml2-utils
+
       - name: Lint
         run: npm run lint
 

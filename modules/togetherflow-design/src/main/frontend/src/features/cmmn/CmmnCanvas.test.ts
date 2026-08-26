@@ -8,7 +8,7 @@ import {
   normalise,
   type ModelGesture,
 } from "./CmmnCanvas";
-import type { CmmnCase, CmmnElement } from "./cmmnModel";
+import { EMPTY_PRESERVED, type CmmnCase, type CmmnElement } from "./cmmnModel";
 
 function element(id: string, x: number, y: number, extra: Partial<CmmnElement> = {}): CmmnElement {
   return {
@@ -19,6 +19,12 @@ function element(id: string, x: number, y: number, extra: Partial<CmmnElement> =
     bounds: { x, y, width: 100, height: 60 },
     parentId: null,
     attributes: {},
+    plainAttributes: {},
+    extraChildren: [],
+    extraPlanItemChildren: [],
+    fields: [],
+    lifecycleListeners: [],
+    extraExtensionChildren: [],
     entrySentries: [],
     exitSentries: [],
     ...extra,
@@ -32,6 +38,7 @@ const model: CmmnCase = {
   planModelName: "Plan",
   planModelBounds: { x: 20, y: 20, width: 800, height: 500 },
   elements: [element("a", 100, 100), element("b", 300, 100), element("c", 500, 100)],
+  ...EMPTY_PRESERVED,
 };
 
 describe("normalise / contains", () => {
@@ -86,7 +93,7 @@ describe("connectElements", () => {
     const next = connectElements(model, "a", "b");
     const target = next.elements.find((e) => e.planItemId === "b")!;
     expect(target.entrySentries).toEqual([
-      { id: "b_on_a", sourceRef: "a", standardEvent: "complete" },
+      { id: "b_on_a", onParts: [{ sourceRef: "a", standardEvent: "complete" }] },
     ]);
     // The source is untouched — the criterion belongs to the target.
     expect(next.elements.find((e) => e.planItemId === "a")!.entrySentries).toEqual([]);
@@ -104,7 +111,7 @@ describe("connectElements", () => {
   it("keeps existing criteria when adding another source", () => {
     const next = connectElements(connectElements(model, "a", "c"), "b", "c");
     const target = next.elements.find((e) => e.planItemId === "c")!;
-    expect(target.entrySentries.map((s) => s.sourceRef)).toEqual(["a", "b"]);
+    expect(target.entrySentries.map((s) => s.onParts[0].sourceRef)).toEqual(["a", "b"]);
   });
 
   it("ignores a target that does not exist", () => {

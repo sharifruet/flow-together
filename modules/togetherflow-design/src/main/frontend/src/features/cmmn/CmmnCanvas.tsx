@@ -44,6 +44,13 @@ export interface CmmnCanvasProps {
   onCommit: (model: CmmnCase) => void;
   /** Live preview during a drag; not pushed onto the undo stack. */
   onPreview: (model: CmmnCase) => void;
+  /**
+   * Plan items with a validation problem, and how bad it is.
+   *
+   * A list of problems the reader has to match back to the diagram by name is a much
+   * weaker thing than the diagram showing them.
+   */
+  problems?: Map<string, "error" | "warning">;
 }
 
 /** Where the diagram is looked at from: top-left corner in diagram units, plus scale. */
@@ -83,6 +90,7 @@ export function CmmnCanvas({
   onViewportChange,
   onCommit,
   onPreview,
+  problems,
 }: CmmnCanvasProps) {
   const t = useT();
   const svgRef = useRef<SVGSVGElement>(null);
@@ -355,21 +363,26 @@ export function CmmnCanvas({
       ) : null}
 
       {/* Entry criteria, drawn under the shapes so they never obscure a label. */}
+      {/*
+        One line per on-part, not per criterion: a sentry may watch several plan items at
+        once (they are combined with AND), and drawing only the first would show a
+        dependency the case does not have while hiding the ones it does.
+      */}
       {model.elements.flatMap((element) =>
-        element.entrySentries
-          .filter((sentry) => sentry.sourceRef)
-          .map((sentry) => {
-            const source = model.elements.find((e) => e.planItemId === sentry.sourceRef);
+        element.entrySentries.flatMap((sentry) =>
+          (sentry.onParts ?? []).map((part, partIndex) => {
+            const source = model.elements.find((e) => e.planItemId === part.sourceRef);
             if (!source) return null;
             return (
               <path
-                key={`${element.planItemId}-${sentry.id}`}
+                key={`${element.planItemId}-${sentry.id}-${partIndex}`}
                 className="tf-cmmn__connection"
                 d={connectionPath(source.bounds, element.bounds)}
                 markerEnd="url(#tf-arrow)"
               />
             );
           }),
+        ),
       )}
 
       {ordered.map((element) => (
@@ -379,6 +392,7 @@ export function CmmnCanvas({
           selected={selectionSet.has(element.planItemId)}
           primary={selectedId === element.planItemId}
           disabled={disabled}
+          problem={problems?.get(element.planItemId)}
           onPointerDown={(event) => startMove(event, element)}
           onResize={(event) => startResize(event, element.planItemId, element.bounds)}
           onConnect={(event) => startConnect(event, element)}
@@ -411,12 +425,15 @@ function ElementShape({
   selected,
   primary,
   disabled,
+  problem,
   onPointerDown,
   onConnect,
   onResize,
 }: {
   element: CmmnElement;
   selected: boolean;
+  /** Set when this item has a validation problem, which tints its outline. */
+  problem?: "error" | "warning";
   /** The one whose properties are shown; only it gets the resize and connect handles. */
   primary: boolean;
   onConnect: (event: React.PointerEvent) => void;
@@ -431,7 +448,13 @@ function ElementShape({
 
   return (
     <g
-      className={["tf-cmmn__shape", selected ? "is-selected" : ""].filter(Boolean).join(" ")}
+      className={[
+        "tf-cmmn__shape",
+        selected ? "is-selected" : "",
+        problem ? `tf-problem tf-problem--${problem}` : "",
+      ]
+        .filter(Boolean)
+        .join(" ")}
       onPointerDown={onPointerDown}
       role="button"
       aria-label={t("cmmn.elementLabel", { name: element.name || type, type })}
@@ -537,6 +560,8 @@ const ICONS: Record<CmmnElementType, string> = {
   stage: "",
   timerEventListener: "⏱",
   userEventListener: "◉",
+  // A generic listener waits for something the model does not name, so no specific glyph.
+  genericEventListener: "◎",
 };
 
 /** CMMN draws the plan model and stages with the top corners cut. */
@@ -728,7 +753,10 @@ export function connectElements(model: CmmnCase, sourceId: string, targetId: str
   if (sourceId === targetId) return model;
   const target = model.elements.find((element) => element.planItemId === targetId);
   if (!target) return model;
-  if (target.entrySentries.some((sentry) => sentry.sourceRef === sourceId)) return model;
+  const alreadyLinked = target.entrySentries.some((sentry) =>
+    (sentry.onParts ?? []).some((part) => part.sourceRef === sourceId),
+  );
+  if (alreadyLinked) return model;
 
   return {
     ...model,
@@ -740,8 +768,12 @@ export function connectElements(model: CmmnCase, sourceId: string, targetId: str
               ...element.entrySentries,
               {
                 id: `${targetId}_on_${sourceId}`,
-                sourceRef: sourceId,
-                standardEvent: "complete",
+                /*
+                 * A new criterion rather than another part on an existing one: drawing a
+                 * second arrow means "or this too", while adding a part to a sentry means
+                 * "and also this". The panel is where an AND is expressed deliberately.
+                 */
+                onParts: [{ sourceRef: sourceId, standardEvent: "complete" }],
               },
             ],
           }

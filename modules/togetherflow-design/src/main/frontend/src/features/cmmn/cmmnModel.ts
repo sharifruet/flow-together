@@ -27,7 +27,8 @@ export type CmmnElementType =
   | "milestone"
   | "stage"
   | "timerEventListener"
-  | "userEventListener";
+  | "userEventListener"
+  | "genericEventListener";
 
 export const CONTAINER_TYPES: ReadonlySet<CmmnElementType> = new Set(["stage"]);
 
@@ -48,23 +49,145 @@ export interface CmmnElement {
   bounds: Bounds;
   /** Id of the containing stage, or null for the case plan model. */
   parentId: string | null;
-  /** Flowable extension attributes, kept verbatim so unknown ones survive. */
+  /**
+   * `flowable:`-namespaced attributes, by local name. Written back with the prefix.
+   */
   attributes: Record<string, string>;
+  /**
+   * Unprefixed CMMN attributes other than the ones modelled explicitly (`id`, `name`,
+   * `isBlocking`).
+   *
+   * Kept apart from `attributes` because the namespace is not cosmetic: the engine reads
+   * `processRef`, `decisionRef` and `caseRef` with a **null** namespace, so a
+   * `flowable:processRef` is an attribute it never looks at. Writing every attribute with
+   * the prefix meant no process or decision task this editor produced ever had a target.
+   */
+  plainAttributes: Record<string, string>;
+  /**
+   * Child elements of the definition this model does not understand, kept as raw XML.
+   *
+   * `itemControl`, `extensionElements`, `timerExpression`, `planItemStartTrigger` and the
+   * rest. The serialiser rebuilds the document from this model, so anything not carried
+   * here is deleted the first time a case is saved — which is how a timer event listener
+   * lost its schedule.
+   */
+  extraChildren: string[];
   /** `isBlocking` on task types. */
   blocking?: boolean;
+  /**
+   * A timer event listener's schedule, from its `<timerExpression>` child.
+   *
+   * Modelled rather than carried through as raw XML because the panel has to edit it —
+   * and because a timer listener without one is a timer that never fires.
+   */
+  timerExpression?: string;
+  /** Control rules from the plan item's `<itemControl>`. */
+  itemControl?: ItemControl;
+  /** Plan item children other than criteria and `itemControl`, kept as raw XML. */
+  extraPlanItemChildren: string[];
+  /** `<flowable:field>` entries from the definition's `<extensionElements>`. */
+  fields: CmmnField[];
+  /** Lifecycle listeners from `<extensionElements>`. */
+  lifecycleListeners: LifecycleListener[];
+  /** Anything else inside `<extensionElements>` this model does not understand. */
+  extraExtensionChildren: string[];
   /** Criteria that start (entry) or terminate (exit) this element. */
   entrySentries: Sentry[];
   exitSentries: Sentry[];
 }
 
+/**
+ * One `<itemControl>` rule.
+ *
+ * CMMN models these as presence plus an optional guard: a `<requiredRule/>` with no
+ * condition means "always required", and one carrying a `<condition>` means "required when
+ * this is true". `enabled` is therefore whether the element exists at all, which is not
+ * the same question as what the condition says.
+ */
+export interface RuleConfig {
+  enabled: boolean;
+  condition?: string;
+}
+
+/**
+ * The plan item's control rules — the core of CMMN's discretionary behaviour.
+ *
+ * Whether a task must be completed before its stage can finish (`required`), whether it
+ * can happen more than once (`repetition`), and whether a human has to start it rather
+ * than it starting itself (`manualActivation`). None of these were reachable before, which
+ * left the editor able to draw a case but not to express how it behaves.
+ */
+export interface ItemControl {
+  required?: RuleConfig;
+  repetition?: RuleConfig;
+  manualActivation?: RuleConfig;
+  completionNeutral?: RuleConfig;
+  /** `flowable:` attributes on `<repetitionRule>` — counter and collection variables. */
+  repetitionAttributes?: Record<string, string>;
+}
+
+/**
+ * One `<flowable:field>` on a task.
+ *
+ * This is how the whole service-task family is configured: an HTTP task's `requestUrl` and
+ * `requestMethod`, a mail task's `to` and `subject`. Typing a task as `http` without these
+ * produces a case that deploys and then fails on start with "requestMethod is required".
+ *
+ * Four value forms, all of which the engine reads, so all four round-trip: a value can be
+ * an attribute or a child element, and either a literal or an expression. A reader that
+ * knew only some of them would silently blank the rest on save.
+ */
+export type CmmnFieldValueKind = "stringValue" | "expression" | "string" | "expressionElement";
+
+export interface CmmnField {
+  name: string;
+  valueKind: CmmnFieldValueKind;
+  value: string;
+}
+
+/**
+ * One thing a sentry watches: a plan item reaching a lifecycle event.
+ *
+ * A sentry may hold several, and CMMN combines them with AND — "when the review completes
+ * *and* the payment completes". Modelling one source per sentry made that inexpressible;
+ * the schema declares `onPart` as `maxOccurs="unbounded"` precisely for this.
+ */
+export interface OnPart {
+  sourceRef: string;
+  /** Standard event, e.g. "complete", "occur". */
+  standardEvent: string;
+}
+
+/**
+ * A `<flowable:planItemLifecycleListener>`.
+ *
+ * Fires as a plan item moves between lifecycle states — available to active, active to
+ * completed, and so on. Either bound is optional: omitting `sourceState` means "from any
+ * state".
+ */
+export interface LifecycleListener {
+  sourceState: string;
+  targetState: string;
+  implementationType: "class" | "delegateExpression" | "expression";
+  value: string;
+}
+
 export interface Sentry {
   id: string;
-  /** Plan item this criterion listens to. */
-  sourceRef?: string;
-  /** Standard event, e.g. "complete", "occur". */
-  standardEvent?: string;
+  /** Everything this criterion waits for. All of them must happen. */
+  onParts: OnPart[];
+  /** Sentry children this model does not understand — `caseFileItemOnPart` and the like. */
+  extraSentryChildren?: string[];
   /** Optional guard expression. */
   ifPart?: string;
+  /**
+   * Exit criteria only: which instances the criterion terminates.
+   *
+   * `flowable:exitType` — default, `activeInstances`, or `activeAndEnabledInstances`. It
+   * decides whether a repeating item's waiting instances are killed alongside the running
+   * one, which is not something the default makes obvious.
+   */
+  exitType?: string;
 }
 
 export interface CmmnCase {
@@ -75,6 +198,23 @@ export interface CmmnCase {
   planModelName: string;
   planModelBounds: Bounds;
   elements: CmmnElement[];
+  /** `flowable:` attributes on `<case>`, by local name — `initiatorVariableName` and such. */
+  caseAttributes: Record<string, string>;
+  /** Unprefixed attributes on `<case>` other than `id` and `name`. */
+  casePlainAttributes: Record<string, string>;
+  /** Attributes on `<casePlanModel>`, notably `autoComplete`. */
+  planModelAttributes: Record<string, string>;
+  planModelPlainAttributes: Record<string, string>;
+  /** Children of `<case>` other than `casePlanModel` and `documentation`, as raw XML. */
+  extraCaseChildren: string[];
+  /** Children of `<casePlanModel>` that are neither plan items, sentries nor definitions. */
+  extraPlanModelChildren: string[];
+  /** Sibling roots — other `<case>` elements, `<process>`, `<decision>` — as raw XML. */
+  extraRootChildren: string[];
+  /** `<cmmndi:CMMNEdge>` elements, which carry how sentry connections were drawn. */
+  diEdges: string[];
+  /** Namespace declarations on `<definitions>` beyond the four this file always writes. */
+  extraNamespaces: Record<string, string>;
 }
 
 export const DEFAULT_SIZES: Record<CmmnElementType, { width: number; height: number }> = {
@@ -87,6 +227,7 @@ export const DEFAULT_SIZES: Record<CmmnElementType, { width: number; height: num
   stage: { width: 260, height: 180 },
   timerEventListener: { width: 40, height: 40 },
   userEventListener: { width: 40, height: 40 },
+  genericEventListener: { width: 40, height: 40 },
 };
 
 export const TYPE_LABELS: Record<CmmnElementType, string> = {
@@ -99,6 +240,7 @@ export const TYPE_LABELS: Record<CmmnElementType, string> = {
   stage: "Stage",
   timerEventListener: "Timer event listener",
   userEventListener: "User event listener",
+  genericEventListener: "Event listener",
 };
 
 /* ── Parsing ─────────────────────────────────────────────────────────────── */
@@ -121,6 +263,9 @@ export function parseCmmn(xml: string): CmmnCase {
 
   collectElements(planModel, planModel.getAttribute("id") ?? "casePlanModel", shapes, elements);
 
+  const di = firstByLocalName(doc.documentElement, "CMMNDI");
+  const diagram = di ? firstByLocalName(di, "CMMNDiagram") : undefined;
+
   return {
     caseId: caseEl.getAttribute("id") ?? "case1",
     caseName: caseEl.getAttribute("name") ?? "Case",
@@ -130,7 +275,84 @@ export function parseCmmn(xml: string): CmmnCase {
     planModelBounds:
       shapes.get(planModel.getAttribute("id") ?? "") ?? { x: 60, y: 60, width: 720, height: 420 },
     elements,
+    caseAttributes: flowableAttributes(caseEl),
+    casePlainAttributes: plainAttributes(caseEl, ["id", "name"]),
+    planModelAttributes: flowableAttributes(planModel),
+    planModelPlainAttributes: plainAttributes(planModel, ["id", "name"]),
+    extraCaseChildren: rawChildrenExcept(caseEl, ["casePlanModel", "documentation"]),
+    extraPlanModelChildren: rawChildrenExcept(planModel, [
+      "planItem",
+      "sentry",
+      ...KNOWN_DEFINITION_ELEMENTS,
+    ]),
+    extraRootChildren: Array.from(doc.documentElement.children)
+      .filter((child) => child !== caseEl && child.localName !== "CMMNDI")
+      .map(serialiseNode),
+    // Edges carry how sentry connections were drawn. Rebuilding them from the model is
+    // not possible — the routing is information the model does not hold.
+    diEdges: diagram
+      ? childrenByLocalName(diagram, "CMMNEdge").map(serialiseNode)
+      : [],
+    extraNamespaces: extraNamespaceDeclarations(doc.documentElement),
   };
+}
+
+/** Definition elements this model understands, so anything else is carried through raw. */
+const KNOWN_DEFINITION_ELEMENTS = [
+  "humanTask",
+  "processTask",
+  "caseTask",
+  "decisionTask",
+  "serviceTask",
+  "task",
+  "milestone",
+  "stage",
+  "timerEventListener",
+  "userEventListener",
+];
+
+function serialiseNode(node: Element): string {
+  return new XMLSerializer().serializeToString(node);
+}
+
+/**
+ * Attributes with no namespace prefix, minus the ones the model holds in named fields.
+ *
+ * The exclusions matter: emitting `id` from here as well as from its own field would
+ * produce the attribute twice.
+ */
+function plainAttributes(element: Element, exclude: string[]): Record<string, string> {
+  const result: Record<string, string> = {};
+  for (const attr of Array.from(element.attributes)) {
+    if (attr.name.includes(":") || attr.namespaceURI) continue;
+    if (exclude.includes(attr.name)) continue;
+    result[attr.name] = attr.value;
+  }
+  return result;
+}
+
+/** Raw XML of children whose local name is not one this model handles. */
+function rawChildrenExcept(parent: Element, known: string[]): string[] {
+  return Array.from(parent.children)
+    .filter((child) => !known.includes(child.localName))
+    .map(serialiseNode);
+}
+
+/**
+ * Namespace declarations beyond the four the serialiser always writes.
+ *
+ * Without these a preserved child using, say, the `di:` prefix serialises into a document
+ * that does not declare it, and the engine rejects the whole file with "Undeclared prefix".
+ */
+function extraNamespaceDeclarations(root: Element): Record<string, string> {
+  const always = ["xmlns", "xmlns:flowable", "xmlns:cmmndi", "xmlns:dc"];
+  const result: Record<string, string> = {};
+  for (const attr of Array.from(root.attributes)) {
+    if (!attr.name.startsWith("xmlns")) continue;
+    if (always.includes(attr.name)) continue;
+    result[attr.name] = attr.value;
+  }
+  return result;
 }
 
 /**
@@ -165,6 +387,24 @@ function collectElements(
       bounds: shapes.get(planItemId) ?? { x: 120, y: 120, ...size },
       parentId,
       attributes: flowableAttributes(definition),
+      plainAttributes: plainAttributes(definition, ["id", "name", "isBlocking"]),
+      extraChildren:
+        type === "stage"
+          ? rawChildrenExcept(definition, ["planItem", "sentry", ...KNOWN_DEFINITION_ELEMENTS])
+          // `timerExpression` and `extensionElements` are excluded because both are
+          // modelled below; leaving them here too would emit each twice.
+          : rawChildrenExcept(definition, ["timerExpression", "extensionElements"]),
+      fields: readFields(definition),
+      lifecycleListeners: readLifecycleListeners(definition),
+      extraExtensionChildren: readExtraExtensionChildren(definition),
+      timerExpression:
+        firstByLocalName(definition, "timerExpression")?.textContent?.trim() || undefined,
+      itemControl: readItemControl(planItem),
+      extraPlanItemChildren: rawChildrenExcept(planItem, [
+        "entryCriterion",
+        "exitCriterion",
+        "itemControl",
+      ]),
       blocking: definition.getAttribute("isBlocking") !== "false",
       entrySentries: readSentries(planItem, container, "entryCriterion"),
       exitSentries: readSentries(planItem, container, "exitCriterion"),
@@ -177,23 +417,188 @@ function collectElements(
   }
 }
 
+/**
+ * Rule elements in the order `tPlanItemControl` demands.
+ *
+ * The order is not stylistic: the CMMN schema declares a sequence, and emitting
+ * `requiredRule` before `repetitionRule` fails validation with "Invalid content was found
+ * starting with element repetitionRule". Verified against a running engine.
+ *
+ * `completionNeutralRule` is last and deliberately not offered by the editor — Flowable
+ * parses it, but it appears in no CMMN schema, so a document containing one cannot pass
+ * the validation that runs at deployment. It is kept here only so an imported file that
+ * already has one is not silently altered.
+ */
+const FIELD_VALUE_ATTRIBUTES: Record<string, CmmnFieldValueKind> = {
+  stringValue: "stringValue",
+  expression: "expression",
+};
+
+/** Reads `<flowable:field>` entries, whichever of the four value forms each one uses. */
+function readFields(definition: Element): CmmnField[] {
+  const extensions = firstByLocalName(definition, "extensionElements");
+  if (!extensions) return [];
+
+  return childrenByLocalName(extensions, "field").map((field) => {
+    for (const [attribute, kind] of Object.entries(FIELD_VALUE_ATTRIBUTES)) {
+      const value = field.getAttribute(attribute);
+      if (value !== null) return { name: field.getAttribute("name") ?? "", valueKind: kind, value };
+    }
+    const stringChild = firstByLocalName(field, "string");
+    if (stringChild) {
+      return {
+        name: field.getAttribute("name") ?? "",
+        valueKind: "string" as const,
+        value: stringChild.textContent ?? "",
+      };
+    }
+    const expressionChild = firstByLocalName(field, "expression");
+    return {
+      name: field.getAttribute("name") ?? "",
+      valueKind: "expressionElement" as const,
+      value: expressionChild?.textContent ?? "",
+    };
+  });
+}
+
+const LISTENER_IMPLEMENTATIONS = ["class", "delegateExpression", "expression"] as const;
+
+function readLifecycleListeners(definition: Element): LifecycleListener[] {
+  const extensions = firstByLocalName(definition, "extensionElements");
+  if (!extensions) return [];
+
+  return childrenByLocalName(extensions, "planItemLifecycleListener").map((listener) => {
+    const implementationType =
+      LISTENER_IMPLEMENTATIONS.find((candidate) => listener.getAttribute(candidate) !== null) ??
+      "class";
+    return {
+      sourceState: listener.getAttribute("sourceState") ?? "",
+      targetState: listener.getAttribute("targetState") ?? "",
+      implementationType,
+      value: listener.getAttribute(implementationType) ?? "",
+    };
+  });
+}
+
+/** Everything inside `<extensionElements>` this model does not model itself. */
+function readExtraExtensionChildren(definition: Element): string[] {
+  const extensions = firstByLocalName(definition, "extensionElements");
+  return extensions
+    ? rawChildrenExcept(extensions, ["field", "planItemLifecycleListener"])
+    : [];
+}
+
+/** Emits `<extensionElements>`, or nothing when there is nothing to put in it. */
+function renderExtensionElements(element: CmmnElement, indent: number): string {
+  const pad = " ".repeat(indent);
+  const fields = (element.fields ?? [])
+    // A field the engine cannot match to a setter by name is not merely useless.
+    .filter((field) => field.name.trim() !== "")
+    .map((field) => {
+      const name = ` name="${esc(field.name.trim())}"`;
+      if (field.valueKind === "stringValue" || field.valueKind === "expression") {
+        return `${pad}  <flowable:field${name} ${field.valueKind}="${esc(field.value)}" />`;
+      }
+      const tag = field.valueKind === "string" ? "string" : "expression";
+      // CDATA because these carry expressions and markup — a mail body is HTML.
+      return `${pad}  <flowable:field${name}>\n${pad}    <flowable:${tag}><![CDATA[${field.value}]]></flowable:${tag}>\n${pad}  </flowable:field>`;
+    });
+
+  const listeners = (element.lifecycleListeners ?? [])
+    // A listener with no implementation is not something the engine can run.
+    .filter((listener) => listener.value.trim() !== "")
+    .map((listener) => {
+      const states = [
+        listener.sourceState.trim() ? ` sourceState="${esc(listener.sourceState.trim())}"` : "",
+        listener.targetState.trim() ? ` targetState="${esc(listener.targetState.trim())}"` : "",
+      ].join("");
+      return `${pad}  <flowable:planItemLifecycleListener${states} ${listener.implementationType}="${esc(listener.value.trim())}" />`;
+    });
+
+  const others = (element.extraExtensionChildren ?? []).map((chunk) => `${pad}  ${chunk}`);
+  const body = [...fields, ...listeners, ...others].join("\n");
+  return body ? `${pad}<extensionElements>\n${body}\n${pad}</extensionElements>` : "";
+}
+
+const RULE_ELEMENTS = {
+  repetition: "repetitionRule",
+  required: "requiredRule",
+  manualActivation: "manualActivationRule",
+  completionNeutral: "completionNeutralRule",
+} as const;
+
+function readItemControl(planItem: Element): ItemControl | undefined {
+  const control = firstByLocalName(planItem, "itemControl");
+  if (!control) return undefined;
+
+  const result: ItemControl = {};
+  for (const [key, elementName] of Object.entries(RULE_ELEMENTS)) {
+    const rule = firstByLocalName(control, elementName);
+    if (!rule) continue;
+    result[key as keyof typeof RULE_ELEMENTS] = {
+      enabled: true,
+      condition: firstByLocalName(rule, "condition")?.textContent?.trim() || undefined,
+    };
+    if (key === "repetition") result.repetitionAttributes = flowableAttributes(rule);
+  }
+  return Object.keys(result).length > 0 ? result : undefined;
+}
+
+/** Emits `<itemControl>`, or nothing when no rule is on. */
+function renderItemControl(control: ItemControl | undefined, indent: number): string {
+  if (!control) return "";
+  const pad = " ".repeat(indent);
+  const rules = Object.entries(RULE_ELEMENTS)
+    .map(([key, elementName]) => {
+      const rule = control[key as keyof typeof RULE_ELEMENTS] as RuleConfig | undefined;
+      if (!rule?.enabled) return "";
+      const attrs =
+        key === "repetition"
+          ? Object.entries(control.repetitionAttributes ?? {})
+              .map(([name, value]) => ` flowable:${name}="${esc(value)}"`)
+              .join("")
+          : "";
+      // A rule with no condition is unconditional, which is the common case and the
+      // reason the element is self-closing rather than carrying an empty condition.
+      return rule.condition
+        ? `${pad}  <${elementName}${attrs}>\n${pad}    <condition><![CDATA[${rule.condition}]]></condition>\n${pad}  </${elementName}>`
+        : `${pad}  <${elementName}${attrs} />`;
+    })
+    .filter(Boolean)
+    .join("\n");
+
+  return rules ? `${pad}<itemControl>\n${rules}\n${pad}</itemControl>` : "";
+}
+
 function readSentries(planItem: Element, container: Element, kind: string): Sentry[] {
   return childrenByLocalName(planItem, kind).map((criterion) => {
     const sentryRef = criterion.getAttribute("sentryRef");
     const sentry = sentryRef
       ? childrenByLocalName(container, "sentry").find((s) => s.getAttribute("id") === sentryRef)
       : undefined;
-    const onPart = sentry ? firstByLocalName(sentry, "planItemOnPart") : undefined;
     const ifPart = sentry ? firstByLocalName(sentry, "ifPart") : undefined;
     return {
       id: criterion.getAttribute("id") ?? sentryRef ?? crypto.randomUUID(),
-      sourceRef: onPart?.getAttribute("sourceRef") ?? undefined,
-      standardEvent:
-        (onPart ? firstByLocalName(onPart, "standardEvent")?.textContent?.trim() : undefined) ??
-        undefined,
+      onParts: sentry
+        ? childrenByLocalName(sentry, "planItemOnPart")
+            .map((part) => ({
+              sourceRef: part.getAttribute("sourceRef") ?? "",
+              standardEvent:
+                firstByLocalName(part, "standardEvent")?.textContent?.trim() || "complete",
+            }))
+            .filter((part) => part.sourceRef !== "")
+        : [],
+      // `caseFileItemOnPart` and anything else: not editable here, but not destroyed.
+      extraSentryChildren: sentry
+        ? rawChildrenExcept(sentry, ["planItemOnPart", "ifPart"])
+        : [],
       ifPart: ifPart
         ? firstByLocalName(ifPart, "condition")?.textContent?.trim() || undefined
         : undefined,
+      exitType:
+        criterion.getAttributeNS(FLOWABLE_CMMN_NS, "exitType") ||
+        criterion.getAttribute("flowable:exitType") ||
+        undefined,
     };
   });
 }
@@ -218,6 +623,15 @@ function typeOf(localName: string | null): CmmnElementType | null {
       return "timerEventListener";
     case "userEventListener":
       return "userEventListener";
+    /*
+     * The generic listener's element is `<eventListener>`, not `<genericEventListener>`.
+     * Its typed variants — signal, variable, intent, reactivate — are deliberately absent:
+     * Flowable's parser reads them from an `eventType` attribute, but that attribute is
+     * rejected by the CMMN schema ("Attribute 'eventType' is not allowed"), which is
+     * checked before parsing. They cannot be expressed in a deployable document.
+     */
+    case "eventListener":
+      return "genericEventListener";
     // A plain <task> is modelled as a service task; the engine treats it as non-blocking work.
     case "task":
       return "serviceTask";
@@ -271,23 +685,59 @@ export function serialiseCmmn(model: CmmnCase): string {
     ...model.elements.map((el) => shapeXml(`shape_${el.planItemId}`, el.planItemId, el.bounds, 6)),
   ].join("\n");
 
+  const namespaces = Object.entries(model.extraNamespaces ?? {})
+    .map(([name, uri]) => `\n             ${name}="${esc(uri)}"`)
+    .join("");
+  const caseAttrs = attributeXml(model.caseAttributes, model.casePlainAttributes);
+  const planModelAttrs = attributeXml(model.planModelAttributes, model.planModelPlainAttributes);
+  const extraCase = indentBlock(model.extraCaseChildren ?? [], 4);
+  const extraPlanModel = indentBlock(model.extraPlanModelChildren ?? [], 6);
+  const extraRoots = indentBlock(model.extraRootChildren ?? [], 2);
+  const edges = indentBlock(model.diEdges ?? [], 6);
+
   return `<?xml version="1.0" encoding="UTF-8"?>
 <definitions xmlns="${CMMN_NS}"
              xmlns:flowable="${FLOWABLE_CMMN_NS}"
              xmlns:cmmndi="${CMMNDI_NS}"
-             xmlns:dc="${DC_NS}"
+             xmlns:dc="${DC_NS}"${namespaces}
              targetNamespace="http://flowable.org/cmmn">
-  <case id="${esc(model.caseId)}" name="${esc(model.caseName)}">
-${model.documentation ? `    <documentation>${esc(model.documentation)}</documentation>\n` : ""}    <casePlanModel id="${esc(model.planModelId)}" name="${esc(model.planModelName)}">
-${body}    </casePlanModel>
-  </case>
-  <cmmndi:CMMNDI>
+  <case id="${esc(model.caseId)}" name="${esc(model.caseName)}"${caseAttrs}>
+${model.documentation ? `    <documentation>${esc(model.documentation)}</documentation>\n` : ""}    <casePlanModel id="${esc(model.planModelId)}" name="${esc(model.planModelName)}"${planModelAttrs}>
+${body}${extraPlanModel}    </casePlanModel>
+${extraCase}  </case>
+${extraRoots}  <cmmndi:CMMNDI>
     <cmmndi:CMMNDiagram id="CMMNDiagram_${esc(model.caseId)}">
 ${shapes}
-    </cmmndi:CMMNDiagram>
+${edges}    </cmmndi:CMMNDiagram>
   </cmmndi:CMMNDI>
 </definitions>
 `;
+}
+
+/**
+ * Attributes for one element: `flowable:`-prefixed ones and unprefixed ones.
+ *
+ * The split is the whole point. `processRef` and friends are read by the engine with a
+ * null namespace, so prefixing them produces an attribute it never looks at.
+ */
+function attributeXml(
+  flowable: Record<string, string> | undefined,
+  plain: Record<string, string> | undefined,
+): string {
+  const prefixed = Object.entries(flowable ?? {})
+    .map(([key, value]) => ` flowable:${key}="${esc(value)}"`)
+    .join("");
+  const bare = Object.entries(plain ?? {})
+    .map(([key, value]) => ` ${key}="${esc(value)}"`)
+    .join("");
+  return prefixed + bare;
+}
+
+/** Re-emits preserved raw XML at the right indentation, or nothing when there is none. */
+function indentBlock(chunks: string[], indent: number): string {
+  if (chunks.length === 0) return "";
+  const pad = " ".repeat(indent);
+  return chunks.map((chunk) => `${pad}${chunk}`).join("\n") + "\n";
 }
 
 /**
@@ -315,38 +765,78 @@ function renderContainerBody(
 
 function renderPlanItem(element: CmmnElement, indent: number): string {
   const pad = " ".repeat(indent);
-  const criteria = [
+  /*
+   * Order matters to the CMMN schema: `itemControl` comes before the criteria, and a
+   * document with them the other way round is rejected outright.
+   */
+  const body = [
+    renderItemControl(element.itemControl, indent + 2),
     ...element.entrySentries.map(
       (s) => `${pad}  <entryCriterion id="${esc(s.id)}" sentryRef="sentry_${esc(s.id)}" />`,
     ),
     ...element.exitSentries.map(
-      (s) => `${pad}  <exitCriterion id="${esc(s.id)}" sentryRef="sentry_${esc(s.id)}" />`,
+      (s) =>
+        `${pad}  <exitCriterion id="${esc(s.id)}" sentryRef="sentry_${esc(s.id)}"${
+          s.exitType ? ` flowable:exitType="${esc(s.exitType)}"` : ""
+        } />`,
     ),
-  ].join("\n");
+    ...(element.extraPlanItemChildren ?? []).map((chunk) => `${pad}  ${chunk}`),
+  ]
+    .filter(Boolean)
+    .join("\n");
 
   const open = `${pad}<planItem id="${esc(element.planItemId)}" name="${esc(element.name)}" definitionRef="${esc(element.definitionId)}"`;
-  return criteria ? `${open}>\n${criteria}\n${pad}</planItem>` : `${open} />`;
+  return body ? `${open}>\n${body}\n${pad}</planItem>` : `${open} />`;
+}
+
+/**
+ * The XML element name for a plan item definition type.
+ *
+ * Nearly all of them match, but **CMMN has no `<serviceTask>`**: the schema defines
+ * `<task>`, and Flowable distinguishes a service task by `flowable:class`,
+ * `flowable:expression` or `flowable:type` on it. Emitting `<serviceTask>` produced a
+ * document the engine rejected outright — "Invalid content was found starting with element
+ * serviceTask" — so no case containing one could ever be deployed. The parser already read
+ * `<task>` as a service task; only the serialiser disagreed.
+ */
+function xmlElementName(type: CmmnElementType): string {
+  if (type === "serviceTask") return "task";
+  if (type === "genericEventListener") return "eventListener";
+  return type;
 }
 
 function renderDefinition(element: CmmnElement, model: CmmnCase, indent: number): string {
   const pad = " ".repeat(indent);
-  const attrs = Object.entries(element.attributes)
-    .map(([key, value]) => ` flowable:${key}="${esc(value)}"`)
-    .join("");
+  const attrs = attributeXml(element.attributes, element.plainAttributes);
+  const extra = indentBlock(element.extraChildren ?? [], indent + 2);
 
   if (element.type === "stage") {
     const children = model.elements.filter((el) => el.parentId === element.planItemId);
     const inner = renderContainerBody(children, model, indent + 2);
     return `${pad}<stage id="${esc(element.definitionId)}" name="${esc(element.name)}"${attrs}>
-${inner}${pad}</stage>`;
+${inner}${extra}${pad}</stage>`;
   }
-  if (element.type === "milestone") {
-    return `${pad}<milestone id="${esc(element.definitionId)}" name="${esc(element.name)}"${attrs} />`;
-  }
-  if (element.type.endsWith("EventListener")) {
-    return `${pad}<${element.type} id="${esc(element.definitionId)}" name="${esc(element.name)}"${attrs} />`;
-  }
-  return `${pad}<${element.type} id="${esc(element.definitionId)}" name="${esc(element.name)}" isBlocking="${element.blocking !== false}"${attrs} />`;
+
+  const timer =
+    element.type === "timerEventListener" && element.timerExpression
+      ? `${" ".repeat(indent + 2)}<timerExpression>${esc(element.timerExpression)}</timerExpression>\n`
+      : "";
+
+  const tag = xmlElementName(element.type);
+  const head =
+    element.type === "milestone" || element.type.endsWith("EventListener")
+      ? `${pad}<${tag} id="${esc(element.definitionId)}" name="${esc(element.name)}"${attrs}`
+      : `${pad}<${tag} id="${esc(element.definitionId)}" name="${esc(element.name)}" isBlocking="${element.blocking !== false}"${attrs}`;
+
+  /*
+   * Preserved children force the open/close form. A timer event listener is the case that
+   * matters: its `<timerExpression>` is a child, and self-closing the element dropped the
+   * schedule — leaving a timer that never fires.
+   */
+  const extensions = renderExtensionElements(element, indent + 2);
+  // `extensionElements` comes first in every CMMN element's content model.
+  const children = (extensions ? extensions + "\n" : "") + timer + extra;
+  return children ? `${head}>\n${children}${pad}</${tag}>` : `${head} />`;
 }
 
 /** Sentries are declared as siblings of the plan items that reference them. */
@@ -358,16 +848,27 @@ function renderSentries(elements: CmmnElement[], model: CmmnCase, indent: number
   return (
     all
       .map((sentry) => {
-        const source = sentry.sourceRef
-          ? model.elements.find((el) => el.planItemId === sentry.sourceRef)
-          : undefined;
-        const onPart = source
-          ? `\n${pad}  <planItemOnPart id="onPart_${esc(sentry.id)}" sourceRef="${esc(source.planItemId)}">\n${pad}    <standardEvent>${esc(sentry.standardEvent || "complete")}</standardEvent>\n${pad}  </planItemOnPart>`
-          : "";
+        /*
+         * Only parts whose source still exists. A sentry pointing at a deleted plan item
+         * serialises a dangling `sourceRef`, which the engine rejects at deployment.
+         */
+        const parts = (sentry.onParts ?? []).filter((part) =>
+          model.elements.some((el) => el.planItemId === part.sourceRef),
+        );
+        const onPart = parts
+          .map(
+            (part, index) =>
+              `\n${pad}  <planItemOnPart id="onPart_${esc(sentry.id)}_${index}" sourceRef="${esc(part.sourceRef)}">\n${pad}    <standardEvent>${esc(part.standardEvent || "complete")}</standardEvent>\n${pad}  </planItemOnPart>`,
+          )
+          .join("");
+        const extras = (sentry.extraSentryChildren ?? [])
+          .map((chunk) => `\n${pad}  ${chunk}`)
+          .join("");
         const ifPart = sentry.ifPart
           ? `\n${pad}  <ifPart>\n${pad}    <condition><![CDATA[${sentry.ifPart}]]></condition>\n${pad}  </ifPart>`
           : "";
-        return `${pad}<sentry id="sentry_${esc(sentry.id)}">${onPart}${ifPart}\n${pad}</sentry>`;
+        // `onPart` before `ifPart`: the schema declares them in that order.
+        return `${pad}<sentry id="sentry_${esc(sentry.id)}">${onPart}${extras}${ifPart}\n${pad}</sentry>`;
       })
       .join("\n") + "\n"
   );
@@ -394,6 +895,32 @@ function esc(value: string): string {
 
 /* ── Editing helpers ─────────────────────────────────────────────────────── */
 
+/** Nothing preserved yet — a new case has no imported content to carry. */
+type Preserved = Pick<
+  CmmnCase,
+  | "caseAttributes"
+  | "casePlainAttributes"
+  | "planModelAttributes"
+  | "planModelPlainAttributes"
+  | "extraCaseChildren"
+  | "extraPlanModelChildren"
+  | "extraRootChildren"
+  | "diEdges"
+  | "extraNamespaces"
+>;
+
+export const EMPTY_PRESERVED: Preserved = {
+  caseAttributes: {},
+  casePlainAttributes: {},
+  planModelAttributes: {},
+  planModelPlainAttributes: {},
+  extraCaseChildren: [],
+  extraPlanModelChildren: [],
+  extraRootChildren: [],
+  diEdges: [],
+  extraNamespaces: {},
+};
+
 export function emptyCase(caseKey: string, caseName: string): CmmnCase {
   return {
     caseId: caseKey,
@@ -402,6 +929,7 @@ export function emptyCase(caseKey: string, caseName: string): CmmnCase {
     planModelName: caseName,
     planModelBounds: { x: 60, y: 60, width: 760, height: 440 },
     elements: [],
+    ...EMPTY_PRESERVED,
   };
 }
 
@@ -426,6 +954,12 @@ export function createElement(
     bounds: { x: position.x, y: position.y, ...DEFAULT_SIZES[type] },
     parentId,
     attributes: {},
+    plainAttributes: {},
+    extraChildren: [],
+    extraPlanItemChildren: [],
+    fields: [],
+    lifecycleListeners: [],
+    extraExtensionChildren: [],
     blocking: true,
     entrySentries: [],
     exitSentries: [],
@@ -450,15 +984,27 @@ export function removeElement(model: CmmnCase, planItemId: string): CmmnCase {
     ...model,
     elements: model.elements
       .filter((element) => !doomed.has(element.planItemId))
-      // A sentry pointing at a deleted element would serialise a dangling sourceRef.
+      /*
+       * Drop the on-parts that pointed at deleted elements, and only then drop a criterion
+       * that has none left. Removing the whole criterion because one of its sources went
+       * away would silently discard the others it still waits for.
+       */
       .map((element) => ({
         ...element,
-        entrySentries: element.entrySentries.filter(
-          (s) => !s.sourceRef || !doomed.has(s.sourceRef),
-        ),
-        exitSentries: element.exitSentries.filter((s) => !s.sourceRef || !doomed.has(s.sourceRef)),
+        entrySentries: withoutDoomedParts(element.entrySentries, doomed),
+        exitSentries: withoutDoomedParts(element.exitSentries, doomed),
       })),
   };
+}
+
+function withoutDoomedParts(sentries: Sentry[], doomed: Set<string>): Sentry[] {
+  return sentries
+    .map((sentry) => ({
+      ...sentry,
+      onParts: (sentry.onParts ?? []).filter((part) => !doomed.has(part.sourceRef)),
+    }))
+    // A criterion with no parts and no guard waits for nothing, so it is not a criterion.
+    .filter((sentry) => sentry.onParts.length > 0 || sentry.ifPart);
 }
 
 /** Which container a point falls in — innermost stage wins, else the plan model. */

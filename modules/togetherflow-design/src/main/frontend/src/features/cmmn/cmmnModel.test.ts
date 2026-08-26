@@ -128,7 +128,7 @@ describe("serialiseCmmn", () => {
     let model = emptyCase("c1", "Case");
     const first = createElement("humanTask", { x: 100, y: 100 }, model.planModelId);
     const second = createElement("humanTask", { x: 300, y: 100 }, model.planModelId);
-    second.entrySentries = [{ id: "crit1", sourceRef: first.planItemId, standardEvent: "complete" }];
+    second.entrySentries = [{ id: "crit1", onParts: [{ sourceRef: first.planItemId, standardEvent: "complete" }] }];
     model = { ...model, elements: [first, second] };
 
     const xml = serialiseCmmn(model);
@@ -136,7 +136,7 @@ describe("serialiseCmmn", () => {
     expect(xml).toContain('<sentry id="sentry_crit1">');
     expect(xml).toContain(`sourceRef="${first.planItemId}"`);
     expect(xml).toContain("<standardEvent>complete</standardEvent>");
-    expect(parseCmmn(xml).elements[1].entrySentries[0].sourceRef).toBe(first.planItemId);
+    expect(parseCmmn(xml).elements[1].entrySentries[0].onParts[0].sourceRef).toBe(first.planItemId);
   });
 
   it("writes exit criteria the same way, and reads them back", () => {
@@ -146,7 +146,7 @@ describe("serialiseCmmn", () => {
     const trigger = createElement("humanTask", { x: 100, y: 100 }, model.planModelId);
     const stage = createElement("stage", { x: 300, y: 100 }, model.planModelId);
     stage.exitSentries = [
-      { id: "exit1", sourceRef: trigger.planItemId, standardEvent: "complete" },
+      { id: "exit1", onParts: [{ sourceRef: trigger.planItemId, standardEvent: "complete" }] },
     ];
     model = { ...model, elements: [trigger, stage] };
 
@@ -154,7 +154,7 @@ describe("serialiseCmmn", () => {
     expect(xml).toContain('<exitCriterion id="exit1" sentryRef="sentry_exit1"');
 
     const reparsed = parseCmmn(xml);
-    expect(reparsed.elements[1].exitSentries[0].sourceRef).toBe(trigger.planItemId);
+    expect(reparsed.elements[1].exitSentries[0].onParts[0].sourceRef).toBe(trigger.planItemId);
     // Entry and exit must not be confused for one another on the way back in.
     expect(reparsed.elements[1].entrySentries).toEqual([]);
   });
@@ -163,14 +163,14 @@ describe("serialiseCmmn", () => {
     let model = emptyCase("c1", "Case");
     const trigger = createElement("humanTask", { x: 100, y: 100 }, model.planModelId);
     const target = createElement("humanTask", { x: 300, y: 100 }, model.planModelId);
-    target.entrySentries = [{ id: "in1", sourceRef: trigger.planItemId, standardEvent: "complete" }];
-    target.exitSentries = [{ id: "out1", sourceRef: trigger.planItemId, standardEvent: "terminate" }];
+    target.entrySentries = [{ id: "in1", onParts: [{ sourceRef: trigger.planItemId, standardEvent: "complete" }] }];
+    target.exitSentries = [{ id: "out1", onParts: [{ sourceRef: trigger.planItemId, standardEvent: "terminate" }] }];
     model = { ...model, elements: [trigger, target] };
 
     const reparsed = parseCmmn(serialiseCmmn(model));
     expect(reparsed.elements[1].entrySentries).toHaveLength(1);
     expect(reparsed.elements[1].exitSentries).toHaveLength(1);
-    expect(reparsed.elements[1].exitSentries[0].standardEvent).toBe("terminate");
+    expect(reparsed.elements[1].exitSentries[0].onParts[0].standardEvent).toBe("terminate");
   });
 
   it("produces a parseable document for an empty case", () => {
@@ -187,7 +187,7 @@ describe("removeElement", () => {
     const stage = createElement("stage", { x: 100, y: 100 }, base.planModelId);
     const child = createElement("humanTask", { x: 120, y: 140 }, stage.planItemId);
     const other = createElement("humanTask", { x: 400, y: 100 }, base.planModelId);
-    other.entrySentries = [{ id: "c1", sourceRef: child.planItemId, standardEvent: "complete" }];
+    other.entrySentries = [{ id: "c1", onParts: [{ sourceRef: child.planItemId, standardEvent: "complete" }] }];
     return { ...base, elements: [stage, child, other] };
   }
 
@@ -244,7 +244,7 @@ describe("engine schema conformance", () => {
     const m = emptyCase("c1", "Case");
     const t1 = createElement("humanTask", { x: 100, y: 100 }, m.planModelId);
     const t2 = createElement("humanTask", { x: 300, y: 100 }, m.planModelId);
-    t2.entrySentries = [{ id: "crit1", sourceRef: t1.planItemId, standardEvent: "complete" }];
+    t2.entrySentries = [{ id: "crit1", onParts: [{ sourceRef: t1.planItemId, standardEvent: "complete" }] }];
     const stage = createElement("stage", { x: 100, y: 260 }, m.planModelId);
     const nested = createElement("humanTask", { x: 130, y: 300 }, stage.planItemId);
     return { ...m, elements: [t1, t2, stage, nested] };

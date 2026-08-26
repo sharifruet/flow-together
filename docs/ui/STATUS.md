@@ -159,8 +159,11 @@ that a rejected model creates no deployment.
 Design uses them: the BPMN editor merges the engine's verdict with its browser checks and
 labels which side reported what, so the panel no longer has to say "passing here doesn't
 guarantee the engine will accept the model" — when the engine answered, it does. The CMMN
-editor gains validation it never had; with no browser checks to fall back on, an
-unreachable validator says the case has not been checked rather than implying it passed.
+editor does the same, over browser checks written to be **disjoint** from the engine's:
+`CaseValidator` reports four problems in total, so the browser side covers what it does not
+look at — a process or case task naming nothing to start, a timer with no expression, an
+HTTP task missing `requestUrl`, a criterion that waits for nothing. Two checkers reporting
+the same problem in two wordings is how a validation panel stops being read.
 
 New REST surface in a fork is divergence, so it was kept to what it has to be: one resource
 class per engine over a capability the engine already has, no schema change, no new
@@ -252,6 +255,49 @@ ever been run to `validate`. Both Java modules now pass `verify` clean.
 
 ---
 
+## 2d. CMMN: checks that can fail
+
+The case modeller had a validation panel fed by one source — `POST /cmmn-repository/model-validation`,
+which runs the engine's `CaseValidator`. That validator reports **four** problems in total, so
+"no problems found" meant very little, and it cost a round trip so it could not run while
+someone was typing.
+
+**Browser checks, deliberately disjoint from the engine's** (`validateCmmn.ts`). None of the
+engine's four are repeated — two checkers reporting the same problem in two wordings is how a
+validation panel stops being read. What is covered instead is what the engine does not look
+at, most of it learned by watching cases deploy cleanly and then fail at runtime: duplicate
+ids (which make the document unparseable, reported by the schema in terms of neither element),
+a process or case task naming nothing to start, a timer with no expression, a service task
+with no implementation, an HTTP task missing `requestUrl`/`requestMethod`, an empty stage, a
+criterion that waits for nothing, a trigger with no source. These run on every edit, debounced,
+and the panel badges each problem with which side reported it.
+
+**Markers on the canvas.** A list of problems the reader has to match back to the diagram by
+name is a much weaker thing than the diagram showing them. Engine problems name the definition
+id while the canvas keys shapes by plan-item id, so both are resolved; an element carrying an
+error and a warning is drawn as an error. Colour is not the only signal — stroke width carries
+it too (§13.6).
+
+**A source view**, matching BPMN's. This editor deliberately preserves things it cannot itself
+author — case file items, unknown extension elements, `flowable:` attributes with no field in
+the panel — so a round trip loses nothing. Being able to read the output is how that claim gets
+checked without deploying. Opening it also stops the editor's keyboard shortcuts, because
+Backspace behind an open dialog was deleting the selected element where nobody could see it.
+
+**A schema-validity test** (`schemaValidity.test.ts`). The most useful thing built here. It
+runs the repository's own `CMMN11.xsd` over documents this serialiser produced, because the
+schema gate is stricter than both the parser and `CaseValidator`, and this editor had already
+shipped four documents that parsed fine and could not be deployed: `<serviceTask>` (the schema
+defines `<task>`), `<completionNeutralRule>` (in no schema at all), an `eventType` attribute in
+the CMMN namespace (`anyAttribute` there is `##other`), and item-control rules in the wrong
+order. Both of the two reproducible ones were reintroduced to confirm the test fails on them.
+There is no skip-if-missing path — it fails when `xmllint` is absent, and CI installs
+`libxml2-utils`, because a check that quietly does not run is how all four reached a deploy.
+
+Design is at 296 tests.
+
+---
+
 ## 3. Verification status — read this before trusting anything
 
 **Verified locally**: lint, typecheck, unit and component tests, production builds, bundle
@@ -260,12 +306,18 @@ budgets, gallery build, and `./mvnw -Ptogetherflow validate` for the reactor.
 **Since verified, with Docker** (see §2b): all five container images build and run, and the
 model-validation endpoints run against a real engine.
 
+**Since verified, against the CMMN 1.1 schema** (see §2d): the XML Design's CMMN serialiser
+produces — for a case using every element type and every authorable feature, and for each of
+the four repository CMMN files re-serialised — passes `xmllint --schema CMMN11.xsd`. That is
+the gate a deployment runs before the parser or `CaseValidator` see the document, and it is
+the one that rejected four earlier versions of this serialiser.
+
 **Still not verified, and the reason:**
 
 | Not verified | Why | Risk |
 |---|---|---|
 | The k8s manifests and the Helm chart on a cluster | No cluster here | Both are schema-validated with `kubeconform`, and the read-only-root-filesystem behaviour they depend on is now proven by running the images. Scheduling, volume binding and probe timing are still unproven |
-| e2e for Identity, Control, Design | No engine wired to them | They parse and collect (12 tests) but have never executed. Treat the first CI run as their acceptance test |
+| e2e for Identity, Control, Design | No engine wired to them | They parse and collect but have never executed, and two Design selectors were already wrong (§6). Design's CMMN path additionally needs an engine with **CMMN REST** and this fork's validation resources — stock `flowable/flowable-rest` has neither, so it cannot be run against the image the README names. Treat the first real run as their acceptance test |
 | Work's extended e2e | Same | The two new keyboard tests are unrun; the five pre-existing ones passed before this pass |
 | Visual regression | Baselines are darwin-generated | Cannot gate on linux — see §4 |
 | SharePoint attachment provider | Needs an Azure tenant | Unchanged as an end-to-end gap, but no longer untested — see §2b |
@@ -426,8 +478,11 @@ Nothing else resolves `axe-core`, so without it five a11y suites collect zero te
 typechecks fail — see §2b.
 
 1. Run the e2e suites against a real engine (`docker run -p 8080:8080 flowable/flowable-rest`
-   and `npm run e2e` per module). Expect selector fixes in the three new suites. This is the
-   largest thing still unexercised.
+   and `npm run e2e` per module). Expect more selector fixes. This is the largest thing still
+   unexercised. **Design's CMMN spec needs a different engine**: stock `flowable/flowable-rest`
+   serves no `cmmn-repository/*` at all and does not carry this fork's two validation
+   resources, so that path needs `flowable-app-rest` built from this branch. That build is the
+   real cost of item 1, and it is why the spec was fixed by reading rather than by running.
 2. Regenerate visual baselines in the Playwright container and delete the
    `continue-on-error` in `.github/workflows/togetherflow-ui.yml`. Docker makes this
    possible now; it is the one-line change that turns a check which cannot fail into one
@@ -439,7 +494,7 @@ typechecks fail — see §2b.
 5. Read [OPERATIONS.md](OPERATIONS.md) before configuring a deployment — particularly the
    failure-modes table, which encodes several things that cost real time to discover.
 
-One lesson from this pass, found four separate times. **A check that never runs reports
+One lesson from this pass, found five separate times. **A check that never runs reports
 nothing:**
 
 - the four app images had never been built;
@@ -448,7 +503,12 @@ nothing:**
 - neither Java module's tests ran in CI at all — the frontend matrix is frontend-only and
   the release workflow only ever ran `package -DskipTests`, so 58 tests executed on nobody's
   machine but their authors';
-- the load harness's own `run.sh` reported success when a run had failed.
+- the load harness's own `run.sh` reported success when a run had failed;
+- Design's e2e spec has never been run, and two of its selectors never matched anything —
+  `/^create$/` against a button reading "Create and open", `/^xml$/` against one reading
+  "BPMN XML". Both are fixed by reading, which is not the same as fixed by running. Item 1
+  below is still open.
 
-Every one of them found real defects the first time it actually ran. All four are now
-closed. When something here is recorded as "verified", check which command proved it.
+Every one of them found real defects the first time it actually ran, and the fifth found
+them without running at all. When something here is recorded as "verified", check which
+command proved it.

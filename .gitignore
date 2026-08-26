@@ -26,3 +26,6 @@ k8s/index.yaml
 .claude/settings.local.json
 .claude/worktrees
 qa/load/results
+
+# Vite drops a cache here when tooling is run from the repo root.
+/node_modules
