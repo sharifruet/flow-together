@@ -1,0 +1,103 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<project xmlns="http://maven.apache.org/POM/4.0.0"
+         xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+         xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 http://maven.apache.org/xsd/maven-4.0.0.xsd">
+    <modelVersion>4.0.0</modelVersion>
+
+    <!--
+        flowable-parent, not flowable-root: `spring.boot.version` and the Spring
+        dependency management every REST module relies on are declared there.
+    -->
+    <parent>
+        <groupId>org.flowable</groupId>
+        <artifactId>flowable-parent</artifactId>
+        <version>8.1.0-SNAPSHOT</version>
+        <relativePath>../flowable-parent</relativePath>
+    </parent>
+
+    <artifactId>togetherflow-event-recorder</artifactId>
+    <packaging>jar</packaging>
+    <name>TogetherFlow - Event Recorder</name>
+    <description>
+        Optional inbound-event log (REQUIREMENTS.md §7.2, ADR 0015). The event registry
+        engine persists repository state only — deployments, resources, event and channel
+        definitions — and keeps no record of what arrived on a channel, so Control has
+        nothing to show an operator asking "did that event actually reach us?".
+
+        This module answers that without touching the engine. It replaces the inbound
+        event processor with one that records what it saw before dispatching, stores rows
+        in its own table, and exposes a GET endpoint Control reads. Not on the classpath
+        means not enabled, and `togetherflow.events.recorder.enabled` gates it even then.
+
+        A library, not a service: `EventRegistry` dispatch is an in-JVM callback, so this
+        has to run inside the application that hosts the event registry engine. See the
+        README for what that means for packaging.
+    </description>
+
+    <properties>
+        <flowable.artifact>org.togetherflow.events.recorder</flowable.artifact>
+        <maven.deploy.skip>true</maven.deploy.skip>
+    </properties>
+
+    <dependencyManagement>
+        <dependencies>
+            <dependency>
+                <groupId>org.springframework.boot</groupId>
+                <artifactId>spring-boot-dependencies</artifactId>
+                <version>${spring.boot.version}</version>
+                <type>pom</type>
+                <scope>import</scope>
+            </dependency>
+        </dependencies>
+    </dependencyManagement>
+
+    <dependencies>
+        <!--
+            Supplied by the host application: this jar is added to an app that already
+            runs the event registry engine, so everything below is `provided` rather
+            than dragged in a second time at a possibly different version.
+        -->
+        <dependency>
+            <groupId>org.flowable</groupId>
+            <artifactId>flowable-event-registry-api</artifactId>
+            <version>${project.version}</version>
+            <scope>provided</scope>
+        </dependency>
+        <dependency>
+            <groupId>org.flowable</groupId>
+            <artifactId>flowable-event-registry-model</artifactId>
+            <version>${project.version}</version>
+            <scope>provided</scope>
+        </dependency>
+        <dependency>
+            <groupId>org.springframework.boot</groupId>
+            <artifactId>spring-boot-starter-web</artifactId>
+            <scope>provided</scope>
+        </dependency>
+        <dependency>
+            <groupId>org.springframework.boot</groupId>
+            <artifactId>spring-boot-starter-jdbc</artifactId>
+            <scope>provided</scope>
+        </dependency>
+
+        <dependency>
+            <groupId>org.springframework.boot</groupId>
+            <artifactId>spring-boot-starter-test</artifactId>
+            <scope>test</scope>
+        </dependency>
+        <!--
+            Spring Boot 4 split MockMvc's test auto-configuration out of the main test
+            starter; @AutoConfigureMockMvc now lives in this artifact.
+        -->
+        <dependency>
+            <groupId>org.springframework.boot</groupId>
+            <artifactId>spring-boot-starter-webmvc-test</artifactId>
+            <scope>test</scope>
+        </dependency>
+        <dependency>
+            <groupId>com.h2database</groupId>
+            <artifactId>h2</artifactId>
+            <scope>test</scope>
+        </dependency>
+    </dependencies>
+</project>

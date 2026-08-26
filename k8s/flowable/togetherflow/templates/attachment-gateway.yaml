@@ -1,0 +1,172 @@
+{{/*
+Optional attachment storage (§7.6).
+
+Off by default, and deliberately so: with the engine's own `db` provider the browser posts
+bytes straight to the engine and this service is not part of the deployment at all.
+
+The SharePoint client secret never appears in values. It is read from a Secret created out
+of band, referenced optionally so a filesystem deployment does not need one to exist.
+*/}}
+{{- if .Values.attachmentGateway.enabled }}
+{{- $gw := .Values.attachmentGateway }}
+{{- $name := printf "%s-attachment-gateway" (include "togetherflow.fullname" .) }}
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ $name }}
+  labels:
+    {{- include "togetherflow.labels" . | nindent 4 }}
+    app.kubernetes.io/component: attachment-gateway
+spec:
+  replicas: {{ $gw.replicas }}
+  selector:
+    matchLabels:
+      {{- include "togetherflow.selectorLabels" . | nindent 6 }}
+      app.kubernetes.io/component: attachment-gateway
+  template:
+    metadata:
+      annotations:
+        checksum/config: {{ toYaml $gw | sha256sum }}
+        {{- with $gw.podAnnotations }}
+        {{- toYaml . | nindent 8 }}
+        {{- end }}
+      labels:
+        {{- include "togetherflow.labels" . | nindent 8 }}
+        app.kubernetes.io/component: attachment-gateway
+    spec:
+      {{- with .Values.image.pullSecrets }}
+      imagePullSecrets:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      serviceAccountName: {{ include "togetherflow.serviceAccountName" . }}
+      automountServiceAccountToken: false
+      securityContext:
+        runAsNonRoot: true
+        # Matches the group the image's `togetherflow` user owns the data directory as.
+        fsGroup: 101
+      containers:
+        - name: attachment-gateway
+          image: {{ include "togetherflow.image" (dict "root" $ "repository" $gw.image) }}
+          imagePullPolicy: {{ .Values.image.pullPolicy }}
+          ports:
+            - name: http
+              containerPort: 8091
+          envFrom:
+            - configMapRef:
+                name: {{ $name }}
+            - secretRef:
+                name: {{ default (printf "%s-secrets" $name) $gw.sharepoint.existingSecret }}
+                # Optional so a filesystem deployment needs no Secret at all.
+                optional: true
+          resources:
+            {{- toYaml $gw.resources | nindent 12 }}
+          # Configuration is validated at startup, so a misconfigured gateway fails its
+          # readiness check rather than accepting an upload it cannot store.
+          livenessProbe:
+            httpGet:
+              path: /attachments/health
+              port: http
+            initialDelaySeconds: 20
+            periodSeconds: 20
+          readinessProbe:
+            httpGet:
+              path: /attachments/health
+              port: http
+            initialDelaySeconds: 10
+            periodSeconds: 10
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            capabilities:
+              drop: ["ALL"]
+          volumeMounts:
+            {{- if and (eq $gw.provider "filesystem") $gw.filesystem.persistence.enabled }}
+            - name: attachments
+              mountPath: {{ $gw.filesystem.basePath }}
+            {{- end }}
+            # The JVM needs a writable temp directory under a read-only root filesystem.
+            - name: tmp
+              mountPath: /tmp
+      volumes:
+        {{- if and (eq $gw.provider "filesystem") $gw.filesystem.persistence.enabled }}
+        - name: attachments
+          persistentVolumeClaim:
+            claimName: {{ default (printf "%s-data" $name) $gw.filesystem.persistence.existingClaim }}
+        {{- end }}
+        - name: tmp
+          emptyDir: {}
+      {{- with $gw.nodeSelector }}
+      nodeSelector:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with $gw.tolerations }}
+      tolerations:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with $gw.affinity }}
+      affinity:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      restartPolicy: Always
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ $name }}
+  labels:
+    {{- include "togetherflow.labels" . | nindent 4 }}
+    app.kubernetes.io/component: attachment-gateway
+spec:
+  type: {{ .Values.service.type }}
+  selector:
+    {{- include "togetherflow.selectorLabels" . | nindent 4 }}
+    app.kubernetes.io/component: attachment-gateway
+  ports:
+    - name: http
+      protocol: TCP
+      port: 8091
+      targetPort: http
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: {{ $name }}
+  labels:
+    {{- include "togetherflow.labels" . | nindent 4 }}
+    app.kubernetes.io/component: attachment-gateway
+data:
+  TOGETHERFLOW_ATTACHMENTS_PROVIDER: {{ $gw.provider | quote }}
+  TOGETHERFLOW_ATTACHMENTS_MAXFILESIZEBYTES: {{ $gw.maxFileSizeBytes | quote }}
+  {{- if eq $gw.provider "filesystem" }}
+  TOGETHERFLOW_ATTACHMENTS_FILESYSTEM_BASEPATH: {{ $gw.filesystem.basePath | quote }}
+  # Must be reachable by the browser — it is stored on the attachment as its URL.
+  TOGETHERFLOW_ATTACHMENTS_FILESYSTEM_PUBLICBASEURL: {{ $gw.filesystem.publicBaseUrl | quote }}
+  {{- else if eq $gw.provider "sharepoint" }}
+  TOGETHERFLOW_ATTACHMENTS_SHAREPOINT_TENANTID: {{ $gw.sharepoint.tenantId | quote }}
+  TOGETHERFLOW_ATTACHMENTS_SHAREPOINT_CLIENTID: {{ $gw.sharepoint.clientId | quote }}
+  TOGETHERFLOW_ATTACHMENTS_SHAREPOINT_SITEID: {{ $gw.sharepoint.siteId | quote }}
+  TOGETHERFLOW_ATTACHMENTS_SHAREPOINT_DRIVEID: {{ $gw.sharepoint.driveId | quote }}
+  {{- end }}
+{{- if and (eq $gw.provider "filesystem") $gw.filesystem.persistence.enabled (not $gw.filesystem.persistence.existingClaim) }}
+---
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: {{ $name }}-data
+  labels:
+    {{- include "togetherflow.labels" . | nindent 4 }}
+    app.kubernetes.io/component: attachment-gateway
+  annotations:
+    # Uploaded files outlive the release: deleting the chart must not delete them.
+    helm.sh/resource-policy: keep
+spec:
+  accessModes:
+    {{- toYaml $gw.filesystem.persistence.accessModes | nindent 4 }}
+  {{- with $gw.filesystem.persistence.storageClass }}
+  storageClassName: {{ . | quote }}
+  {{- end }}
+  resources:
+    requests:
+      storage: {{ $gw.filesystem.persistence.size }}
+{{- end }}
+{{- end }}

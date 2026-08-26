@@ -1,4 +1,9 @@
-import type { InputHTMLAttributes, ReactNode, SelectHTMLAttributes } from "react";
+import type {
+  InputHTMLAttributes,
+  ReactNode,
+  SelectHTMLAttributes,
+  TextareaHTMLAttributes,
+} from "react";
 import { useId } from "react";
 
 export interface FieldProps {
@@ -85,6 +90,35 @@ export function SelectInput({ label, error, hint, children, ...rest }: SelectInp
         >
           {children}
         </select>
+      )}
+    </Field>
+  );
+}
+
+export interface TextAreaInputProps extends TextareaHTMLAttributes<HTMLTextAreaElement> {
+  label: string;
+  error?: string;
+  hint?: string;
+}
+
+/**
+ * Multi-line input, for the values a single-line box makes unusable: a script task's
+ * body, an element's documentation, a mail task's HTML. Same `Field` wrapper as
+ * `TextInput`, so labelling, hints and error wiring behave identically.
+ */
+export function TextAreaInput({ label, error, hint, required, rows = 4, ...rest }: TextAreaInputProps) {
+  return (
+    <Field label={label} error={error} hint={hint} required={required}>
+      {({ id, describedBy, invalid }) => (
+        <textarea
+          {...rest}
+          id={id}
+          rows={rows}
+          className="tf-input tf-textarea"
+          aria-describedby={describedBy}
+          aria-invalid={invalid || undefined}
+          required={required}
+        />
       )}
     </Field>
   );

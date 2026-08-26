@@ -37,4 +37,21 @@
 
     </subpackage>
 
+    <!--
+        TogetherFlow's own backend modules (togetherflow-attachment-gateway,
+        togetherflow-event-recorder). Without an entry here every import in them is
+        disallowed, because the root control element covers all of `org` and only the
+        two subpackages above grant anything — which is why checkstyle had never passed
+        on either module.
+
+        No Jackson carve-out: the `FlowableJsonNode` rule above exists so the engine can
+        swap Jackson versions underneath itself, and these are standalone Spring Boot
+        components outside the engine, not participants in that abstraction.
+    -->
+    <subpackage name="togetherflow">
+
+        <allow pkg=".*" regex="true"/>
+
+    </subpackage>
+
 </import-control>

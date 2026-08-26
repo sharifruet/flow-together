@@ -278,6 +278,37 @@ export const controlEn = {
   "events.send.sent": "Sent \"{key}\".",
   "events.send.failed": "Could not send that event.",
 
+  // Inbound event log (§7.2, ADR 0015). Only reachable where the optional
+  // togetherflow-event-recorder module is deployed.
+  "events.tab.received": "Received",
+  "events.received.note":
+    "What actually arrived on a channel, recorded as the registry processed it. The engine keeps no such log itself — this comes from the event recorder, and covers only the period since it was switched on.",
+  "events.received.caption": "Received events",
+  "events.received.column.when": "Received",
+  "events.received.column.event": "Event",
+  "events.received.column.status": "Outcome",
+  "events.received.noEventKey": "Unrecognised event",
+  "events.received.noChannel": "Unknown channel",
+  "events.received.inspect": "Inspect",
+  "events.received.status.RECEIVED": "Dispatched",
+  "events.received.status.UNRESOLVED": "Matched nothing",
+  "events.received.status.FAILED": "Rejected",
+  "events.received.filter.channel": "Channel",
+  "events.received.filter.allChannels": "All channels",
+  "events.received.filter.status": "Outcome",
+  "events.received.filter.anyStatus": "Any outcome",
+  "events.received.empty.title": "Nothing received yet",
+  "events.received.empty.description":
+    "No events have arrived since the recorder started. Use the Send tab to put one through and confirm the path works end to end.",
+  "events.received.dialog.label": "Received event",
+  "events.received.dialog.meta": "On {channel} · {when}",
+  "events.received.dialog.unresolved":
+    "This payload arrived but resolved to no event definition — usually a key the channel's detector does not recognise, or a filter that dropped it. Nothing downstream was started.",
+  "events.received.dialog.payloadNotStored":
+    "This deployment records arrivals but not their contents.",
+  "events.received.dialog.truncated":
+    "Truncated to the recorder's configured maximum payload length.",
+
   // System (§7.2)
   "system.label": "System",
   "system.title": "System",

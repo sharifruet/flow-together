@@ -19,16 +19,28 @@ Four independent static SPAs, each its own container image, each served by nginx
 | Identity | `flowable/togetherflow-identity` | Users, groups, privileges | process, IDM |
 | Design | `flowable/togetherflow-design` | Model authoring | process, CMMN, DMN, app, event registry |
 
-Plus one optional backend, `flowable/togetherflow-attachment-gateway`, deployed **only**
-when attachments are stored somewhere other than the engine's own database (§7.6).
+Plus two optional backend pieces, neither part of a default install:
 
-Kubernetes manifests for all five are in [`k8s/resources/`](../../k8s/resources/). They
-follow the shape of the existing `flowable-rest.yaml` and add liveness/readiness probes,
-a read-only root filesystem and a non-root uid.
+- `flowable/togetherflow-attachment-gateway` — its own container, deployed **only** when
+  attachments are stored somewhere other than the engine's own database (§7.6).
+- `togetherflow-event-recorder` — **not** a container. A jar added to the application
+  hosting the event registry engine, giving Control a log of inbound events the engine
+  itself does not keep (§7.2, §4b below).
 
-There is **no Helm chart** for these apps. The chart family lives on the `flowable-helm`
-branch, under `k8s/flowable`, which does not exist on `main` — adding chart entries has to
-happen there.
+Two ways to deploy them, both maintained here and neither generated from the other:
+
+- **Helm**: [`k8s/flowable/togetherflow`](../../k8s/flowable/togetherflow/README.md) — the
+  four apps, the optional gateway, ingress and an off-by-default NetworkPolicy.
+- **Plain manifests**: [`k8s/resources/`](../../k8s/resources/), following the shape of the
+  existing `flowable-rest.yaml`.
+
+Both add liveness/readiness probes, a read-only root filesystem and a non-root uid, and
+both are schema-validated in CI. Neither has been applied to a real cluster — see
+STATUS.md §3 before assuming otherwise.
+
+Note the chart is not yet *published*: `helm-release.yml` fires only on the `flowable-helm`
+branch, so a chart on `main` is released by nothing. Install from a checkout until that is
+resolved.
 
 ## 2. Configuration
 
@@ -55,7 +67,7 @@ rather than rebuilt per environment. Nothing below is baked into the bundle.
 | App | Additional |
 |---|---|
 | Work | `TF_CMMN_BASE`, `TF_ATTACHMENT_GATEWAY` |
-| Control | `TF_IDM_BASE`, `TF_DMN_BASE`, `TF_CMMN_BASE`, `TF_EVENT_BASE`, `TF_EXTERNAL_JOB_BASE` |
+| Control | `TF_IDM_BASE`, `TF_DMN_BASE`, `TF_CMMN_BASE`, `TF_EVENT_BASE`, `TF_EXTERNAL_JOB_BASE`, `TF_EVENT_RECORDER_BASE` |
 | Identity | `TF_IDM_BASE`, `TF_IDENTITY_READ_ONLY` |
 | Design | `TF_IDM_BASE`, `TF_DMN_BASE`, `TF_CMMN_BASE`, `TF_APP_BASE`, `TF_EVENT_BASE` |
 
@@ -103,6 +115,35 @@ provider is the one integration in this repo not verified against the real servi
 auth is app-only (SharePoint sees the gateway, not the end user), and uploads use Graph's
 simple upload, documented to 250 MB.
 
+## 4b. Inbound event log (optional)
+
+The event registry engine records nothing about events it receives, so by default Control
+can show what is *deployed* and can send an event through a channel, but cannot answer
+"did that event arrive?". The optional `togetherflow-event-recorder` answers it.
+
+Unlike the attachment gateway, **this is a library, not a service**: registry dispatch is
+an in-JVM callback, so it runs inside the application hosting the event registry engine —
+normally a thin image built over `flowable/flowable-rest` with the jar added.
+
+| Property | Default | Notes |
+|---|---|---|
+| `togetherflow.events.recorder.enabled` | `false` | Being on the classpath is not consent |
+| `togetherflow.events.recorder.store-payload` | `true` | `false` keeps arrivals without contents (§7 below) |
+| `togetherflow.events.recorder.retention` | `7d` | Purged on a background schedule |
+| `togetherflow.events.recorder.max-payload-length` | `4000` | Longer payloads truncated; the row says so |
+| `togetherflow.events.recorder.table-name` | `TF_EVENT_RECORD` | Its own table, created on first use, outside the engine's versioned schema |
+
+Then set `TF_EVENT_RECORDER_BASE` on Control to reveal the **Received** tab. Left unset,
+the tab does not appear at all.
+
+**Before enabling it, read
+[the recorder's README](../../modules/togetherflow-event-recorder/README.md).** Two things
+matter operationally: it **replaces** the engine's inbound event processor, so a
+deployment that has installed a custom `InboundEventProcessor` must not enable it; and it
+adds a write to the path of every inbound event, which is exactly the cost the engine's
+design avoids. On a busy channel, prefer `store-payload: false` and a short retention, or
+leave it off and enable it to investigate.
+
 ## 5. Observability
 
 - **Correlation.** Every request carries `X-Correlation-Id`, and the same id spans all
@@ -134,7 +175,10 @@ simple upload, documented to 250 MB.
 | "This screen stopped working" | An unhandled render error, already reported | The Reference on screen matches the error report |
 | Work's attachment widget fails, rest of app fine | Attachment gateway down | Expected degradation — Work stays usable (§13.4) |
 | A case shows no diagram | The `.cmmn` has no CMMNDI | Not a fault; hand-written case files often lack it and the engine answers 400 |
-| Control shows no "received events" feed | There is none | `EventInstanceCollectionResource` is POST-only; the engine keeps no queryable inbound log |
+| Control shows no "Received" tab | The event recorder is not deployed, or `TF_EVENT_RECORDER_BASE` is unset | The engine keeps no inbound log of its own — `EventInstanceCollectionResource` is POST-only. The optional `togetherflow-event-recorder` provides one; the tab is hidden rather than empty when it is absent, because "nothing arrived" and "nothing was watching" are different answers (ADR 0015) |
+| The Received tab is present but always empty | The recorder is on the classpath but `togetherflow.events.recorder.enabled` is `false`, or nothing has arrived since it started | Check the startup log for "Inbound event recording enabled"; it also names the inbound processor it replaced. The log only covers the period since the recorder was switched on |
+| Received rows show `Matched nothing` | The payload arrived; the pipeline resolved it to no event definition | An unrecognised event key for that channel's detector, or a filter that dropped it. Nothing downstream was started — this is the diagnostic the feed exists for |
+| Received rows have no payload | `togetherflow.events.recorder.store-payload` is `false` | Deliberate: arrivals recorded, contents not retained (§13.7) |
 
 ## 7. Data protection
 
@@ -170,6 +214,81 @@ simple upload, documented to 250 MB.
   Nothing in these apps performs a schema migration, so rolling back the UI is safe on its
   own — it is a static bundle plus its runtime configuration.
 
+## 8b. Disaster recovery
+
+Read this before you need it. The short version: **these four apps hold nothing you can
+lose.** Everything that matters lives in the engine's database, so DR for TogetherFlow is
+almost entirely DR for Flowable — and the one place that is not true is attachments.
+
+### What actually holds state
+
+| Component | State | If you lose it |
+|---|---|---|
+| Work, Control, Identity, Design | **None.** Static bundles plus `/config.js`, regenerated from environment at every container start | Redeploy the image. Nothing to restore |
+| Engine database | Everything: definitions, instances, tasks, variables, history, identities | This is the recovery |
+| Attachment gateway, `db` provider | None — bytes are in the engine database | Covered by the database backup |
+| Attachment gateway, `filesystem` provider | **The uploaded files.** Not in any database | Attachments are gone; the engine still holds rows pointing at URLs that now 404 |
+| Attachment gateway, `sharepoint` provider | None locally — SharePoint holds the files | Covered by your Microsoft 365 retention, not by you |
+| Browser `localStorage` | Saved filters and per-user UI preferences (§14.4) | Users lose their saved views. Not worth a recovery plan |
+
+The row to notice is `filesystem`. Its volume is a **second** thing to back up, and it must
+be backed up *consistently with* the database — an attachment row restored without its
+bytes is a broken link, and bytes restored without their row are unreferenced files. If
+that pairing is not something you want to operate, `db` and `sharepoint` both avoid it.
+
+### Stated targets
+
+These are the ones the design supports, not aspirations. Set your own if they differ, but
+set them explicitly:
+
+| | Target | Why it is achievable |
+|---|---|---|
+| **RPO** | Whatever your database backup interval is | The UI adds no state, so it cannot add data loss |
+| **RTO, UI tier** | Minutes | Redeploying stateless containers, no migration, no warm-up |
+| **RTO, overall** | Database restore time | Which the UI has no influence over |
+
+### The drill
+
+Run this against a staging environment on a schedule. It is written as a drill, so each
+step names the evidence, not just the action.
+
+1. **Record the baseline.** In Control: engine version from **System → Engine**, the
+   instance count, and the finished-instance count from history. In Work: one known task id.
+   These are what you compare against afterwards.
+2. **Take the backup** by whatever mechanism you actually rely on — not a hand-run
+   `pg_dump` you would not have in a real incident. If the filesystem attachment provider
+   is in use, snapshot its volume **in the same window**.
+3. **Destroy.** Delete the engine's database and, if applicable, the attachment volume.
+   Leave the UI deployments running: they should degrade, not crash, and confirming that is
+   part of the drill.
+4. **Observe the degradation.** Every app should show a reachable error state rather than a
+   white page — this is the §13.4 behaviour, and the drill is where you find out whether it
+   really holds. Note anything that spins forever instead.
+5. **Restore** the database, and the attachment volume from the same window.
+6. **Restart the engine**, then the UI pods. The UIs hold no connection pool, but
+   restarting them proves the config path still works from cold.
+7. **Verify against the baseline**, in this order — each step exercises a different tier:
+   - Control → **System → Engine** returns the same version.
+   - Control → **Instances** shows the same count.
+   - Control → **History** shows the same finished count.
+   - Work → open the task id from step 1; its variables, comments and history are intact.
+   - Work → open an attachment on a task that has one. **This is the step that catches a
+     database-only backup** — the row survives a restore that the bytes did not.
+   - Design → open a model and check its version history.
+   - Identity → confirm users and group memberships.
+8. **Write down the actual RTO** — wall-clock from step 3 to step 7 passing — and compare it
+   with the target above. A drill that does not produce a number has not tested anything.
+
+### What the drill will not tell you
+
+Nothing here exercises a partial failure: a database restored to a point *before* an
+attachment upload, a half-completed job queue, or a restore that lands mid-transaction on a
+clustered engine. Those are engine-level concerns and belong to Flowable's own DR guidance.
+
+**Status: this drill has never been executed.** It is written from the deployment's
+structure, not from experience of running it. Treat the first run as a test of the runbook
+as much as of the system.
+
 ## 9. What this product deliberately does not do
 
 Recognising these saves an investigation:
@@ -177,9 +296,9 @@ Recognising these saves an investigation:
 - **Suspend a case or decision definition.** The engine exposes suspend/activate only for
   BPMN process definitions. Control lists case definitions and says so rather than
   offering a control that always fails.
-- **Validate a model server-side before deploy.** `flowable-process-validation` has no REST
-  endpoint. Design runs client-side checks and says they are client-side; the only
-  server-side validation available is deployment itself.
+- **Diff two model versions.** Version history exists; comparison does not. A real BPMN diff
+  is a graph comparison, and a text diff of serialised XML mostly reports attribute
+  reordering.
 - **Migrate a running instance.** The endpoints exist and are wrapped, but the screen was
   never designed.
 - **Report aggregate analytics.** No REST module exposes an aggregation resource. Any

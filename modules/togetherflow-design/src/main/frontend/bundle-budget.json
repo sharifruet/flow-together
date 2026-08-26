@@ -1,10 +1,10 @@
 {
   "_comment": [
-    "Bundle-size budgets in gzipped kB (REQUIREMENTS.md \u00a713.5). Enforced by",
-    "`npm run budget`, which CI runs after the build \u2014 a regression fails the",
+    "Bundle-size budgets in gzipped kB (REQUIREMENTS.md §13.5). Enforced by",
+    "`npm run budget`, which CI runs after the build — a regression fails the",
     "build rather than being noticed later.",
     "Groups are filename prefixes, not exact names: Vite fingerprints its output.",
-    "Raising a budget is fine when the growth is deliberate \u2014 do it in the same",
+    "Raising a budget is fine when the growth is deliberate — do it in the same",
     "commit as the change, so the increase is reviewed alongside what caused it."
   ],
   "groups": {
@@ -14,7 +14,8 @@
     "assets/CmmnEditor": 12,
     "assets/AppBuilder": 12,
     "assets/FormBuilder": 8,
-    "assets/EventEditor": 8
+    "assets/EventEditor": 8,
+    "assets/lintBpmn": 10
   },
   "totalKb": 600
 }

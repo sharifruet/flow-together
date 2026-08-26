@@ -327,3 +327,92 @@ export class ModelApi {
     }
   }
 }
+
+/* ── Server-side model validation (§7.4.2) ───────────────────────────────── */
+
+/**
+ * One problem reported by the engine's own validator.
+ *
+ * Mirrors both `ValidationErrorResponse` (BPMN, `flowable-process-validation`) and
+ * `CaseValidationEntryResponse` (CMMN, `flowable-case-validation`). The two differ only in
+ * what they call the offending element — `activityId`/`activityName` versus
+ * `itemId`/`itemName` — so both are optional here and `elementIdOf` picks whichever came back.
+ */
+export interface ServerValidationProblem {
+  /** Stable identifier for the problem; prefer it over `defaultDescription` when matching. */
+  problem?: string;
+  /** English only. The engine has no translated catalogue for these. */
+  defaultDescription?: string;
+  validatorSetName?: string;
+  activityId?: string;
+  activityName?: string;
+  itemId?: string;
+  itemName?: string;
+  xmlLineNumber?: number;
+  xmlColumnNumber?: number;
+  /** A warning does not block deployment; an error does. */
+  warning?: boolean;
+}
+
+export interface ServerValidationResult {
+  /** True when nothing but warnings was reported — i.e. the model would deploy. */
+  valid: boolean;
+  errorCount: number;
+  warningCount: number;
+  errors: ServerValidationProblem[];
+}
+
+/** The element a problem is attached to, whichever engine reported it. */
+export function elementIdOf(problem: ServerValidationProblem): string | undefined {
+  return problem.activityId ?? problem.itemId;
+}
+
+/**
+ * Runs the engine's own validators over authored XML without deploying it.
+ *
+ * The point is that this is not an approximation: `POST /repository/model-validation` and
+ * `POST /cmmn-repository/model-validation` run the very `ProcessValidator` / `CaseValidator`
+ * a deployment runs, so a model this call passes is a model the engine accepts. The
+ * client-side checks in Design remain useful for instant feedback while typing and for the
+ * mistakes that produce a confusing engine message, but they are no longer the last word.
+ *
+ * Nothing is persisted by either endpoint, which is why the call opts into retry despite
+ * being a POST.
+ */
+export class ModelValidationApi {
+  constructor(
+    private readonly client: ApiClient,
+    /** CMMN validation lives behind the CMMN servlet. */
+    private readonly cmmnClient?: ApiClient,
+  ) {}
+
+  validateBpmn(xml: string, signal?: AbortSignal): Promise<ServerValidationResult> {
+    return this.post(this.client, "/repository/model-validation", xml, signal);
+  }
+
+  /** Rejects when Design was built without a CMMN client, rather than posting BPMN's path. */
+  validateCmmn(xml: string, signal?: AbortSignal): Promise<ServerValidationResult> {
+    if (!this.cmmnClient) {
+      return Promise.reject(new Error("No CMMN API is configured, so case models cannot be validated."));
+    }
+    return this.post(this.cmmnClient, "/cmmn-repository/model-validation", xml, signal);
+  }
+
+  private post(
+    client: ApiClient,
+    path: string,
+    xml: string,
+    signal?: AbortSignal,
+  ): Promise<ServerValidationResult> {
+    return client.request(path, {
+      method: "POST",
+      // Sent verbatim: the endpoints take the XML itself as the body, not a JSON envelope.
+      // The charset is explicit so the server decodes UTF-8 rather than falling back.
+      contentType: "application/xml;charset=UTF-8",
+      body: xml,
+      // Safe to replay: validation reads the body and writes nothing.
+      retry: true,
+      signal,
+    });
+  }
+}

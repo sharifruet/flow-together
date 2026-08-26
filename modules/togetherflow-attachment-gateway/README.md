@@ -119,19 +119,42 @@ on disk → registered with Flowable as an `externalUrl` attachment → fetched 
 the gateway.
 
 **The SharePoint provider is not.** Exercising it needs an Azure AD tenant, an app
-registration and a SharePoint site, none of which exist in this environment. The Graph
-request shapes follow Microsoft's documentation and the path handling is unit-tested, but
-treat the first run against a real tenant as the actual acceptance test.
+registration and a SharePoint site, none of which exist in this environment. Treat the
+first run against a real tenant as the actual acceptance test.
 
-Two further caveats for SharePoint:
+What it *is* covered by is a contract-level suite against a stubbed Graph
+(`SharePointAttachmentStoreGraphTest`), which pins the token grant, the upload URL, the
+headers and the body, plus the behaviour around them — token caching and expiry, the retry
+on a rejected token, and what happens when Graph answers oddly. That does not prove real
+Graph accepts these requests. It does mean a refactor cannot silently change the wire
+format of the one integration nobody here can run, which is the failure mode that matters
+for unverifiable code.
 
-- Auth is **app-only** (client credentials): one service identity performs every upload,
-  so SharePoint sees the gateway rather than the end user. Check that against your audit
-  requirements. Delegated auth — each user's own Microsoft 365 login — would need the
-  shell to broker a second identity provider (REQUIREMENTS.md Open Question 11).
-- Uploads use Graph's simple upload, documented up to 250 MB. Keep
-  `max-file-size-bytes` at or below that; larger files need an upload session, which this
-  does not implement.
+Writing that suite found one real defect: the upload path was being expanded as a single
+URI variable, so Graph's `root:/folder/file:` addressing went out with `%2F` instead of
+literal separators. Fixed, and pinned by a test.
+
+### Auth model — ratified
+
+Auth is **app-only** (client credentials): one service identity performs every upload.
+This is Open Question 11's settled answer, not a placeholder. The consequence to check
+against your own audit requirements:
+
+- SharePoint sees the gateway, not the end user. Every file carries the service identity as
+  its author, and SharePoint's audit log attributes every upload to it. If your requirement
+  is "SharePoint must record which *person* uploaded this", app-only does not meet it.
+- TogetherFlow's own audit trail is unaffected. The attachment is recorded against the task
+  by the engine, with the real user on it.
+- The alternative is delegated auth — each user's own Microsoft 365 login — which needs the
+  shell to broker a second identity provider, token exchange in the gateway, and per-user
+  consent. It is not built.
+
+### Upload size
+
+Uploads use Graph's simple upload, documented up to 250 MB. A `max-file-size-bytes` above
+that is now **refused at startup** rather than failing mid-upload, after the user has
+already waited for the bytes to transfer. Larger files need an upload session, which this
+does not implement.
 
 ## Tests
 
@@ -139,5 +162,6 @@ Two further caveats for SharePoint:
 ./mvnw -Ptogetherflow -pl modules/togetherflow-attachment-gateway test
 ```
 
-20 tests: the filesystem store (including traversal attempts), SharePoint path
-construction, and the controller end to end over MockMvc.
+38 tests: the filesystem store (including traversal attempts), SharePoint path and URI
+construction, the SharePoint provider against a stubbed Graph, startup validation for every
+provider, and the controller end to end over MockMvc.

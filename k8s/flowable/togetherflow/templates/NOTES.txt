@@ -1,0 +1,50 @@
+TogetherFlow {{ .Chart.AppVersion }} installed as release "{{ .Release.Name }}".
+
+Deployed:
+{{- range $app, $config := .Values.apps }}
+{{- if $config.enabled }}
+  - {{ $app }}  →  service {{ include "togetherflow.fullname" $ }}-{{ $app }}:8080
+{{- end }}
+{{- end }}
+{{- if .Values.attachmentGateway.enabled }}
+  - attachment gateway ({{ .Values.attachmentGateway.provider }})  →  service {{ include "togetherflow.fullname" . }}-attachment-gateway:8091
+{{- end }}
+
+{{ if not .Values.ingress.enabled -}}
+No ingress was created. To reach an app without one:
+
+  kubectl --namespace {{ .Release.Namespace }} port-forward svc/{{ include "togetherflow.fullname" . }}-work 8080:8080
+
+{{ end -}}
+{{- if eq .Values.auth.mode "basic" }}
+WARNING: auth.mode is "basic". Basic authentication sends credentials on every request and
+is intended for local development only. Set auth.mode=oidc with auth.oidc.authority and
+auth.oidc.clientId before exposing this to anyone (REQUIREMENTS.md §13.1, ADR 0006).
+{{- else if not .Values.auth.oidc.authority }}
+WARNING: auth.mode is "oidc" but auth.oidc.authority is empty. Each app's entrypoint fails
+fast on this, so the pods will not become ready until it is set.
+{{- end }}
+{{- if and .Values.attachmentGateway.enabled (eq .Values.attachmentGateway.provider "db") }}
+
+NOTE: attachmentGateway.enabled is true with provider "db". With the db provider the
+browser posts attachments straight to the engine, so nothing will route to this service.
+Either pick "filesystem"/"sharepoint" or set attachmentGateway.enabled=false.
+{{- end }}
+{{- if and .Values.attachmentGateway.enabled (eq .Values.attachmentGateway.provider "filesystem") (not .Values.attachmentGateway.filesystem.publicBaseUrl) }}
+
+NOTE: attachmentGateway.filesystem.publicBaseUrl is empty. It is stored on each attachment
+as its URL and must be reachable by the browser, so uploads will be saved with links that
+do not resolve.
+{{- end }}
+{{- if and .Values.attachmentGateway.enabled (eq .Values.attachmentGateway.provider "sharepoint") }}
+
+NOTE: the SharePoint provider needs a client secret, which is never a chart value. Create
+it before the pods start:
+
+  kubectl --namespace {{ .Release.Namespace }} create secret generic \
+    {{ include "togetherflow.fullname" . }}-attachment-gateway-secrets \
+    --from-literal=TOGETHERFLOW_ATTACHMENTS_SHAREPOINT_CLIENTSECRET=...
+
+The SharePoint provider is the one integration in this repository not verified against the
+real service — see modules/togetherflow-attachment-gateway/README.md.
+{{- end }}

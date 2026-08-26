@@ -42,6 +42,16 @@ public class AttachmentGatewayConfiguration {
                 require(sp.getClientId(), "sharepoint.client-id");
                 require(sp.getClientSecret(), "sharepoint.client-secret");
                 require(sp.getDriveId(), "sharepoint.drive-id");
+                // Graph's simple upload tops out at 250 MB. Caught here rather than
+                // mid-upload, where the user has already waited for the bytes to transfer.
+                if (properties.getMaxFileSizeBytes() > SharePointAttachmentStore.MAX_SIMPLE_UPLOAD_BYTES) {
+                    throw new IllegalStateException(
+                            "togetherflow.attachments.max-file-size-bytes is "
+                                    + properties.getMaxFileSizeBytes()
+                                    + ", above the " + SharePointAttachmentStore.MAX_SIMPLE_UPLOAD_BYTES
+                                    + " byte limit of the Graph simple upload this provider uses. "
+                                    + "Lower it, or implement an upload session.");
+                }
                 yield new SharePointAttachmentStore(sp,
                         http.getIfAvailable(RestClient::builder).build());
             }

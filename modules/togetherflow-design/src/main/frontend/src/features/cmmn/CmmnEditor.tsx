@@ -20,8 +20,10 @@ import {
   useToast,
   type ModelApi,
   type ModelResponse,
+  type ModelValidationApi,
   type TFunction,
 } from "@togetherflow/common";
+import { canDeploy, issuesFromServer, type ValidationIssue } from "../bpmn/validateBpmn";
 import { CmmnCanvas, DEFAULT_VIEWPORT, type Viewport } from "./CmmnCanvas";
 import {
   TYPE_LABELS,
@@ -53,6 +55,13 @@ const PALETTE: CmmnElementType[] = [
 
 export interface CmmnEditorProps {
   modelApi: ModelApi;
+  /**
+   * Server-side model validation (§7.4.2, §7.4.3). Unlike BPMN there are no browser-side
+   * checks to fall back on — the engine's `CaseValidator` is the only validator there is
+   * for CMMN — so when this is absent, or unreachable, the editor simply does not claim
+   * to have checked anything.
+   */
+  validationApi?: ModelValidationApi;
   model: ModelResponse;
   initialXml: string | null;
   loadError?: string | null;
@@ -63,6 +72,7 @@ export interface CmmnEditorProps {
 
 export function CmmnEditor({
   modelApi,
+  validationApi,
   model,
   initialXml,
   loadError,
@@ -140,6 +150,8 @@ export function CmmnEditor({
   const [lastSavedAt, setLastSavedAt] = useState<Date | null>(null);
   const [confirmLeave, setConfirmLeave] = useState(false);
   const [confirmDeploy, setConfirmDeploy] = useState(false);
+  const [issues, setIssues] = useState<ValidationIssue[] | null>(null);
+  const [checking, setChecking] = useState(false);
 
   /** A committed change: pushes the previous state onto the undo stack. */
   const commit = useCallback(
@@ -225,6 +237,52 @@ export function CmmnEditor({
     commit(next);
     setSelectedIds([]);
   }, [caseModel, selectedIds, commit]);
+
+  /**
+   * Validates the case against the engine's own `CaseValidator` (§7.4.3).
+   *
+   * Returns the issues so `startDeploy` can decide on them without validating twice. An
+   * unreachable validator returns null rather than an empty list: "nothing was reported"
+   * and "nothing could be asked" must not look the same to the caller, or a deploy would
+   * be waved through on the strength of a failed request.
+   */
+  const runChecks = useCallback(async (): Promise<ValidationIssue[] | null> => {
+    if (!caseModel || !validationApi) return null;
+    try {
+      const verdict = await validationApi.validateCmmn(serialiseCmmn(caseModel));
+      return issuesFromServer(verdict);
+    } catch {
+      push({ tone: "warning", message: t("cmmn.checks.unreachable") });
+      return null;
+    }
+  }, [caseModel, push, t, validationApi]);
+
+  const check = useCallback(async () => {
+    setChecking(true);
+    try {
+      const found = await runChecks();
+      setIssues(found);
+      if (found && found.length === 0) push({ tone: "success", message: t("cmmn.checksClean") });
+    } finally {
+      setChecking(false);
+    }
+  }, [push, runChecks, t]);
+
+  /** Deploying validates first; blocking problems stop it before the round trip. */
+  const startDeploy = useCallback(async () => {
+    setChecking(true);
+    try {
+      const found = await runChecks();
+      setIssues(found && found.length > 0 ? found : null);
+      if (found && !canDeploy(found)) {
+        push({ tone: "error", message: t("cmmn.fixBeforeDeploy") });
+        return;
+      }
+    } finally {
+      setChecking(false);
+    }
+    setConfirmDeploy(true);
+  }, [push, runChecks, t]);
 
   /**
    * Cuts a version from the model as it stands (§7.4.1) — the checkpoint before a risky
@@ -398,6 +456,14 @@ export function CmmnEditor({
               +
             </Button>
           </div>
+          <Button
+            variant="secondary"
+            loading={checking}
+            disabled={!caseModel || !validationApi}
+            onClick={() => void check()}
+          >
+            {t("action.check")}
+          </Button>
           <Button variant="secondary" loading={saving} disabled={!caseModel} onClick={() => void save()}>
             {t("action.save")}
           </Button>
@@ -409,11 +475,53 @@ export function CmmnEditor({
           >
             {t("editor.saveVersion")}
           </Button>
-          <Button loading={deploying} disabled={!caseModel} onClick={() => setConfirmDeploy(true)}>
+          <Button
+            loading={deploying || checking}
+            disabled={!caseModel}
+            onClick={() => void startDeploy()}
+          >
             {t("action.deploy")}
           </Button>
         </div>
       </header>
+
+      {issues && issues.length > 0 ? (
+        <section className="tf-issues" aria-label={t("cmmn.checksLabel")}>
+          <h2 className="tf-issues__title">
+            {t("bpmn.checks.summary.problems", {
+              count: issues.filter((i) => i.severity === "error").length,
+            })}
+            {", "}
+            {t("bpmn.checks.summary.warnings", {
+              count: issues.filter((i) => i.severity === "warning").length,
+            })}
+          </h2>
+          <ul className="tf-issues__list">
+            {issues.map((issue, index) => (
+              <li
+                className={`tf-issues__item tf-issues__item--${issue.severity}`}
+                key={`${issue.elementId ?? ""}-${index}`}
+              >
+                <span className="tf-issues__severity">{issue.severity}</span>
+                <span>{issue.message}</span>
+                {issue.elementId ? (
+                  <button
+                    type="button"
+                    className="tf-issues__locate"
+                    onClick={() => setSelectedIds([issue.elementId!])}
+                  >
+                    {t("action.show")}
+                  </button>
+                ) : null}
+              </li>
+            ))}
+          </ul>
+          <p className="tf-issues__caveat">{t("cmmn.checks.caveat")}</p>
+          <Button variant="secondary" onClick={() => setIssues(null)}>
+            {t("action.dismiss")}
+          </Button>
+        </section>
+      ) : null}
 
       {loadError ? <ErrorState error={new Error(loadError)} /> : null}
       {parseError ? <ErrorState error={new Error(parseError)} /> : null}

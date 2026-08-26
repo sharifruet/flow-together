@@ -10,6 +10,9 @@ set -eu
 : "${TF_CMMN_BASE:=/cmmn-api}"
 : "${TF_EVENT_BASE:=/event-registry-api}"
 : "${TF_EXTERNAL_JOB_BASE:=/external-job-api}"
+# Optional inbound event log (§7.2, ADR 0015). Unset — the default — means the recorder
+# is not deployed and Control offers no received-events view at all.
+: "${TF_EVENT_RECORDER_BASE:=}"
 : "${TF_IDENTITY_READ_ONLY:=false}"
 : "${TF_AUTH_MODE:=oidc}"
 : "${TF_OIDC_AUTHORITY:=}"
@@ -46,6 +49,7 @@ window.__TOGETHERFLOW_CONFIG__ = {
   cmmnBase: "${TF_CMMN_BASE}",
   eventBase: "${TF_EVENT_BASE}",
   externalJobBase: "${TF_EXTERNAL_JOB_BASE}",
+  eventRecorder: "${TF_EVENT_RECORDER_BASE}",
   identity: { readOnly: ${TF_IDENTITY_READ_ONLY} },
   apps: {
     work: "${TF_APP_WORK}",

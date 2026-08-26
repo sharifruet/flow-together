@@ -1,0 +1,19 @@
+apiVersion: v2
+name: togetherflow
+description: TogetherFlow — Work, Control, Identity and Design UIs, with the optional attachment gateway
+type: application
+# Chart version and appVersion move independently: appVersion tracks the engine/UI release
+# these manifests were written against, the chart version tracks the packaging itself.
+version: 0.1.0
+appVersion: "8.1.0"
+keywords:
+  - flowable
+  - togetherflow
+  - bpmn
+  - cmmn
+  - dmn
+home: https://github.com/flowable/flowable-engine
+sources:
+  - https://github.com/flowable/flowable-engine
+maintainers:
+  - name: TogetherFlow

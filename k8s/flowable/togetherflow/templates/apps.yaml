@@ -1,0 +1,143 @@
+{{/*
+The four SPAs. They are the same container shape with different runtime configuration, so
+one loop renders all of them rather than four files that would drift apart.
+
+Each pod runs with a read-only root filesystem: the entrypoint writes config.js to
+/tmp/togetherflow, outside the docroot, and nginx serves it from there. The three
+emptyDirs are the only paths written at runtime — nginx's cache and pid file, and that
+generated config. Verified by running the built images with --read-only.
+*/}}
+{{- range $app, $config := .Values.apps }}
+{{- if $config.enabled }}
+{{- $defaults := $.Values.appDefaults }}
+{{- $name := printf "%s-%s" (include "togetherflow.fullname" $) $app }}
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ $name }}
+  labels:
+    {{- include "togetherflow.labels" $ | nindent 4 }}
+    app.kubernetes.io/component: {{ $app }}
+spec:
+  # Stateless by construction — no in-memory session state (§13.4), so replicas scale
+  # freely.
+  replicas: {{ default $defaults.replicas $config.replicas }}
+  selector:
+    matchLabels:
+      {{- include "togetherflow.selectorLabels" $ | nindent 6 }}
+      app.kubernetes.io/component: {{ $app }}
+  template:
+    metadata:
+      annotations:
+        # Rolls the pods when the app's configuration changes; without this a config-only
+        # `helm upgrade` updates the ConfigMap and leaves the old config.js being served.
+        checksum/config: {{ include "togetherflow.appConfig" (dict "root" $ "app" $app) | sha256sum }}
+        {{- with (default $defaults.podAnnotations $config.podAnnotations) }}
+        {{- toYaml . | nindent 8 }}
+        {{- end }}
+      labels:
+        {{- include "togetherflow.labels" $ | nindent 8 }}
+        app.kubernetes.io/component: {{ $app }}
+    spec:
+      {{- with $.Values.image.pullSecrets }}
+      imagePullSecrets:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      serviceAccountName: {{ include "togetherflow.serviceAccountName" $ }}
+      # None of these pods talks to the Kubernetes API, so the token is not mounted.
+      automountServiceAccountToken: false
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: {{ default $defaults.runAsUser $config.runAsUser }}
+        fsGroup: {{ default $defaults.runAsUser $config.runAsUser }}
+      containers:
+        - name: {{ $app }}
+          image: {{ include "togetherflow.image" (dict "root" $ "repository" $config.image) }}
+          imagePullPolicy: {{ $.Values.image.pullPolicy }}
+          ports:
+            - name: http
+              containerPort: 8080
+          envFrom:
+            - configMapRef:
+                name: {{ $name }}
+          # Serving static files needs very little; kept small so a UI pod never competes
+          # with an engine pod for a node's memory.
+          resources:
+            {{- toYaml (default $defaults.resources $config.resources) | nindent 12 }}
+          livenessProbe:
+            httpGet:
+              path: /healthz
+              port: http
+            initialDelaySeconds: 5
+            periodSeconds: 20
+          readinessProbe:
+            httpGet:
+              path: /healthz
+              port: http
+            initialDelaySeconds: 2
+            periodSeconds: 10
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            capabilities:
+              drop: ["ALL"]
+          volumeMounts:
+            # The three paths written at runtime. The docroot itself is never written to.
+            - name: nginx-cache
+              mountPath: /var/cache/nginx
+            - name: nginx-run
+              mountPath: /var/run
+            - name: runtime-config
+              mountPath: /tmp
+      volumes:
+        - name: nginx-cache
+          emptyDir: {}
+        - name: nginx-run
+          emptyDir: {}
+        - name: runtime-config
+          emptyDir: {}
+      {{- with (default $defaults.nodeSelector $config.nodeSelector) }}
+      nodeSelector:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with (default $defaults.tolerations $config.tolerations) }}
+      tolerations:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with (default $defaults.affinity $config.affinity) }}
+      affinity:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      restartPolicy: Always
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ $name }}
+  labels:
+    {{- include "togetherflow.labels" $ | nindent 4 }}
+    app.kubernetes.io/component: {{ $app }}
+spec:
+  type: {{ $.Values.service.type }}
+  selector:
+    {{- include "togetherflow.selectorLabels" $ | nindent 4 }}
+    app.kubernetes.io/component: {{ $app }}
+  ports:
+    - name: http
+      protocol: TCP
+      port: 8080
+      targetPort: http
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: {{ $name }}
+  labels:
+    {{- include "togetherflow.labels" $ | nindent 4 }}
+    app.kubernetes.io/component: {{ $app }}
+data:
+  {{- include "togetherflow.appConfig" (dict "root" $ "app" $app) | nindent 2 }}
+  {{- include "togetherflow.commonConfig" $ | nindent 2 }}
+{{- end }}
+{{- end }}

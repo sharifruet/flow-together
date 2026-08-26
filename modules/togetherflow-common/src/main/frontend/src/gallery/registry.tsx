@@ -24,7 +24,7 @@ import { Button } from "../components/Button";
 import { ConfirmDialog } from "../components/ConfirmDialog";
 import { DataTable, Pagination } from "../components/DataTable";
 import { ErrorBoundary } from "../components/ErrorBoundary";
-import { SelectInput, TextInput } from "../components/Field";
+import { SelectInput, TextAreaInput, TextInput } from "../components/Field";
 import { SavedViews } from "../components/SavedViews";
 import { ShellMenu } from "../components/ShellMenu";
 import { ShortcutHelp } from "../components/ShortcutHelp";
@@ -259,6 +259,17 @@ export const GALLERY: GalleryEntry[] = [
             <option value="high">High</option>
             <option value="normal">Normal</option>
           </SelectInput>
+        ),
+      },
+      {
+        label: "Multi-line",
+        node: (
+          <TextAreaInput
+            label="Script"
+            hint="Monospaced, because what goes in here is usually code."
+            value={'var total = 0;\nfor (var line in order.lines) {\n  total += line.amount;\n}'}
+            onChange={() => {}}
+          />
         ),
       },
     ],

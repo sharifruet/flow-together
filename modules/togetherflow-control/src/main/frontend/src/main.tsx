@@ -20,6 +20,7 @@ try {
           cmmnBase={config.cmmnBase}
           eventBase={config.eventBase}
           externalJobBase={config.externalJobBase}
+          eventRecorderBase={config.eventRecorder}
         />
       </AppRoot>
     </StrictMode>,

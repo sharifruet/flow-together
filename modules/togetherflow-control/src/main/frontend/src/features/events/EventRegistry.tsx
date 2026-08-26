@@ -6,10 +6,14 @@
  * - **Deployed event and channel definitions, with their source** — yes. The `/model`
  *   endpoint returns the JSON exactly as deployed, so an operator can confirm what is
  *   actually live rather than what someone believes was deployed.
- * - **A log of received events** — *no such thing exists.* Despite its name,
- *   `EventInstanceCollectionResource` is POST-only ("Send an event instance"); the
- *   engine keeps no queryable record of inbound events. Rather than fake a feed, this
- *   screen offers the honest inverse: send an event and watch what it starts.
+ * - **A log of received events** — not from the engine. Despite its name,
+ *   `EventInstanceCollectionResource` is POST-only ("Send an event instance"), and the
+ *   registry persists repository state only, so there is no inbound record to query.
+ *   The `Received` tab therefore reads `togetherflow-event-recorder` (ADR 0015) instead,
+ *   and appears **only** where that optional module is deployed — an absent feed and an
+ *   empty feed mean different things, and showing a permanently empty table would
+ *   conflate them. Without it the screen still offers the honest inverse: send an event
+ *   and watch what it starts.
  */
 
 import { useMemo, useState } from "react";
@@ -19,23 +23,31 @@ import {
   Button,
   DataTable,
   EmptyState,
+  NoResultsState,
+  Pagination,
   TextInput,
+  formatDateTime,
   useAsync,
   useI18n,
   useToast,
   type ChannelDefinitionResponse,
   type Column,
   type EventDefinitionResponse,
+  type EventRecordStatus,
+  type EventRecorderApi,
   type EventRegistryApi,
+  type RecordedEventResponse,
 } from "@togetherflow/common";
 
-type EventTab = "events" | "channels" | "send";
+type EventTab = "events" | "channels" | "received" | "send";
 
 export interface EventRegistryProps {
   eventApi: EventRegistryApi;
+  /** Present only where the optional inbound recorder is deployed (§7.2, ADR 0015). */
+  recorderApi?: EventRecorderApi;
 }
 
-export function EventRegistry({ eventApi }: EventRegistryProps) {
+export function EventRegistry({ eventApi, recorderApi }: EventRegistryProps) {
   const { t } = useI18n();
   const [tab, setTab] = useState<EventTab>("events");
 
@@ -55,8 +67,10 @@ export function EventRegistry({ eventApi }: EventRegistryProps) {
           [
             ["events", t("events.tab.events")],
             ["channels", t("events.tab.channels")],
+            // Offered only when something is actually recording (ADR 0015).
+            ...(recorderApi ? ([["received", t("events.tab.received")]] as const) : []),
             ["send", t("events.tab.send")],
-          ] as const
+          ] as [EventTab, string][]
         ).map(([value, label]) => (
           <button
             key={value}
@@ -77,6 +91,8 @@ export function EventRegistry({ eventApi }: EventRegistryProps) {
         <EventDefinitions eventApi={eventApi} />
       ) : tab === "channels" ? (
         <ChannelDefinitions eventApi={eventApi} />
+      ) : tab === "received" && recorderApi ? (
+        <ReceivedEvents recorderApi={recorderApi} eventApi={eventApi} />
       ) : (
         <SendEvent eventApi={eventApi} />
       )}
@@ -238,6 +254,263 @@ function ChannelDefinitions({ eventApi }: { eventApi: EventRegistryApi }) {
         />
       ) : null}
     </>
+  );
+}
+
+const PAGE_SIZE = 25;
+
+const RECORD_STATUSES: EventRecordStatus[] = ["RECEIVED", "UNRESOLVED", "FAILED"];
+
+/**
+ * What actually arrived on a channel (§7.2), read from `togetherflow-event-recorder`.
+ *
+ * The status column is the reason this screen is worth having. "Nothing happened" has
+ * two causes an operator cannot otherwise tell apart — the event never arrived, or it
+ * arrived and resolved to nothing — and `UNRESOLVED` is the row that separates them.
+ */
+function ReceivedEvents({
+  recorderApi,
+  eventApi,
+}: {
+  recorderApi: EventRecorderApi;
+  eventApi: EventRegistryApi;
+}) {
+  const { t, locale } = useI18n();
+  const [channelKey, setChannelKey] = useState("");
+  const [status, setStatus] = useState<EventRecordStatus | "">("");
+  const [start, setStart] = useState(0);
+  const [inspect, setInspect] = useState<RecordedEventResponse | null>(null);
+
+  /*
+   * The channel filter is populated from the deployed channel definitions rather than
+   * from distinct values in the log: a channel that has received nothing yet is exactly
+   * the one an operator wants to select, and it would be missing from a DISTINCT.
+   */
+  const channels = useAsync(
+    (signal) => eventApi.listChannelDefinitions({ latest: true }, signal),
+    [eventApi],
+  );
+
+  const { data, error, loading, refetch } = useAsync(
+    (signal) =>
+      recorderApi.list(
+        {
+          start,
+          size: PAGE_SIZE,
+          ...(channelKey ? { channelKey } : {}),
+          ...(status ? { status } : {}),
+        },
+        signal,
+      ),
+    [recorderApi, channelKey, status, start],
+  );
+
+  const filtered = channelKey !== "" || status !== "";
+  const clearFilters = () => {
+    setChannelKey("");
+    setStatus("");
+    setStart(0);
+  };
+
+  const columns = useMemo<Column<RecordedEventResponse>[]>(
+    () => [
+      {
+        key: "received",
+        header: t("events.received.column.when"),
+        width: "190px",
+        render: (row) => formatDateTime(row.receivedAt, locale),
+      },
+      {
+        key: "event",
+        header: t("events.received.column.event"),
+        render: (row) => (
+          <div className="tf-task-cell">
+            <span className="tf-task-cell__name">
+              {row.eventKey ?? t("events.received.noEventKey")}
+            </span>
+            <span className="tf-task-cell__description">
+              {row.channelKey ?? t("events.received.noChannel")}
+            </span>
+          </div>
+        ),
+      },
+      {
+        key: "status",
+        header: t("events.received.column.status"),
+        width: "150px",
+        render: (row) => (
+          <span
+            className={
+              row.status === "RECEIVED"
+                ? "tf-badge tf-badge--running"
+                : row.status === "UNRESOLVED"
+                  ? "tf-badge tf-badge--warning"
+                  : "tf-badge tf-badge--danger"
+            }
+          >
+            {t(`events.received.status.${row.status}`)}
+          </span>
+        ),
+      },
+      {
+        key: "actions",
+        header: "",
+        width: "120px",
+        render: (row) => (
+          <Button variant="ghost" onClick={() => setInspect(row)}>
+            {t("events.received.inspect")}
+          </Button>
+        ),
+      },
+    ],
+    [locale, t],
+  );
+
+  return (
+    <>
+      <p className="tf-note">{t("events.received.note")}</p>
+
+      <div className="tf-filter-bar">
+        <label className="tf-filter-bar__field">
+          <span className="tf-filter-bar__label">{t("events.received.filter.channel")}</span>
+          <select
+            className="tf-input"
+            value={channelKey}
+            onChange={(event) => {
+              setChannelKey(event.target.value);
+              setStart(0);
+            }}
+          >
+            <option value="">{t("events.received.filter.allChannels")}</option>
+            {(channels.data?.data ?? []).map((channel) => (
+              <option key={channel.id} value={channel.key}>
+                {channel.name ?? channel.key}
+              </option>
+            ))}
+          </select>
+        </label>
+
+        <label className="tf-filter-bar__field">
+          <span className="tf-filter-bar__label">{t("events.received.filter.status")}</span>
+          <select
+            className="tf-input"
+            value={status}
+            onChange={(event) => {
+              setStatus(event.target.value as EventRecordStatus | "");
+              setStart(0);
+            }}
+          >
+            <option value="">{t("events.received.filter.anyStatus")}</option>
+            {RECORD_STATUSES.map((value) => (
+              <option key={value} value={value}>
+                {t(`events.received.status.${value}`)}
+              </option>
+            ))}
+          </select>
+        </label>
+      </div>
+
+      <AsyncBoundary
+        loading={loading}
+        error={error}
+        data={data}
+        onRetry={refetch}
+        isEmpty={(page) => page.data.length === 0}
+        empty={
+          // §14.1 wants these distinguished: a filter that matched nothing is a
+          // different problem from a recorder that has seen nothing at all.
+          filtered ? (
+            <NoResultsState onClear={clearFilters} />
+          ) : (
+            <EmptyState
+              title={t("events.received.empty.title")}
+              description={t("events.received.empty.description")}
+            />
+          )
+        }
+      >
+        {(page) => (
+          <>
+            <DataTable
+              caption={t("events.received.caption")}
+              columns={columns}
+              rows={page.data}
+              rowKey={(row) => row.id}
+            />
+            <Pagination
+              start={page.start}
+              size={page.size || PAGE_SIZE}
+              total={page.total}
+              onChange={setStart}
+            />
+          </>
+        )}
+      </AsyncBoundary>
+
+      {inspect ? <RecordedEventDialog event={inspect} onClose={() => setInspect(null)} /> : null}
+    </>
+  );
+}
+
+function RecordedEventDialog({
+  event,
+  onClose,
+}: {
+  event: RecordedEventResponse;
+  onClose: () => void;
+}) {
+  const { t, locale } = useI18n();
+
+  return (
+    <div className="tf-dialog-backdrop" onMouseDown={onClose}>
+      <div
+        className="tf-dialog tf-dialog--wide"
+        role="dialog"
+        aria-modal="true"
+        aria-label={t("events.received.dialog.label")}
+        onMouseDown={(mouse) => mouse.stopPropagation()}
+      >
+        <h2 className="tf-dialog__title">{event.eventKey ?? t("events.received.noEventKey")}</h2>
+        <p className="tf-dialog__description">
+          {t("events.received.dialog.meta", {
+            channel: event.channelKey ?? t("events.received.noChannel"),
+            when: formatDateTime(event.receivedAt, locale),
+          })}
+        </p>
+
+        {event.status === "FAILED" && event.errorMessage ? (
+          <p className="tf-danger-text" role="alert">
+            {event.errorMessage}
+          </p>
+        ) : null}
+
+        {event.status === "UNRESOLVED" ? (
+          <p className="tf-note">{t("events.received.dialog.unresolved")}</p>
+        ) : null}
+
+        {/*
+          A recorder configured with `store-payload: false` keeps the arrival but not
+          the contents (§13.7). Saying so beats rendering an empty <pre> that reads as
+          an empty payload.
+        */}
+        {event.payload == null ? (
+          <p className="tf-muted">{t("events.received.dialog.payloadNotStored")}</p>
+        ) : (
+          <>
+            <pre className="tf-source">{event.payload}</pre>
+            {event.truncated ? (
+              <p className="tf-muted">{t("events.received.dialog.truncated")}</p>
+            ) : null}
+          </>
+        )}
+
+        <div className="tf-dialog__actions">
+          <Button variant="secondary" onClick={onClose}>
+            {t("action.close")}
+          </Button>
+        </div>
+      </div>
+    </div>
   );
 }
 

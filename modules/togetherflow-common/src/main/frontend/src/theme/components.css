@@ -98,6 +98,16 @@
 .tf-input[aria-invalid="true"] {
   border-color: var(--tf-danger);
 }
+.tf-textarea {
+  /* Vertical only: a horizontally resizable control breaks the properties panel's
+     column, and long lines are better served by wrapping than by widening. */
+  resize: vertical;
+  min-height: 68px;
+  /* Script bodies and expressions are code; proportional type makes them hard to scan. */
+  font-family: var(--tf-font-mono, ui-monospace, SFMono-Regular, Menlo, monospace);
+  font-size: 0.92em;
+  line-height: 1.5;
+}
 .tf-field__hint {
   margin: 0;
   font-size: var(--tf-text-xs);

@@ -2,7 +2,11 @@ import { render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { describe, expect, it, vi } from "vitest";
 import type { Mock } from "vitest";
-import { ToastProvider, type EventRegistryApi } from "@togetherflow/common";
+import {
+  ToastProvider,
+  type EventRecorderApi,
+  type EventRegistryApi,
+} from "@togetherflow/common";
 import { EventRegistry } from "./EventRegistry";
 
 const EVENTS = [{ id: "e1", key: "orderPlaced", name: "Order placed", version: 1 }];
@@ -23,12 +27,40 @@ function stubApi(overrides: Record<string, unknown> = {}) {
   } as unknown as EventRegistryApi & Record<string, Mock>;
 }
 
-function renderScreen(api: EventRegistryApi) {
+function renderScreen(api: EventRegistryApi, recorderApi?: EventRecorderApi) {
   render(
     <ToastProvider>
-      <EventRegistry eventApi={api} />
+      <EventRegistry eventApi={api} recorderApi={recorderApi} />
     </ToastProvider>,
   );
+}
+
+const RECORDS = [
+  {
+    id: "r1",
+    receivedAt: "2026-08-25T12:00:00Z",
+    channelKey: "orderChannel",
+    eventKey: "orderPlaced",
+    status: "RECEIVED" as const,
+    payload: '{"orderId":"O-1"}',
+    truncated: false,
+  },
+  {
+    id: "r2",
+    receivedAt: "2026-08-25T11:00:00Z",
+    channelKey: "orderChannel",
+    eventKey: null,
+    status: "UNRESOLVED" as const,
+    payload: '{"mystery":true}',
+    truncated: false,
+  },
+];
+
+function stubRecorder(overrides: Record<string, unknown> = {}) {
+  return {
+    list: vi.fn().mockResolvedValue({ data: RECORDS, total: 2, start: 0, size: 25 }),
+    ...overrides,
+  } as unknown as EventRecorderApi & Record<string, Mock>;
 }
 
 describe("EventRegistry", () => {
@@ -154,6 +186,158 @@ describe("EventRegistry", () => {
       }),
     );
     expect(await screen.findByText("No event definitions")).toBeInTheDocument();
+  });
+});
+
+/**
+ * The inbound log (§7.2, ADR 0015). The engine has no such feed; these cover the view
+ * over the optional recorder, and — first — that its absence is visible rather than
+ * silently rendered as "nothing has happened".
+ */
+describe("EventRegistry — received events", () => {
+  it("offers no Received tab when the recorder is not deployed", async () => {
+    renderScreen(stubApi());
+
+    await screen.findByText("Order placed");
+    expect(screen.queryByRole("tab", { name: "Received" })).not.toBeInTheDocument();
+  });
+
+  it("lists what arrived, with the outcome of each", async () => {
+    const user = userEvent.setup();
+    renderScreen(stubApi(), stubRecorder());
+
+    await user.click(screen.getByRole("tab", { name: "Received" }));
+
+    expect(await screen.findByText("orderPlaced")).toBeInTheDocument();
+    // Scoped to the table: the outcome filter lists the same labels as <option>s.
+    const rows = within(screen.getByRole("table"));
+    expect(rows.getByText("Dispatched")).toBeInTheDocument();
+    expect(rows.getByText("Matched nothing")).toBeInTheDocument();
+  });
+
+  it("names an event that resolved to nothing rather than leaving the cell blank", async () => {
+    const user = userEvent.setup();
+    renderScreen(stubApi(), stubRecorder());
+
+    await user.click(screen.getByRole("tab", { name: "Received" }));
+
+    expect(await screen.findByText("Unrecognised event")).toBeInTheDocument();
+  });
+
+  it("explains an unresolved payload when inspected — the case the feed exists for", async () => {
+    const user = userEvent.setup();
+    renderScreen(stubApi(), stubRecorder());
+
+    await user.click(screen.getByRole("tab", { name: "Received" }));
+    await screen.findByText("Unrecognised event");
+    await user.click(screen.getAllByRole("button", { name: "Inspect" })[1]);
+
+    const dialog = await screen.findByRole("dialog");
+    expect(within(dialog).getByText(/resolved to no event definition/i)).toBeInTheDocument();
+    expect(dialog.querySelector(".tf-source")?.textContent).toContain("mystery");
+  });
+
+  it("shows why the pipeline rejected a payload", async () => {
+    const user = userEvent.setup();
+    const recorder = stubRecorder({
+      list: vi.fn().mockResolvedValue({
+        data: [
+          {
+            id: "r3",
+            receivedAt: "2026-08-25T12:00:00Z",
+            channelKey: "orderChannel",
+            eventKey: null,
+            status: "FAILED",
+            payload: "not json",
+            truncated: false,
+            errorMessage: "FlowableException: no key detector",
+          },
+        ],
+        total: 1,
+        start: 0,
+        size: 25,
+      }),
+    });
+    renderScreen(stubApi(), recorder);
+
+    await user.click(screen.getByRole("tab", { name: "Received" }));
+    await screen.findByRole("table");
+    expect(within(screen.getByRole("table")).getByText("Rejected")).toBeInTheDocument();
+    await user.click(screen.getByRole("button", { name: "Inspect" }));
+
+    expect(await screen.findByRole("alert")).toHaveTextContent("no key detector");
+  });
+
+  it("says so when the deployment records arrivals but not payloads (§13.7)", async () => {
+    const user = userEvent.setup();
+    const recorder = stubRecorder({
+      list: vi.fn().mockResolvedValue({
+        data: [{ ...RECORDS[0], payload: null }],
+        total: 1,
+        start: 0,
+        size: 25,
+      }),
+    });
+    renderScreen(stubApi(), recorder);
+
+    await user.click(screen.getByRole("tab", { name: "Received" }));
+    await screen.findByText("orderPlaced");
+    await user.click(screen.getByRole("button", { name: "Inspect" }));
+
+    const dialog = await screen.findByRole("dialog");
+    expect(within(dialog).getByText(/records arrivals but not their contents/i)).toBeInTheDocument();
+    expect(dialog.querySelector(".tf-source")).toBeNull();
+  });
+
+  it("filters by channel, using the deployed channels rather than what has been seen", async () => {
+    const user = userEvent.setup();
+    const recorder = stubRecorder();
+    renderScreen(stubApi(), recorder);
+
+    await user.click(screen.getByRole("tab", { name: "Received" }));
+    await screen.findByText("orderPlaced");
+    await user.selectOptions(screen.getByLabelText("Channel"), "orderChannel");
+
+    await waitFor(() =>
+      expect(recorder.list).toHaveBeenLastCalledWith(
+        expect.objectContaining({ channelKey: "orderChannel" }),
+        expect.anything(),
+      ),
+    );
+  });
+
+  it("filters by outcome", async () => {
+    const user = userEvent.setup();
+    const recorder = stubRecorder();
+    renderScreen(stubApi(), recorder);
+
+    await user.click(screen.getByRole("tab", { name: "Received" }));
+    await screen.findByText("orderPlaced");
+    await user.selectOptions(screen.getByLabelText("Outcome"), "UNRESOLVED");
+
+    await waitFor(() =>
+      expect(recorder.list).toHaveBeenLastCalledWith(
+        expect.objectContaining({ status: "UNRESOLVED" }),
+        expect.anything(),
+      ),
+    );
+  });
+
+  it("distinguishes an empty recorder from a filter that matched nothing (§14.1)", async () => {
+    const user = userEvent.setup();
+    const recorder = stubRecorder({
+      list: vi.fn().mockResolvedValue({ data: [], total: 0, start: 0, size: 25 }),
+    });
+    renderScreen(stubApi(), recorder);
+
+    await user.click(screen.getByRole("tab", { name: "Received" }));
+    expect(await screen.findByText("Nothing received yet")).toBeInTheDocument();
+
+    await user.selectOptions(screen.getByLabelText("Outcome"), "FAILED");
+
+    // Same empty page, different meaning — and now a way back out of the filter.
+    expect(await screen.findByRole("button", { name: /clear/i })).toBeInTheDocument();
+    expect(screen.queryByText("Nothing received yet")).not.toBeInTheDocument();
   });
 });
 

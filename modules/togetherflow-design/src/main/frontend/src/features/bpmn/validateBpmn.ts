@@ -1,26 +1,39 @@
 /**
  * Pre-deploy checks for a BPMN model (REQUIREMENTS.md §7.4.2).
  *
- * **Why these run in the browser.** The engine ships `flowable-process-validation`, but
- * no REST endpoint exposes it — there is no "validate this XML" call to make. The only
- * server-side validation available is deployment itself, which either succeeds or fails
- * with one message. So these checks are a client-side approximation whose job is to
- * catch the mistakes that produce a confusing engine error, *before* the round trip.
+ * **Why these still run in the browser.** `POST /repository/model-validation` now runs the
+ * engine's own `flowable-process-validation` over the XML, and that is the authority — see
+ * `ModelValidationApi` in `@togetherflow/common`. These checks remain for the two things a
+ * round trip cannot give: a verdict while the model is still being typed, and a verdict at
+ * all when the engine is unreachable.
  *
- * That framing matters for what belongs here. These are not a reimplementation of the
- * engine's validator and must never be presented as one: passing them does not
- * guarantee a deployment succeeds. Each rule below corresponds to a real
- * `flowable-process-validation` rule and to an error that is hard to diagnose from the
- * engine's own message.
+ * That framing decides what belongs here. These are not a reimplementation of the engine's
+ * validator and must never be presented as one — the panel labels which side reported what.
+ * Each rule below corresponds to a real `flowable-process-validation` rule and to an error
+ * that is hard to diagnose from the engine's own message.
  */
 
+import type { ServerValidationResult } from "@togetherflow/common";
+import { elementIdOf } from "@togetherflow/common";
+
 export type Severity = "error" | "warning";
+
+/**
+ * Which side reported a problem. The panel says so rather than implying one authority.
+ *
+ * `lint` is the structural analysis in `lintBpmn.ts` — neither the browser checks below
+ * nor the engine's validator, and curated so it never overlaps either.
+ */
+export type IssueSource = "browser" | "engine" | "lint";
 
 export interface ValidationIssue {
   severity: Severity;
   /** The element the problem is on, so the editor can select it. */
   elementId?: string;
   message: string;
+  source?: IssueSource;
+  /** The engine's stable problem identifier, when the engine reported it. */
+  code?: string;
 }
 
 interface Element {
@@ -252,4 +265,22 @@ function hasCondition(process: Element_, flowId: string | undefined): boolean {
 /** True when nothing blocks deployment; warnings alone do not. */
 export function canDeploy(issues: ValidationIssue[]): boolean {
   return !issues.some((issue) => issue.severity === "error");
+}
+
+/**
+ * Converts the engine's verdict into the same issue shape the browser checks produce, so
+ * one panel renders both.
+ *
+ * The engine's descriptions are English-only — it has no translated catalogue for them —
+ * so they are passed through verbatim rather than run through the i18n layer, which would
+ * only produce a missing-key warning for every one of them.
+ */
+export function issuesFromServer(result: ServerValidationResult): ValidationIssue[] {
+  return result.errors.map((problem) => ({
+    severity: problem.warning ? "warning" : "error",
+    elementId: elementIdOf(problem),
+    message: problem.defaultDescription ?? problem.problem ?? "The engine reported a problem with no description.",
+    source: "engine",
+    code: problem.problem,
+  }));
 }

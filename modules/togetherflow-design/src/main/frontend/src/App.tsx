@@ -5,6 +5,9 @@ import {
   EventRegistryApi,
   LoginScreen,
   ModelApi,
+  IdmApi,
+  ModelValidationApi,
+  ProcessApi,
   Skeleton,
   UserProfileApi,
   modelKindOf,
@@ -17,6 +20,7 @@ import {
 } from "@togetherflow/common";
 import { AppShell } from "./features/shell/AppShell";
 import { ModelLibrary } from "./features/library/ModelLibrary";
+import { useIdentities } from "./features/bpmn/useIdentities";
 
 /**
  * bpmn-js and dmn-js are large. Loading them lazily keeps the library screen — the
@@ -47,13 +51,19 @@ export interface AppProps {
   apiBase: string;
   dmnBase: string;
   cmmnBase: string;
+  /**
+   * IDM API, used to suggest real users and groups when assigning a task rather than
+   * leaving the modeller to remember ids. Optional: a deployment without IDM still
+   * models perfectly well, it just types the ids itself.
+   */
+  idmBase?: string;
   appBase: string;
   eventBase: string;
   fetchImpl?: typeof fetch;
 }
 
 export function App({ apps,
-  apiBase, dmnBase, cmmnBase, appBase, eventBase, fetchImpl }: AppProps) {
+  apiBase, dmnBase, cmmnBase, idmBase, appBase, eventBase, fetchImpl }: AppProps) {
   const t = useT();
   const { session, signOut, getAuthHeaders, isInitialising } = useAuth();
   const { tenantId } = useTenant();
@@ -78,6 +88,26 @@ export function App({ apps,
     () => new ModelApi(makeClient(apiBase), makeClient(dmnBase), makeClient(cmmnBase)),
     [makeClient, apiBase, dmnBase, cmmnBase],
   );
+  /** Server-side model validation (§7.4.2); CMMN validates behind its own servlet. */
+  const validationApi = useMemo(
+    () => new ModelValidationApi(makeClient(apiBase), makeClient(cmmnBase)),
+    [makeClient, apiBase, cmmnBase],
+  );
+  /**
+   * Ids the modeller's reference fields suggest.
+   *
+   * Suggestions only — never a constraint. An assignee is often an expression
+   * (`${initiator}`) or a user this IDM does not know about, and a call activity may name
+   * a process not deployed yet, so every field stays free text and a failed fetch costs
+   * nothing but the convenience.
+   */
+  const idmApi = useMemo(
+    () => (idmBase ? new IdmApi(makeClient(idmBase)) : null),
+    [makeClient, idmBase],
+  );
+  const processApi = useMemo(() => new ProcessApi(makeClient(apiBase)), [makeClient, apiBase]);
+  const identities = useIdentities(idmApi, processApi);
+
   const appApi = useMemo(() => new AppApi(makeClient(appBase)), [makeClient, appBase]);
   const eventApi = useMemo(
     () => new EventRegistryApi(makeClient(eventBase)),
@@ -149,7 +179,7 @@ export function App({ apps,
           {modelKindOf(editing) === "dmn" ? (
             <DmnEditor {...props} />
           ) : modelKindOf(editing) === "cmmn" ? (
-            <CmmnEditor {...props} />
+            <CmmnEditor {...props} validationApi={validationApi} />
           ) : modelKindOf(editing) === "form" ? (
             <FormBuilder
               modelApi={modelApi}
@@ -180,7 +210,11 @@ export function App({ apps,
               onSaved={onSaved}
             />
           ) : (
-            <BpmnEditor {...props} />
+            <BpmnEditor
+              {...props}
+              validationApi={validationApi}
+              identities={identities}
+            />
           )}
         </Suspense>
       </AppShell>

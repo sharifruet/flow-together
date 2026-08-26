@@ -15,6 +15,14 @@ WORKDIR /build
 COPY togetherflow-common/src/main/frontend ./togetherflow-common/src/main/frontend
 COPY togetherflow-control/src/main/frontend ./togetherflow-control/src/main/frontend
 
+# togetherflow-common is consumed as an npm `file:` dependency, which npm installs as a
+# symlink to the source tree above. TypeScript resolves that symlink to its real path, so
+# imports *inside* common resolve against common's own node_modules — not the app's. Its
+# dev dependencies therefore have to be installed here too, or the app's `tsc --noEmit`
+# fails on common's test helpers (axe-core, reached via `@togetherflow/common/testing/a11y`).
+WORKDIR /build/togetherflow-common/src/main/frontend
+RUN npm ci --no-audit --no-fund
+
 WORKDIR /build/togetherflow-control/src/main/frontend
 RUN npm ci --no-audit --no-fund && npm run build
 

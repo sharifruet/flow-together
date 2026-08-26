@@ -44,3 +44,22 @@ kubectl get pods -n flowable -w
 ```console
 helm delete flowable -n flowable
 ```
+
+## Deploy TogetherFlow (the UIs)
+
+The four TogetherFlow apps and the optional attachment gateway have their own chart in
+[`flowable/togetherflow`](flowable/togetherflow/README.md), which `helm-release.yml`
+publishes alongside the engine chart. They are static SPAs that talk to an engine's REST
+servlets from the browser, so the chart deploys no engine of its own — deploy one with the
+chart above first, or point the UIs at an existing one.
+
+```console
+helm install togetherflow k8s/flowable/togetherflow \
+    --create-namespace --namespace=flowable \
+    --set auth.oidc.authority=https://keycloak.example.com/realms/Flowable \
+    --set ingress.enabled=true --set ingress.hosts.work=work.example.com
+```
+
+The same deployment is also available as plain manifests in `resources/togetherflow-*.yaml`
+for people who do not use Helm. Neither is generated from the other, so a change belongs in
+both.

@@ -1,0 +1,183 @@
+# TogetherFlow chart values.
+#
+# The four UIs are one image shape with different runtime configuration, so they share a
+# single template (templates/apps.yaml) driven by the `apps` map below rather than four
+# near-identical files. The attachment gateway is a Java service with its own storage and
+# is templated separately.
+#
+# Derived from k8s/resources/*.yaml, which stay in the repository as the plain-manifest
+# path for people who do not use Helm. Both were verified against a locally built image.
+
+# Applied to every image reference. Pull policy is IfNotPresent so a pinned tag is not
+# re-fetched on every restart; set it to Always only if you deploy a moving tag.
+image:
+  registry: docker.io
+  repository: flowable
+  # Empty means "use the chart's appVersion", so a release is reproducible by chart
+  # version alone. Override per environment to promote a specific build.
+  tag: ""
+  pullPolicy: IfNotPresent
+  pullSecrets: []
+
+nameOverride: ""
+fullnameOverride: ""
+
+# Where each engine's REST servlet is reachable from the *browser*, not from the cluster:
+# these values end up in config.js, and the browser resolves them. Same-origin paths
+# assume an ingress that routes them to the engine; absolute URLs work too, in which case
+# the engine must send CORS headers.
+engine:
+  apiBase: /process-api
+  idmBase: /idm-api
+  dmnBase: /dmn-api
+  cmmnBase: /cmmn-api
+  appBase: /app-api
+  eventBase: /event-registry-api
+  externalJobBase: /external-job-api
+
+# Authentication, shared by all four apps (ADR 0006, REQUIREMENTS.md §13.1).
+#
+# `basic` is for local development only. The OIDC client is public, so `clientId` is not
+# a secret; a client *secret* would belong in a Secret and this chart deliberately has
+# nowhere to put one.
+auth:
+  mode: oidc
+  oidc:
+    authority: ""
+    clientId: togetherflow-ui
+    scope: openid profile email
+
+# Sibling URLs for the shell's app switcher (§7.5). An app left empty is not offered,
+# rather than shown as a dead link. Each app ignores its own entry.
+appUrls:
+  work: ""
+  control: ""
+  identity: ""
+  design: ""
+
+observability:
+  # Where unhandled errors and Web Vitals are POSTed (§13.2, §13.5). Empty means
+  # console-only, which is a supported configuration — a fresh install needs no
+  # collector to work.
+  errorEndpoint: ""
+  # Ties a report to the bundle that produced it. Defaults to the chart's appVersion.
+  release: ""
+
+# Forces a UI language deployment-wide (§8). Empty lets the browser, and each user's own
+# choice in the shell menu, decide.
+locale: ""
+
+identity:
+  # True when the deployment is backed by flowable-ldap: the directory is read-only, so
+  # Identity hides create/edit/delete rather than offering actions that will fail (§7.3).
+  readOnly: false
+
+# Defaults every app inherits; each entry under `apps` may override any of them.
+appDefaults:
+  replicas: 2
+  resources:
+    requests:
+      memory: 32Mi
+      cpu: 10m
+    limits:
+      memory: 128Mi
+      cpu: 200m
+  # The nginx-unprivileged base image's uid.
+  runAsUser: 101
+  podAnnotations: {}
+  nodeSelector: {}
+  tolerations: []
+  affinity: {}
+
+apps:
+  work:
+    enabled: true
+    image: togetherflow-work
+  control:
+    enabled: true
+    image: togetherflow-control
+  identity:
+    enabled: true
+    image: togetherflow-identity
+  design:
+    enabled: true
+    image: togetherflow-design
+
+# Optional attachment storage (§7.6). With the default `db` provider the browser posts
+# bytes straight to the engine and this service is not part of the deployment at all,
+# which is why it is disabled here.
+attachmentGateway:
+  enabled: false
+  image: togetherflow-attachment-gateway
+  # db | filesystem | sharepoint. Enabling the gateway with `db` deploys a service
+  # nothing routes to.
+  provider: filesystem
+  replicas: 1
+  maxFileSizeBytes: 26214400
+  filesystem:
+    basePath: /var/lib/togetherflow/attachments
+    # Must be reachable by the *browser*: it is stored on the attachment as its URL.
+    publicBaseUrl: ""
+    persistence:
+      enabled: true
+      # The filesystem provider writes to a volume shared by every replica, so more than
+      # one replica needs ReadWriteMany. ReadWriteOnce is the common default, and two
+      # replicas on it will not schedule.
+      accessModes:
+        - ReadWriteOnce
+      size: 20Gi
+      storageClass: ""
+      # Use a claim created out of band instead of one this chart owns.
+      existingClaim: ""
+  sharepoint:
+    tenantId: ""
+    clientId: ""
+    siteId: ""
+    driveId: ""
+    # The client secret is never a chart value. Create the Secret out of band and name it
+    # here, or let the chart reference the default name:
+    #
+    #   kubectl create secret generic togetherflow-attachment-gateway-secrets \
+    #     --from-literal=TOGETHERFLOW_ATTACHMENTS_SHAREPOINT_CLIENTSECRET=...
+    existingSecret: ""
+  resources:
+    requests:
+      memory: 256Mi
+      cpu: 100m
+    limits:
+      memory: 512Mi
+      cpu: 500m
+  podAnnotations: {}
+  nodeSelector: {}
+  tolerations: []
+  affinity: {}
+
+serviceAccount:
+  # Off by default: none of these workloads talks to the Kubernetes API, so the default
+  # service account with its token mounted is more access than they need.
+  create: false
+  name: ""
+  annotations: {}
+
+service:
+  type: ClusterIP
+
+# One ingress fronting every enabled app, each at its own host. Hostless entries are
+# skipped, so a partial configuration deploys the apps it can route to and no more.
+ingress:
+  enabled: false
+  className: ""
+  annotations: {}
+  hosts:
+    work: ""
+    control: ""
+    identity: ""
+    design: ""
+    attachmentGateway: ""
+  tls: []
+
+# Denies all ingress except from the namespace's own ingress controller pods. Off by
+# default because it depends on a CNI that enforces NetworkPolicy.
+networkPolicy:
+  enabled: false
+  ingressNamespaceSelector: {}

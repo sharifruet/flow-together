@@ -1,0 +1,59 @@
+{{/*
+One ingress fronting every enabled app, each at its own host.
+
+Host-per-app rather than path-per-app: the apps are separately deployed origins that link
+to each other through the shell's switcher (§7.5), and serving them from sub-paths of one
+host would break the absolute asset paths their builds emit.
+
+A host left empty is skipped rather than rendered as a hostless rule, so a partial
+configuration routes the apps it can and no more.
+*/}}
+{{- if .Values.ingress.enabled }}
+{{- $hosts := .Values.ingress.hosts }}
+{{- $fullname := include "togetherflow.fullname" . }}
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: {{ $fullname }}
+  labels:
+    {{- include "togetherflow.labels" . | nindent 4 }}
+  {{- with .Values.ingress.annotations }}
+  annotations:
+    {{- toYaml . | nindent 4 }}
+  {{- end }}
+spec:
+  {{- with .Values.ingress.className }}
+  ingressClassName: {{ . }}
+  {{- end }}
+  {{- with .Values.ingress.tls }}
+  tls:
+    {{- toYaml . | nindent 4 }}
+  {{- end }}
+  rules:
+    {{- range $app, $config := .Values.apps }}
+    {{- if and $config.enabled (index $hosts $app) }}
+    - host: {{ index $hosts $app | quote }}
+      http:
+        paths:
+          - path: /
+            pathType: Prefix
+            backend:
+              service:
+                name: {{ printf "%s-%s" $fullname $app }}
+                port:
+                  name: http
+    {{- end }}
+    {{- end }}
+    {{- if and .Values.attachmentGateway.enabled $hosts.attachmentGateway }}
+    - host: {{ $hosts.attachmentGateway | quote }}
+      http:
+        paths:
+          - path: /attachments
+            pathType: Prefix
+            backend:
+              service:
+                name: {{ printf "%s-attachment-gateway" $fullname }}
+                port:
+                  name: http
+    {{- end }}
+{{- end }}

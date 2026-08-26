@@ -1,0 +1,33 @@
+{{/*
+Default-deny ingress for the TogetherFlow pods, allowing only the ingress controller.
+
+Off by default because it silently does nothing on a CNI that does not enforce
+NetworkPolicy, and a security control that silently does nothing is worse than an absent
+one — enable it deliberately, once you know your CNI enforces it.
+
+Egress is left alone: the browser talks to the engine, not these pods, and the attachment
+gateway needs to reach SharePoint when that provider is configured.
+*/}}
+{{- if .Values.networkPolicy.enabled }}
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: {{ include "togetherflow.fullname" . }}
+  labels:
+    {{- include "togetherflow.labels" . | nindent 4 }}
+spec:
+  podSelector:
+    matchLabels:
+      {{- include "togetherflow.selectorLabels" . | nindent 6 }}
+  policyTypes:
+    - Ingress
+  ingress:
+    - from:
+        - namespaceSelector:
+            {{- toYaml .Values.networkPolicy.ingressNamespaceSelector | nindent 12 }}
+      ports:
+        - protocol: TCP
+          port: 8080
+        - protocol: TCP
+          port: 8091
+{{- end }}

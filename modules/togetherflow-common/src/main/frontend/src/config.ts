@@ -45,6 +45,12 @@ export interface RuntimeConfig {
    * Flowable and no gateway is deployed.
    */
   attachmentGateway: string;
+  /**
+   * Base URL of `togetherflow-event-recorder`'s endpoint (§7.2, ADR 0015). Empty — the
+   * default — means the recorder is not deployed, and Control hides the received-events
+   * view entirely rather than showing a feed that would always be empty.
+   */
+  eventRecorder: string;
   identity: {
     /**
      * True when identities come from a read-only directory (LDAP) rather than the
@@ -79,6 +85,7 @@ declare global {
       externalJobBase?: string;
       apps?: AppLinks;
       attachmentGateway?: string;
+      eventRecorder?: string;
       identity?: { readOnly?: boolean };
       observability?: { errorEndpoint?: string; release?: string };
       locale?: string;
@@ -107,6 +114,7 @@ export function readRuntimeConfig(): RuntimeConfig {
   const externalJobBase = raw.externalJobBase ?? "/external-job-api";
   const apps: AppLinks = raw.apps ?? {};
   const attachmentGateway = raw.attachmentGateway ?? "";
+  const eventRecorder = raw.eventRecorder ?? "";
   const identity = { readOnly: raw.identity?.readOnly === true };
   const observability = {
     errorEndpoint: raw.observability?.errorEndpoint || undefined,
@@ -127,6 +135,7 @@ export function readRuntimeConfig(): RuntimeConfig {
       externalJobBase,
       apps,
       attachmentGateway,
+      eventRecorder,
       identity,
       observability,
       locale,
@@ -154,6 +163,7 @@ export function readRuntimeConfig(): RuntimeConfig {
     externalJobBase,
     apps,
     attachmentGateway,
+    eventRecorder,
     identity,
     observability,
     locale,

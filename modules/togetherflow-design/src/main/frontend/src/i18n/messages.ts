@@ -104,6 +104,20 @@ export const designEn = {
   "bpmn.checksClean": "No problems found.",
   "bpmn.fixBeforeDeploy": "Fix the problems listed below before deploying.",
   "bpmn.checksLabel": "Model checks",
+  "bpmn.checks.summary.problems.one": "{count} problem",
+  "bpmn.checks.summary.problems.other": "{count} problems",
+  "bpmn.checks.summary.warnings.one": "{count} warning",
+  "bpmn.checks.summary.warnings.other": "{count} warnings",
+  // Which side reported a problem, shown as a badge beside the severity.
+  "bpmn.checks.source.browser": "browser",
+  "bpmn.checks.source.engine": "engine",
+  "bpmn.checks.source.lint": "structure",
+  "bpmn.checks.caveat.engine":
+    "The engine's own validator ran over this model, so what it reports is what a deploy would reject. Browser checks are shown alongside for what it does not cover.",
+  "bpmn.checks.caveat.browserOnly":
+    "These checks ran in the browser only \u2014 the engine could not be reached, so passing here does not guarantee it will accept the model.",
+  "bpmn.checks.live": "Re-check as I edit",
+  "bpmn.checks.serverUnreachable": "Could not reach the engine's validator; showing browser checks only.",
   "bpmn.xmlLabel": "BPMN XML",
   "bpmn.xmlTitle": "BPMN XML",
   "bpmn.loadingDiagram": "Loading diagram",
@@ -115,6 +129,242 @@ export const designEn = {
   // Properties panels (§7.4.2 / §7.4.3)
   "properties.label": "Element properties",
   "properties.selectAnElement": "Select an element on the canvas to edit its properties.",
+  // User task, the rest of it (§7.4.2)
+  "properties.owner": "Owner",
+  "properties.owner.hint": "Who is accountable for the task, as distinct from who works on it.",
+  "properties.priority": "Priority",
+  "properties.priority.hint": "A number. Work's inbox filters on bands of this.",
+  "properties.category": "Category",
+  "properties.category.hint": "Free-text grouping, available to queries but not used by the engine.",
+  "properties.skipExpression": "Skip expression",
+  "properties.skipExpression.hint":
+    "When this evaluates true the task is completed automatically without ever appearing to anyone.",
+  "properties.businessCalendarName": "Business calendar",
+  "properties.businessCalendarName.hint":
+    "Which calendar due dates are computed against. Empty uses the default.",
+
+  "properties.exclusive": "Exclusive",
+  "properties.exclusive.hint":
+    "On by default: the job will not run at the same time as another job of the same process instance. Turning it off allows genuine parallelism, and the concurrency that comes with it.",
+
+  // Form properties (§7.4.2) — the engine's own form model.
+  "properties.formProperties": "Form properties",
+  "properties.formProperties.hint":
+    "The engine's own form model. Work renders these when a task has no form key.",
+  "properties.formProperties.none": "No form properties.",
+  "properties.formProperties.id": "Id",
+  "properties.formProperties.id.hint": "What the value is submitted as. Required.",
+  "properties.formProperties.name": "Label",
+  "properties.formProperties.type": "Type",
+  "properties.formProperties.type.string": "Text",
+  "properties.formProperties.type.long": "Whole number",
+  "properties.formProperties.type.double": "Decimal",
+  "properties.formProperties.type.boolean": "Yes/no",
+  "properties.formProperties.type.date": "Date",
+  "properties.formProperties.type.enum": "Choice",
+  "properties.formProperties.variable": "Variable",
+  "properties.formProperties.variable.hint":
+    "Process variable to read and write. Defaults to the id.",
+  "properties.formProperties.datePattern": "Date format",
+  "properties.formProperties.values": "Options",
+  "properties.formProperties.values.hint": "Comma-separated.",
+  "properties.formProperties.required": "Required",
+  "properties.formProperties.writable": "Writable",
+  "properties.formProperties.add": "Add form property",
+  "properties.formProperties.remove": "Remove form property {index}",
+
+  // Job behaviour (§7.4.2)
+  "properties.jobs": "When this fails",
+  "properties.retryCycle": "Retry cycle",
+  "properties.retryCycle.hint":
+    "ISO-8601 repeating interval, e.g. R3/PT10M for three retries ten minutes apart. Applies to the job, so it only takes effect when the activity is async.",
+  "properties.mapException": "Exception mapping",
+  "properties.mapException.hint":
+    "Turns a Java exception into a BPMN error, so a boundary error event can catch it.",
+  "properties.mapException.none": "No mappings.",
+  "properties.mapException.class": "Exception class",
+  "properties.mapException.class.hint": "Fully qualified. Empty matches any exception.",
+  "properties.mapException.errorCode": "Error code",
+  "properties.mapException.errorCode.hint":
+    "Required — the engine refuses to read a model with a mapping that has none.",
+  "properties.mapException.includeChildren": "Include subclasses",
+  "properties.mapException.add": "Add mapping",
+  "properties.mapException.remove": "Remove mapping {index}",
+
+  "properties.isForCompensation": "For compensation",
+
+  // Process-level engine listeners (§7.4.2)
+  "properties.engineListeners": "Engine event listeners",
+  "properties.engineListeners.hint":
+    "Fire on engine events across this process — a job failing, an entity changing — rather than on one element's lifecycle.",
+  "properties.engineListeners.none": "No engine listeners.",
+  "properties.engineListeners.events": "Events",
+  "properties.engineListeners.events.hint": "Comma-separated. Empty means every event.",
+  "properties.engineListeners.add": "Add engine listener",
+  "properties.engineListeners.remove": "Remove engine listener {index}",
+
+  // Data objects (§7.4.2)
+  "properties.dataObject": "Data object",
+  "properties.dataObject.type": "Type",
+  "properties.dataObject.type.hint": "Stored on the model as an xsd: type reference.",
+  "properties.dataObject.value": "Default value",
+  "properties.dataObject.value.hint": "Used when the instance starts without one.",
+
+  // Multi-instance additions (§7.4.2)
+  "properties.multiInstance.elementIndexVariable": "Index variable",
+  "properties.multiInstance.elementIndexVariable.hint":
+    "Holds the zero-based iteration number inside the loop.",
+  "properties.aggregation.target": "Collect results into",
+  "properties.aggregation.target.hint":
+    "Variable the results of every iteration are gathered into. Empty means no aggregation.",
+  "properties.aggregation.variables": "Variables to collect",
+  "properties.aggregation.variables.hint":
+    "Comma-separated variable names taken from each iteration. Empty collects the whole scope.",
+  "properties.aggregation.overview": "Create an overview variable",
+
+  "properties.elementType": "Element type",
+  "properties.elementType.hint":
+    "Changes what this is, keeping its name, position and connections. Also available from the wrench on the element itself.",
+
+  "properties.decisionKey": "Decision key",
+  "properties.decisionKey.hint":
+    "Key of the DMN decision to evaluate. Stored as the decisionTableReferenceKey field below.",
+
+  "properties.participantProcess": "Process",
+  "properties.participantProcess.hint":
+    "A pool stands for a process, and the process is what the engine runs. These properties belong to it, not to the pool.",
+  "properties.participantProcess.id": "Process key",
+  "properties.participantProcess.id.hint": "What the engine starts this process by.",
+
+  "properties.documentation": "Documentation",
+  "properties.documentation.hint": "Notes for whoever maintains this model. Carried into the deployed definition.",
+
+  // Flowable service-task subtypes (§7.4.2). Every one of these is a bpmn:ServiceTask in
+  // the XML, told apart only by flowable:type.
+  "properties.taskType": "Task type",
+  "properties.taskType.hint":
+    "What the engine runs when it reaches this task. Changing it changes which settings below apply.",
+  "properties.taskType.default": "Java class or expression",
+  "properties.taskType.http": "HTTP call",
+  "properties.taskType.mail": "Send mail",
+  "properties.taskType.dmn": "Decision (DMN)",
+  "properties.taskType.shell": "Shell command",
+  "properties.taskType.camel": "Camel route",
+  "properties.taskType.case": "Start a case",
+  "properties.taskType.send-event": "Send an event",
+  "properties.taskType.external-worker": "External worker",
+  "properties.taskType.http.configuredBy":
+    "Configured through field injections below — requestUrl, requestMethod, requestBody and the rest.",
+  "properties.taskType.mail.configuredBy":
+    "Configured through field injections below — to, subject, and either text or html.",
+  "properties.taskType.dmn.configuredBy":
+    "Configured through field injections below — decisionTableReferenceKey names the decision to evaluate.",
+  "properties.taskType.shell.configuredBy":
+    "Configured through field injections below — command, arg1, arg2 and so on.",
+  "properties.taskType.camel.configuredBy":
+    "Configured through field injections below — camelContext selects the route.",
+  "properties.topic": "Topic",
+  "properties.topic.hint": "The queue name external workers poll for this task.",
+
+  // Script tasks (§7.4.2)
+  "properties.script": "Script",
+  "properties.scriptFormat": "Language",
+  "properties.scriptFormat.hint": "The script engine to use, e.g. groovy, juel or javascript.",
+  "properties.script.body": "Script body",
+  "properties.script.body.hint":
+    "Runs when the token reaches this task. Process variables are in scope by name.",
+  "properties.resultVariable": "Result variable",
+  "properties.resultVariable.hint": "Process variable the script's return value is stored in.",
+  "properties.autoStoreVariables": "Store every script variable as a process variable",
+  "properties.autoStoreVariables.hint":
+    "Off by default, and usually best left off — it writes every local script variable into the process, including temporaries.",
+
+  // Field injections (§7.4.2) — how the whole service-task family is configured.
+  "properties.fields": "Field injections",
+  "properties.fields.hint":
+    "Name/value pairs passed to whatever the task runs. HTTP, mail, decision and shell tasks are configured entirely through these.",
+  "properties.fields.none": "No fields.",
+  "properties.fields.name": "Name",
+  "properties.fields.kind": "Value type",
+  "properties.fields.kind.stringValue": "Text",
+  "properties.fields.kind.expression": "Expression",
+  "properties.fields.kind.string": "Text (multi-line)",
+  "properties.fields.value": "Value",
+  "properties.fields.add": "Add field",
+  "properties.fields.remove": "Remove field {index}",
+
+  // Call activity (§7.4.2)
+  "properties.callActivity": "Called process",
+  "properties.calledElement": "Called process key",
+  "properties.calledElement.hint": "Key of the process definition this activity starts.",
+  "properties.calledElementType": "Reference by",
+  "properties.calledElementType.hint":
+    "By key follows the latest deployed version; by id pins one specific version forever.",
+  "properties.calledElementType.key": "Key (latest version)",
+  "properties.calledElementType.id": "Id (a fixed version)",
+  "properties.businessKey": "Business key",
+  "properties.processInstanceName": "Instance name",
+  "properties.inheritVariables": "Pass all parent variables in",
+  "properties.inheritVariables.hint":
+    "With this off, only the mappings below cross the boundary — which is usually what you want.",
+  "properties.inheritBusinessKey": "Inherit the parent's business key",
+  "properties.sameDeployment": "Resolve from the same deployment",
+  "properties.fallbackToDefaultTenant": "Fall back to the default tenant",
+  "properties.mapping.in": "Variables in",
+  "properties.mapping.in.hint": "Copied from this process into the called one when it starts.",
+  "properties.mapping.out": "Variables out",
+  "properties.mapping.out.hint": "Copied back when the called process finishes.",
+  "properties.mapping.none": "No mappings.",
+  "properties.mapping.source": "Source",
+  "properties.mapping.sourceIsExpression": "Source is an expression",
+  "properties.mapping.target": "Target variable",
+  "properties.mapping.add": "Add mapping",
+  "properties.mapping.remove": "Remove mapping {index}",
+
+  // Business rule task (§7.4.2)
+  "properties.ruleVariablesInput": "Input variables",
+  "properties.ruleVariablesInput.hint": "Comma-separated process variables passed to the rules.",
+  "properties.rules": "Rules",
+  "properties.rules.hint": "Comma-separated rule names to evaluate. Empty means all of them.",
+
+  // Start events (§7.4.2)
+  "properties.initiator": "Initiator variable",
+  "properties.initiator.hint": "Process variable the starting user's id is stored in.",
+  "properties.formFieldValidation": "Validate form fields on completion",
+  "properties.isInterrupting": "Interrupting",
+  "properties.isExecutable": "Executable",
+  "properties.versionTag": "Version tag",
+  "properties.versionTag.hint": "Free-text label for this revision. Not used by the engine.",
+
+  // Gateways (§7.4.2)
+  "properties.defaultFlow": "Default flow",
+  "properties.defaultFlow.hint":
+    "Taken when no other outgoing flow's condition is true. Without one, the engine fails if nothing matches.",
+  "properties.defaultFlow.none": "None",
+
+  // Error / signal / message / escalation / conditional events (§7.4.2)
+  "properties.boundary.errorForced":
+    "An error boundary event always interrupts: the engine overrides this flag when it parses the model, so it is not offered.",
+  "properties.event.error": "Error",
+  "properties.event.error.ref": "Error code",
+  "properties.event.error.hint":
+    "Matched against the code a thrown error carries. Typing a new one declares it on the model.",
+  "properties.event.signal": "Signal",
+  "properties.event.signal.ref": "Signal name",
+  "properties.event.signal.hint":
+    "Signals are broadcast to every listener. Typing a new name declares it on the model.",
+  "properties.event.message": "Message",
+  "properties.event.message.ref": "Message name",
+  "properties.event.message.hint":
+    "A message goes to one recipient. Typing a new name declares it on the model.",
+  "properties.event.escalation": "Escalation",
+  "properties.event.escalation.ref": "Escalation code",
+  "properties.event.escalation.hint":
+    "Like an error, but does not have to be caught. Typing a new one declares it on the model.",
+  "properties.event.conditional": "Condition",
+  "properties.event.condition": "Condition expression",
+  "properties.event.condition.hint": "Fires when this becomes true, e.g. ${amount > 10000}.",
+
   "properties.id": "Id",
   "properties.id.hint": "Referenced by the engine and by other models.",
   "properties.name": "Name",
@@ -204,6 +454,12 @@ export const designEn = {
   "cmmn.loading": "Loading case model",
   "cmmn.palette": "Palette",
   "cmmn.canvasLabel": "Case diagram",
+  "cmmn.checksLabel": "Case checks",
+  "cmmn.checksClean": "No problems found.",
+  "cmmn.fixBeforeDeploy": "Fix the problems listed below before deploying.",
+  "cmmn.checks.unreachable": "Could not reach the engine's validator, so this case has not been checked.",
+  "cmmn.checks.caveat":
+    "Reported by the engine's own case validator, so what it lists is what a deploy would reject.",
   "cmmn.elementLabel": "{name} ({type})",
   "cmmn.deploy.title": "Deploy this case?",
   "cmmn.deploy.description":

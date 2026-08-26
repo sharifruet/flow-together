@@ -25,3 +25,4 @@ k8s/index.yaml
 
 .claude/settings.local.json
 .claude/worktrees
+qa/load/results

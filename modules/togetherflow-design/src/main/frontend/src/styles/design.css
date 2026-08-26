@@ -624,9 +624,18 @@
 }
 
 /* Properties panel */
+/*
+ * The panel sits one step back from its fields.
+ *
+ * `--tf-bg-raised` is `#ffffff` in the light theme — the same value as `--tf-bg` — so a
+ * panel and the inputs inside it were both white, leaving a 1px grey border as the only
+ * thing marking where a field began. Putting the panel on the subtle surface and leaving
+ * inputs raised separates them in both themes without touching the shared tokens, which
+ * four apps depend on.
+ */
 .tf-properties {
   border-left: 1px solid var(--tf-border);
-  background: var(--tf-bg-raised);
+  background: var(--tf-bg-subtle);
   padding: var(--tf-space-4);
   overflow-y: auto;
 }
@@ -662,11 +671,30 @@
   color: var(--tf-text-muted);
 }
 
-/* The bpmn-js/dmn-js canvases render on a white surface; keep it readable in dark
-   mode rather than inverting shapes the libraries draw. */
+/*
+ * The bpmn-js/dmn-js canvases render on a white surface; keep it readable in dark mode
+ * rather than inverting shapes the libraries draw.
+ *
+ * Forcing the background is only half of it. Everything the libraries layer on that
+ * surface — the inline label editor, the context-pad icons — inherits `color` from the
+ * app, which is near-white in dark mode. diagram-js sets a white background on both and
+ * no foreground, so the result was white on white: typing into a task produced invisible
+ * text, and the context pad's icons vanished. Pinning a dark ink for the whole canvas
+ * subtree fixes every inheritor at once, including any the libraries add later.
+ */
 .tf-editor__canvas .djs-container,
 .tf-editor__canvas .dmn-decision-table-container {
   background: #fff;
+  color: hsl(225, 10%, 15%);
+}
+
+/*
+ * Belt and braces for the two that matter most, since both are created imperatively with
+ * inline styles and neither sets a colour of its own.
+ */
+.tf-editor__canvas .djs-direct-editing-content,
+.tf-editor__canvas .djs-context-pad .entry {
+  color: hsl(225, 10%, 15%);
 }
 .tf-editor__loading-standalone {
   padding: var(--tf-space-6);
@@ -1103,4 +1131,48 @@
 .tf-versions__when {
   color: var(--tf-text-muted);
   font-size: 0.875rem;
+}
+
+/*
+ * Problem markers on the BPMN canvas (§14.3).
+ *
+ * diagram-js renders each element's outline as `.djs-visual > :first-child`, so the
+ * marker recolours that rather than the group — a border on the group would sit outside
+ * the shape and be clipped. Stroke width is bumped as well as colour, because colour
+ * alone is not a distinction everyone can see (§13.6).
+ */
+.tf-problem--error .djs-visual > :nth-child(1) {
+  stroke: var(--tf-danger) !important;
+  stroke-width: 2.5px !important;
+}
+.tf-problem--warning .djs-visual > :nth-child(1) {
+  stroke: var(--tf-warning, #b26a00) !important;
+  stroke-width: 2.5px !important;
+}
+/* Connections carry the marker on their path, which has no fill to worry about. */
+.tf-problem--error.djs-connection .djs-visual > :nth-child(1),
+.tf-problem--warning.djs-connection .djs-visual > :nth-child(1) {
+  stroke-dasharray: 6 3 !important;
+}
+
+.tf-issues__source {
+  font-size: 0.72rem;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  padding: 1px 6px;
+  border-radius: 999px;
+  border: 1px solid var(--tf-border-strong);
+  color: var(--tf-text-muted);
+  white-space: nowrap;
+}
+.tf-issues__source--engine {
+  border-color: var(--tf-accent);
+  color: var(--tf-accent);
+}
+
+.tf-issues__live {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin: 0 0 8px;
 }

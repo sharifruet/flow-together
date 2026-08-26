@@ -62,4 +62,33 @@ class SharePointAttachmentStoreTest {
     void sanitisesTheTaskIdToo() {
         assertThat(storeWith("Docs").uploadPath("../evil", "a.pdf")).isEqualTo("/Docs/evil/a.pdf");
     }
+
+    /**
+     * Graph's {@code root:<path>:} addressing needs the separators literal. Encoding the
+     * whole path as one URI variable turns them into {@code %2F}, which is a different
+     * address — the reason {@code uploadUri} builds the URI itself.
+     */
+    @Test
+    void keepsPathSeparatorsLiteralInTheGraphUri() {
+        assertThat(storeWith("Docs").uploadUri("/Docs/task-1/invoice.pdf"))
+                .hasToString("https://graph.microsoft.com/v1.0"
+                        + "/drives/drive-1/root:/Docs/task-1/invoice.pdf:/content");
+    }
+
+    /** A space in a file name is legal in SharePoint and illegal in a URI. */
+    @Test
+    void percentEncodesWithinASegment() {
+        assertThat(storeWith("Docs").uploadUri("/Docs/t/quarterly report.pdf"))
+                .hasToString("https://graph.microsoft.com/v1.0"
+                        + "/drives/drive-1/root:/Docs/t/quarterly%20report.pdf:/content");
+        // Not "+", which in a path is a literal plus rather than a space.
+        assertThat(storeWith("Docs").uploadUri("/Docs/t/a b.pdf").toString()).doesNotContain("+");
+    }
+
+    @Test
+    void encodesNonAsciiFileNames() {
+        assertThat(storeWith("Docs").uploadUri("/Docs/t/facturé.pdf"))
+                .hasToString("https://graph.microsoft.com/v1.0"
+                        + "/drives/drive-1/root:/Docs/t/factur%C3%A9.pdf:/content");
+    }
 }

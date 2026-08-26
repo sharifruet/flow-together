@@ -4,6 +4,7 @@ import {
   CaseApi,
   CaseDefinitionAccessApi,
   DecisionHistoryApi,
+  EventRecorderApi,
   EventRegistryApi,
   ExternalWorkerApi,
   InstanceApi,
@@ -36,6 +37,11 @@ export interface AppProps {
   cmmnBase: string;
   eventBase: string;
   externalJobBase: string;
+  /**
+   * Base URL of the optional inbound event recorder (§7.2, ADR 0015). Empty — the
+   * default — means it is not deployed, and Control offers no received-events view.
+   */
+  eventRecorderBase?: string;
   fetchImpl?: typeof fetch;
 }
 
@@ -46,6 +52,7 @@ export function App({
   cmmnBase,
   eventBase,
   externalJobBase,
+  eventRecorderBase,
   fetchImpl,
 }: AppProps) {
   const t = useT();
@@ -89,6 +96,9 @@ export function App({
       cmmn: make(cmmnBase),
       event: make(eventBase),
       externalJob: make(externalJobBase),
+      // Undefined rather than a client over an empty base: an absent recorder must be
+      // distinguishable from one that has recorded nothing.
+      eventRecorder: eventRecorderBase ? make(eventRecorderBase) : undefined,
     };
   }, [
     apiBase,
@@ -96,6 +106,7 @@ export function App({
     cmmnBase,
     eventBase,
     externalJobBase,
+    eventRecorderBase,
     fetchImpl,
     getAuthHeaders,
     tenantId,
@@ -114,6 +125,7 @@ export function App({
       caseAccess: new CaseDefinitionAccessApi(clients.cmmn),
       events: new EventRegistryApi(clients.event),
       workers: new ExternalWorkerApi(clients.externalJob),
+      eventRecorder: clients.eventRecorder ? new EventRecorderApi(clients.eventRecorder) : undefined,
     }),
     [clients],
   );
@@ -154,7 +166,9 @@ export function App({
           systemApi={apis.system}
         />
       ) : null}
-      {view === "events" ? <EventRegistry eventApi={apis.events} /> : null}
+      {view === "events" ? (
+        <EventRegistry eventApi={apis.events} recorderApi={apis.eventRecorder} />
+      ) : null}
       {view === "jobs" ? <Jobs jobApi={apis.jobs} /> : null}
       {view === "deployments" ? <Deployments repositoryApi={apis.repository} /> : null}
       {view === "system" ? (

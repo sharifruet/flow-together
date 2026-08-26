@@ -220,6 +220,13 @@
 				    configured (REQUIREMENTS.md §7.6). Building it is harmless either way.
 				-->
 				<module>modules/togetherflow-attachment-gateway</module>
+				<!--
+				    Optional: an inbound event log the engine does not keep
+				    (REQUIREMENTS.md §7.2, ADR 0015). A library added to the application
+				    hosting the event registry engine, not a service of its own, and off
+				    unless `togetherflow.events.recorder.enabled` says otherwise.
+				-->
+				<module>modules/togetherflow-event-recorder</module>
 			</modules>
 		</profile>
 		<profile>

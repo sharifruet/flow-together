@@ -125,6 +125,13 @@ export interface RequestOptions {
    * fetching raw content pass "text" to keep it verbatim.
    */
   responseType?: "json" | "text";
+  /**
+   * Content type for the request body. Left unset, a body is serialised as JSON, which is
+   * right for every REST resource that takes a JSON document. Set it to send the body
+   * verbatim instead — the model-validation endpoints take BPMN/CMMN XML as the body, and
+   * JSON-encoding that would send a quoted string the server cannot parse.
+   */
+  contentType?: string;
   timeoutMs?: number;
   /**
    * Forces retry on or off for this call. Left unset, only safe methods retry — see
@@ -221,10 +228,12 @@ export class ApiClient {
     if (attempt > 1) headers["X-Retry-Attempt"] = String(attempt);
 
     const isMultipart = options.body instanceof FormData;
+    // A body with an explicit content type is sent verbatim rather than JSON-encoded.
+    const isVerbatim = !isMultipart && options.contentType !== undefined;
     // Setting Content-Type by hand on a multipart request strips the boundary the
     // browser generates, and the server then fails to parse any part.
     if (options.body !== undefined && !isMultipart) {
-      headers["Content-Type"] = "application/json";
+      headers["Content-Type"] = options.contentType ?? "application/json";
     }
 
     const timeoutMs = options.timeoutMs ?? this.options.timeoutMs ?? DEFAULT_TIMEOUT_MS;
@@ -241,7 +250,9 @@ export class ApiClient {
             ? undefined
             : isMultipart
               ? (options.body as FormData)
-              : JSON.stringify(options.body),
+              : isVerbatim
+                ? (options.body as BodyInit)
+                : JSON.stringify(options.body),
         signal: deadline.signal,
       });
     } catch (cause) {

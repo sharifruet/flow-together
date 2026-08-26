@@ -8,11 +8,17 @@ on:
     paths:
       - "modules/togetherflow-*/**"
       - "docs/public-api/**"
+      - "k8s/**"
+      # Checkstyle's import-control.xml lives here and decides whether the Java modules
+      # below pass. A regression in it should fail a PR, not surface months later.
+      - "build-tools/**"
       - ".github/workflows/togetherflow-ui.yml"
   pull_request:
     paths:
       - "modules/togetherflow-*/**"
       - "docs/public-api/**"
+      - "k8s/**"
+      - "build-tools/**"
       - ".github/workflows/togetherflow-ui.yml"
 
 permissions:
@@ -44,6 +50,17 @@ jobs:
           cache-dependency-path: modules/${{ matrix.module }}/src/main/frontend/package-lock.json
 
       - name: Install
+        run: npm ci --no-audit --no-fund
+
+      # The apps consume togetherflow-common as an npm `file:` dependency, which npm
+      # installs as a symlink to the source tree. TypeScript resolves that symlink to its
+      # real path, so imports *inside* common resolve against common's own node_modules
+      # rather than the app's — `npm ci` above does not reach them. Without this, an app's
+      # typecheck and build fail on common's test helpers (axe-core, reached through
+      # `@togetherflow/common/testing/a11y`).
+      - name: Install togetherflow-common dependencies
+        if: matrix.module != 'togetherflow-common'
+        working-directory: modules/togetherflow-common/src/main/frontend
         run: npm ci --no-audit --no-fund
 
       - name: Lint
@@ -153,6 +170,16 @@ jobs:
       - name: Install
         run: npm ci --no-audit --no-fund
 
+      # The apps consume togetherflow-common as an npm `file:` dependency, which npm
+      # installs as a symlink to the source tree. TypeScript resolves that symlink to its
+      # real path, so imports *inside* common resolve against common's own node_modules
+      # rather than the app's — `npm ci` above does not reach them. Without this, an app's
+      # typecheck and build fail on common's test helpers (axe-core, reached through
+      # `@togetherflow/common/testing/a11y`).
+      - name: Install togetherflow-common dependencies
+        working-directory: modules/togetherflow-common/src/main/frontend
+        run: npm ci --no-audit --no-fund
+
       - name: Install browser
         run: npx playwright install --with-deps chromium
 
@@ -193,6 +220,16 @@ jobs:
       - name: Install
         run: npm ci --no-audit --no-fund
 
+      # The apps consume togetherflow-common as an npm `file:` dependency, which npm
+      # installs as a symlink to the source tree. TypeScript resolves that symlink to its
+      # real path, so imports *inside* common resolve against common's own node_modules
+      # rather than the app's — `npm ci` above does not reach them. Without this, an app's
+      # typecheck and build fail on common's test helpers (axe-core, reached through
+      # `@togetherflow/common/testing/a11y`).
+      - name: Install togetherflow-common dependencies
+        working-directory: modules/togetherflow-common/src/main/frontend
+        run: npm ci --no-audit --no-fund
+
       # NOTE: still non-blocking, and this is the one thing standing between here and a
       # gating visual suite. The committed baselines are darwin-generated; regenerate
       # them in this same container and commit the result:
@@ -213,6 +250,104 @@ jobs:
           name: visual-regression-report
           path: modules/togetherflow-work/src/main/frontend/test-results/
           retention-days: 7
+
+  java:
+    name: Java modules
+    runs-on: ubuntu-latest
+    # The two TogetherFlow Java modules — the optional attachment gateway and the optional
+    # event recorder. Neither was covered by anything: the verify matrix above is
+    # frontend-only, and togetherflow-docker-release.yml only ever runs `package
+    # -DskipTests`. Their tests and their checkstyle therefore ran on nobody's machine.
+    steps:
+      - uses: actions/checkout@v4
+
+      # 21 rather than the reactor's compile target of 17, matching
+      # togetherflow-docker-release.yml — these jars ship on a 21 JRE, so that is the
+      # runtime worth testing them on.
+      - uses: actions/setup-java@be666c2fcd27ec809703dec50e508c2fdc7f6654 # v5.2.0
+        with:
+          distribution: "temurin"
+          java-version: "21"
+          cache: maven
+
+      # Two steps rather than one `-am verify`: `-am` pulls in reactor dependencies
+      # (flowable-event-registry-api and friends), and running `verify` across those would
+      # execute the engine's own test suites, which is not what this job is for. Build the
+      # dependencies without tests, then verify only the two modules. `-am` also brings in
+      # build-tools, which is where the checkstyle configuration comes from.
+      - name: Build dependencies
+        run: >-
+          ./mvnw -B -ntp -Ptogetherflow
+          -pl modules/togetherflow-attachment-gateway,modules/togetherflow-event-recorder
+          -am install -Dmaven.test.skip=true
+
+      # `verify`, not `test`: checkstyle is bound to verify, so `test` would leave it
+      # unrun — which is exactly how these modules went unchecked in the first place.
+      - name: Test and checkstyle
+        run: >-
+          ./mvnw -B -ntp -Ptogetherflow
+          -pl modules/togetherflow-attachment-gateway,modules/togetherflow-event-recorder
+          verify
+
+      - name: Upload surefire reports on failure
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: java-surefire-reports
+          path: modules/togetherflow-*/target/surefire-reports/
+          retention-days: 7
+
+  manifests:
+    name: Helm chart and manifests
+    runs-on: ubuntu-latest
+    # The chart and the plain manifests in k8s/resources describe the same deployment and
+    # are maintained side by side, so both are checked here. Schema validation needs no
+    # cluster; it catches the typo-in-a-field class of breakage that only shows up at
+    # apply time otherwise. It does not prove scheduling, volumes or probes.
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: azure/setup-helm@v4
+        with:
+          version: v3.16.3
+
+      - name: Lint the chart
+        run: helm lint k8s/flowable/togetherflow
+
+      - name: Install kubeconform
+        run: |
+          curl -sSLo kubeconform.tar.gz \
+            https://github.com/yannh/kubeconform/releases/download/v0.6.7/kubeconform-linux-amd64.tar.gz
+          tar -xzf kubeconform.tar.gz kubeconform
+          sudo mv kubeconform /usr/local/bin/
+
+      - name: Validate the plain manifests
+        run: kubeconform -strict -summary -kubernetes-version 1.30.0 k8s/resources
+
+      # Rendered twice: defaults, and everything switched on. A conditional template that
+      # only breaks when its feature is enabled is exactly what a defaults-only render
+      # misses.
+      - name: Validate the chart with defaults
+        run: |
+          helm template tf k8s/flowable/togetherflow \
+            --set auth.oidc.authority=https://idp.example.com \
+            | kubeconform -strict -summary -kubernetes-version 1.30.0 -
+
+      - name: Validate the chart with every option enabled
+        run: |
+          helm template tf k8s/flowable/togetherflow \
+            --set auth.oidc.authority=https://idp.example.com \
+            --set attachmentGateway.enabled=true \
+            --set attachmentGateway.filesystem.publicBaseUrl=https://files.example.com \
+            --set ingress.enabled=true \
+            --set ingress.hosts.work=work.example.com \
+            --set ingress.hosts.control=control.example.com \
+            --set ingress.hosts.identity=identity.example.com \
+            --set ingress.hosts.design=design.example.com \
+            --set ingress.hosts.attachmentGateway=files.example.com \
+            --set serviceAccount.create=true \
+            --set networkPolicy.enabled=true \
+            | kubeconform -strict -summary -kubernetes-version 1.30.0 -
 
   audit:
     name: Dependency vulnerabilities

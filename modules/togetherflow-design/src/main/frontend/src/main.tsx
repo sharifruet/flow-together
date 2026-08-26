@@ -18,6 +18,7 @@ try {
           apiBase={config.apiBase}
           dmnBase={config.dmnBase}
           cmmnBase={config.cmmnBase}
+          idmBase={config.idmBase}
           appBase={config.appBase}
           eventBase={config.eventBase}
         />

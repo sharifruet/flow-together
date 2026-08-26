@@ -12,6 +12,7 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import "bpmn-js/dist/assets/diagram-js.css";
 import "bpmn-js/dist/assets/bpmn-js.css";
 import "bpmn-js/dist/assets/bpmn-font/css/bpmn.css";
+import "diagram-js-minimap/assets/diagram-js-minimap.css";
 import {
   ApiError,
   Button,
@@ -22,9 +23,11 @@ import {
   useToast,
   type ModelApi,
   type ModelResponse,
+  type ModelValidationApi,
 } from "@togetherflow/common";
 import { useBpmnModeler } from "./useBpmnModeler";
-import { canDeploy, validateBpmn, type ValidationIssue } from "./validateBpmn";
+import type { IdentitySource } from "./useIdentities";
+import { canDeploy, issuesFromServer, validateBpmn, type ValidationIssue } from "./validateBpmn";
 import { downloadFile } from "../library/importExport";
 import { PropertiesPanel } from "./PropertiesPanel";
 
@@ -32,6 +35,14 @@ const AUTOSAVE_IDLE_MS = 4000;
 
 export interface BpmnEditorProps {
   modelApi: ModelApi;
+  /**
+   * Server-side validation (§7.4.2). Optional so the editor still works against a
+   * deployment whose engine predates the model-validation endpoint — it falls back to the
+   * browser checks and says so, rather than refusing to validate at all.
+   */
+  validationApi?: ModelValidationApi;
+  /** Ids the reference fields suggest, and the lookup that widens them as you type. */
+  identities?: IdentitySource;
   model: ModelResponse;
   initialXml: string | null;
   loadError?: string | null;
@@ -42,6 +53,8 @@ export interface BpmnEditorProps {
 
 export function BpmnEditor({
   modelApi,
+  validationApi,
+  identities,
   model,
   initialXml,
   loadError,
@@ -70,7 +83,23 @@ export function BpmnEditor({
     markSaved,
     updateProperties,
     moddle,
+    getRootElements,
+    addRootElement,
+    getOutgoingFlows,
+    getFlowElement,
+    ensureNamespace,
+    replaceElementType,
+    updateModdleProperties,
+    markProblems,
+    onModelChanged,
   } = useBpmnModeler(initialXml);
+  /*
+   * `useBpmnModeler` keeps a `revision` counter that it bumps whenever the edited element
+   * changes. It is deliberately not read here: bumping it re-renders this component, which
+   * re-renders the properties panel, which re-reads the business object bpmn-js mutated in
+   * place. Re-mounting the panel instead — by keying it on the revision — would work too,
+   * and would throw away input focus on every keystroke.
+   */
   const [saving, setSaving] = useState(false);
   const [deploying, setDeploying] = useState(false);
   const [lastSavedAt, setLastSavedAt] = useState<Date | null>(null);
@@ -78,6 +107,17 @@ export function BpmnEditor({
   const [confirmDeploy, setConfirmDeploy] = useState(false);
   const [sourceXml, setSourceXml] = useState<string | null>(null);
   const [issues, setIssues] = useState<ValidationIssue[] | null>(null);
+  /** Whether the last check got a verdict from the engine, which decides the panel's caveat. */
+  const [engineChecked, setEngineChecked] = useState(false);
+  const [checking, setChecking] = useState(false);
+  /**
+   * Re-check as the model changes, rather than only when asked (§14.3).
+   *
+   * Browser checks only: they are synchronous and free, whereas asking the engine on every
+   * keystroke would be a request per edit. The engine's verdict still arrives on an
+   * explicit check or a deploy, and the panel keeps saying which side reported what.
+   */
+  const [liveChecking, setLiveChecking] = useState(true);
 
   /** Read-only view of the XML the engine will actually receive (§7.4.2). */
   const openSource = useCallback(async () => {
@@ -89,19 +129,111 @@ export function BpmnEditor({
   }, [getXml, push, t]);
 
   /**
-   * Runs the client-side checks. They approximate `flowable-process-validation`, which
-   * no REST endpoint exposes — so this catches the common mistakes early but is not a
-   * guarantee, and the panel says so.
+   * Validates the model, preferring the engine's own verdict.
+   *
+   * The browser checks run first and unconditionally: they need no round trip, and they are
+   * the only answer available when the engine cannot be reached. The engine's validator then
+   * runs over the same XML and its findings are merged in, labelled as its own. Returns the
+   * combined list so the deploy path can decide on it without checking twice.
    */
+  const runChecks = useCallback(
+    async (xml: string): Promise<{ found: ValidationIssue[]; fromEngine: boolean }> => {
+      const browserIssues = validateBpmn(xml).map((issue) => ({
+        ...issue,
+        source: "browser" as const,
+      }));
+
+      /*
+       * Structural linting, loaded on demand so it stays out of the editor's own chunk.
+       * A failure here is not allowed to lose the checks that did run — the linter is the
+       * least authoritative of the three, so it degrades quietly.
+       */
+      let lintIssues: ValidationIssue[] = [];
+      try {
+        const { lintXml } = await import("./lintBpmn");
+        lintIssues = await lintXml(xml);
+      } catch {
+        /* linting is advisory; its absence is not worth a message */
+      }
+
+      if (!validationApi) return { found: [...lintIssues, ...browserIssues], fromEngine: false };
+      try {
+        const verdict = await validationApi.validateBpmn(xml);
+        return {
+          found: [...issuesFromServer(verdict), ...browserIssues, ...lintIssues],
+          fromEngine: true,
+        };
+      } catch {
+        // An unreachable validator must not block modelling, but it must not be silent
+        // either: the panel's caveat changes, and the toast says which half ran.
+        push({ tone: "warning", message: t("bpmn.checks.serverUnreachable") });
+        return { found: [...browserIssues, ...lintIssues], fromEngine: false };
+      }
+    },
+    [push, t, validationApi],
+  );
+
   const check = useCallback(async () => {
+    setChecking(true);
     try {
-      const found = validateBpmn(await getXml());
+      const { found, fromEngine } = await runChecks(await getXml());
       setIssues(found);
+      setEngineChecked(fromEngine);
       if (found.length === 0) push({ tone: "success", message: t("bpmn.checksClean") });
     } catch (cause) {
       push({ tone: "error", message: (cause as Error).message || t("bpmn.checkFailed") });
+    } finally {
+      setChecking(false);
     }
-  }, [getXml, push, t]);
+  }, [getXml, push, runChecks, t]);
+
+  /*
+   * Keep the canvas markers in step with whatever the panel is currently showing. Done as
+   * an effect on `issues` rather than at each call site, so no path can update the list
+   * and forget the diagram — dismissing the panel clears the markers for the same reason.
+   */
+  useEffect(() => {
+    markProblems(
+      (issues ?? [])
+        .filter((issue) => issue.elementId)
+        .map((issue) => ({ elementId: issue.elementId!, severity: issue.severity })),
+    );
+  }, [issues, markProblems]);
+
+  /*
+   * Re-run the browser checks whenever the model changes.
+   *
+   * Debounced, because `commandStack.changed` fires on every keystroke in a label and
+   * re-parsing the XML each time is wasted work. Engine-sourced problems are dropped on
+   * the first edit: they described the model as it was, and silently keeping a stale
+   * verdict next to fresh ones would be worse than showing fewer.
+   */
+  useEffect(() => {
+    if (!liveChecking || !ready) return;
+    let timer: ReturnType<typeof setTimeout> | undefined;
+    const unsubscribe = onModelChanged(() => {
+      clearTimeout(timer);
+      timer = setTimeout(() => {
+        void (async () => {
+          try {
+            const found = validateBpmn(await getXml()).map((issue) => ({
+              ...issue,
+              source: "browser" as const,
+            }));
+            setIssues(found.length > 0 ? found : null);
+            setEngineChecked(false);
+          } catch {
+            // A model that cannot be serialised mid-edit is not worth reporting; the next
+            // change will re-check.
+          }
+        })();
+      }, 400);
+    });
+    return () => {
+      clearTimeout(timer);
+      unsubscribe();
+    };
+  }, [liveChecking, ready, onModelChanged, getXml]);
 
   /** Deploying runs the checks first; blocking problems stop it before the round trip. */
 
@@ -133,9 +265,11 @@ export function BpmnEditor({
   }, [getXml, markSaved, modelApi, model, push, onSaved, t]);
 
   const startDeploy = useCallback(async () => {
+    setChecking(true);
     try {
-      const found = validateBpmn(await getXml());
+      const { found, fromEngine } = await runChecks(await getXml());
       setIssues(found.length > 0 ? found : null);
+      setEngineChecked(fromEngine);
       if (!canDeploy(found)) {
         push({
           tone: "error",
@@ -145,9 +279,11 @@ export function BpmnEditor({
       }
     } catch {
       // A model we cannot even read is the engine's problem to report.
+    } finally {
+      setChecking(false);
     }
     setConfirmDeploy(true);
-  }, [getXml, push, t]);
+  }, [getXml, push, runChecks, t]);
 
   const save = useCallback(
     async (options: { silent?: boolean } = {}) => {
@@ -283,7 +419,12 @@ export function BpmnEditor({
           <Button variant="secondary" disabled={!ready} onClick={() => void openSource()}>
             {t("bpmn.xmlTitle")}
           </Button>
-          <Button variant="secondary" disabled={!ready} onClick={() => void check()}>
+          <Button
+            variant="secondary"
+            loading={checking}
+            disabled={!ready}
+            onClick={() => void check()}
+          >
             {t("action.check")}
           </Button>
           <Button variant="secondary" loading={saving} disabled={!ready} onClick={() => void save()}>
@@ -297,7 +438,7 @@ export function BpmnEditor({
           >
             {t("editor.saveVersion")}
           </Button>
-          <Button loading={deploying} disabled={!ready} onClick={() => void startDeploy()}>
+          <Button loading={deploying || checking} disabled={!ready} onClick={() => void startDeploy()}>
             {t("action.deploy")}
           </Button>
         </div>
@@ -306,10 +447,13 @@ export function BpmnEditor({
       {issues && issues.length > 0 ? (
         <section className="tf-issues" aria-label={t("bpmn.checksLabel")}>
           <h2 className="tf-issues__title">
-            {issues.filter((i) => i.severity === "error").length} problem
-            {issues.filter((i) => i.severity === "error").length === 1 ? "" : "s"},{" "}
-            {issues.filter((i) => i.severity === "warning").length} warning
-            {issues.filter((i) => i.severity === "warning").length === 1 ? "" : "s"}
+            {t("bpmn.checks.summary.problems", {
+              count: issues.filter((i) => i.severity === "error").length,
+            })}
+            {", "}
+            {t("bpmn.checks.summary.warnings", {
+              count: issues.filter((i) => i.severity === "warning").length,
+            })}
           </h2>
           <ul className="tf-issues__list">
             {issues.map((issue, index) => (
@@ -318,6 +462,9 @@ export function BpmnEditor({
                 key={`${issue.elementId ?? ""}-${index}`}
               >
                 <span className="tf-issues__severity">{issue.severity}</span>
+                <span className={`tf-issues__source tf-issues__source--${issue.source ?? "browser"}`}>
+                  {t(`bpmn.checks.source.${issue.source ?? "browser"}`)}
+                </span>
                 <span>{issue.message}</span>
                 {issue.elementId ? (
                   <button
@@ -332,9 +479,16 @@ export function BpmnEditor({
             ))}
           </ul>
           <p className="tf-issues__caveat">
-            These checks run in the browser. The engine's own validator has no REST
-            endpoint, so passing here doesn't guarantee the engine will accept the model.
+            {engineChecked ? t("bpmn.checks.caveat.engine") : t("bpmn.checks.caveat.browserOnly")}
           </p>
+          <label className="tf-checkbox tf-issues__live">
+            <input
+              type="checkbox"
+              checked={liveChecking}
+              onChange={(event) => setLiveChecking(event.target.checked)}
+            />
+            {t("bpmn.checks.live")}
+          </label>
           <Button variant="secondary" onClick={() => setIssues(null)}>
             {t("action.dismiss")}
           </Button>
@@ -396,6 +550,15 @@ export function BpmnEditor({
           element={selection}
           disabled={busy}
           onChange={updateProperties}
+          getRootElements={getRootElements}
+          addRootElement={addRootElement}
+          getOutgoingFlows={getOutgoingFlows}
+          getFlowElement={getFlowElement}
+          ensureNamespace={ensureNamespace}
+          identities={identities}
+          onIdentitySearch={identities?.search}
+          replaceElementType={replaceElementType}
+          updateModdleProperties={updateModdleProperties}
         />
       </div>
 
