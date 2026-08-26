@@ -26,12 +26,12 @@ are substantially built but **not verified end to end**; §5 is explicit about w
 | `togetherflow-identity` | Users, groups, privileges | 41 |
 | `togetherflow-design` | Model authoring across six model types | 147 |
 | `togetherflow-attachment-gateway` | Optional attachment storage (Java) | 38 |
-| `togetherflow-event-recorder` | Optional inbound event log (Java) | 21 |
+| `togetherflow-event-recorder` | Optional inbound event log (Java) | 36 |
 
 **577 frontend tests across 59 files.** Lint, typecheck, production build and bundle
 budget pass for every module; the component gallery builds. On the Java side, the
 model-validation resources add 9 REST tests against a real engine, and the attachment
-gateway went from 13 tests to 38; the new event recorder adds 21.
+gateway went from 13 tests to 38; the new event recorder adds 36.
 
 ---
 
@@ -298,6 +298,61 @@ Design is at 296 tests.
 
 ---
 
+## 2e. The event recorder, reviewed
+
+The module was flagged in §2b's security review as **entirely unreviewed** — a new module
+persisting inbound event payloads behind a new HTTP endpoint, with one authorization gap
+already known. It has now been read end to end, all 947 lines. Five findings; four were real.
+
+**1 — no tenant boundary, and no authorization anywhere in the module (high).** `tenantId`
+was a filter the *caller* chose. Omitting it returned every tenant's rows, payloads and all,
+to anyone the host application had authenticated — so the leak was the request that supplied
+nothing, which is also the request a curious browser makes. Control always sent the active
+tenant, but that value came from a client-side setting, and the UI is not a boundary.
+
+Fixed by making the module ask rather than guess. `EventRecorderTenantResolver` is a
+one-method interface the host implements over whatever principal it already has; under the
+default `tenant-scope=strict` every query is filtered to what it returns, a disagreeing
+`tenantId` is refused with `403` rather than quietly narrowed, and a resolver that returns
+`null` refuses the request instead of widening it. **Enabling the recorder without a resolver
+now fails startup**, with a message naming the two ways out. A single-tenant deployment
+writes `tenant-scope=single-tenant` and keeps the old behaviour.
+
+The shape of that decision is the point. This module has no Spring Security dependency and
+cannot know how the host authenticates, so the options were to guess, to document and hope,
+or to refuse to start until told. Documenting and hoping is what was already in place, and it
+is what left the gap open.
+
+**2 — `store-payload: false` did not stop payload content being stored (medium).** On a
+rejected event the exception message went into `ERROR_`, and the stock pipeline throws
+`"No event model found for event key " + eventKey` — where on a JSON channel that key is read
+straight out of the body. The one control offered for "record the arrival, not the contents"
+was bypassed on exactly the rows most likely to hold malformed personal data. Payload
+suppression now covers the message too, keeping the exception's class name only.
+
+**3 — a misconfiguration silently disabled the whole feature (low).** `max-payload-length`
+defaults to 4000, which is also the width of `PAYLOAD_`. Set it higher and every insert
+overflowed the column, the best-effort `catch` swallowed the failure, and the recorder looked
+enabled while the table stayed empty. Refused at construction now, as the table name already
+was. Same shape as §6's lesson, arrived at from the other direction: not a check that never
+ran, but a feature that never ran and reported nothing.
+
+**4 — was wrong.** Negative `start`/`size` were reported as reaching SQL. They do not:
+`EventRecordQuery`'s compact constructor already clamps both. The review missed it; the guard
+added for it was removed again rather than left in to look like a second defence.
+
+**5 — a null guard contradicted two lines later (low).** `channelModel` was null-checked for
+its key, then dereferenced unconditionally for its pipeline. Removed, with a note saying why.
+
+21 tests to 36. Each of the tenant tests was run against the previous controller first and
+each failed, including the one that matters — a resolver that cannot identify the caller
+answered `200` with every tenant's rows where it now answers `403`. Findings 2 and 3 were
+verified the same way.
+
+**Still not reviewed:** the Control event-registry screens.
+
+---
+
 ## 3. Verification status — read this before trusting anything
 
 **Verified locally**: lint, typecheck, unit and component tests, production builds, bundle
@@ -321,7 +376,7 @@ the one that rejected four earlier versions of this serialiser.
 | Work's extended e2e | Same | The two new keyboard tests are unrun; the five pre-existing ones passed before this pass |
 | Visual regression | Baselines are darwin-generated | Cannot gate on linux — see §4 |
 | SharePoint attachment provider | Needs an Azure tenant | Unchanged as an end-to-end gap, but no longer untested — see §2b |
-| The event recorder against a live engine | No running engine with a broker-backed channel | Its 20 tests drive the `InboundEventProcessor` directly. That **replacing the processor on a running engine records real traffic** is unproven — as is the startup window, where events arriving before the swap go unrecorded. Exercise it against a real JMS/Kafka/RabbitMQ channel before relying on it |
+| The event recorder against a live engine | No running engine with a broker-backed channel | Its tests drive the `InboundEventProcessor` directly. That **replacing the processor on a running engine records real traffic** is unproven — as is the startup window, where events arriving before the swap go unrecorded. Exercise it against a real JMS/Kafka/RabbitMQ channel before relying on it |
 
 ---
 
@@ -369,7 +424,7 @@ environment. The other two need humans and are named as such rather than quietly
 | Item | State |
 |---|---|
 | **Load testing** | **Harness built**, `qa/load/` — a seeder that populates an engine over its public REST API, plus k6 scenarios for Work's inbox and Control's operational screens, with thresholds that fail the run. Verified end to end at a smoke profile against a real engine. **No full-volume baseline has been produced**, so nothing here is yet known to be fast or slow at realistic volume. Run it on Postgres at your own volume — that is the remaining work, and it is a run, not a build |
-| **Security review** | **Partial.** No findings across the model-validation resources, the attachment gateway and the frontend client. `togetherflow-event-recorder` and the Control event-registry screens were **not** reviewed, and the recorder has a known cross-tenant read issue. Detail and scope below |
+| **Security review** | **Partial.** No findings across the model-validation resources, the attachment gateway and the frontend client. The event recorder has since been reviewed separately (§2e) and its cross-tenant read is fixed. The Control event-registry screens remain unreviewed. Detail and scope below |
 | **DR drill** | **Runbook written**, [OPERATIONS.md §8b](OPERATIONS.md) — what holds state, RPO/RTO targets, and a step-by-step drill whose verification order is designed to catch a database-only backup. **Never executed.** Treat the first run as a test of the runbook as much as of the system |
 | **Manual accessibility audit** | **Not done, and not automatable.** Automated axe is in CI and covers roughly the machine-checkable third of WCAG; §13.6 is explicit that this is half the requirement. Needs a screen reader and a keyboard-only pass by a person |
 | **Usability testing with the real personas** | **Not done.** A per-phase requirement no phase ever met. Needs actual business users, process owners, operators and citizen developers |
@@ -384,11 +439,11 @@ this be fast". `--postgres` exists for that reason.
 **Scope, stated precisely, because it is narrower than "this pass".** The review covered the
 two model-validation resources, the attachment gateway, and the frontend API client changes.
 It did **not** cover `togetherflow-event-recorder` or the Control event-registry screens —
-those were written in parallel and were never in the reviewed set. To be exact rather than
-merely careful: **the event recorder has had no security review at all**, not just none from
-this one. It is a new module that persists inbound event payloads and serves them over a new
-HTTP endpoint, and one authorization gap in it is already known (recorded at the end of this
-section). Reviewing it is outstanding work, not a formality.
+those were written in parallel and were never in the reviewed set.
+
+**The recorder has since been reviewed on its own** (§2e). Five findings, four real; the
+authorization gap recorded at the end of this section is closed. The Control event-registry
+screens remain unreviewed.
 
 Within that scope: **no findings**, with each claim traced into the engine source rather than
 taken from a comment. What was checked, so the next reviewer knows what has already been
@@ -425,20 +480,12 @@ is unreachable while `validateSchema` is `false`: the false/false combination is
 branch that reads the document through a reader the converter has not hardened, so anyone
 who later turns schema validation on inherits the safe path rather than that one.
 
-Three issues are noted here and are **not** cleared, because they sit outside the reviewed
-diff. All three have the same shape — an endpoint trusting a caller-supplied identifier:
+Three issues were noted here as outside the reviewed diff. All three had the same shape —
+an endpoint trusting a caller-supplied identifier. The first is now **fixed** (§2e); the
+other two stand:
 
-- **`togetherflow-event-recorder` reads across tenants.** `GET /event-recorder/events` takes
-  `tenantId` as a query parameter and filters on it with no server-side enforcement, and the
-  filter is skipped when the parameter is absent — so an authenticated caller who simply
-  omits it receives **every tenant's** recorded payloads. Control sends the active tenant;
-  nothing requires a caller to. §13.1 is explicit that server-side enforcement must sit
-  behind UI-side hiding, and here there is none. Single-tenant deployments are unaffected.
-  Enforcing it properly needs the host application's interceptor, which is outside the
-  module; until then the mitigations are `store-payload: false`, or not deploying the
-  recorder. Documented in the module README and ADR 0015. **Decide this before enabling the
-  recorder on a multi-tenant deployment.** (Query parameters are properly bound, so there is
-  no injection issue — only an authorization one.)
+- ~~**`togetherflow-event-recorder` reads across tenants.**~~ **Fixed.** `GET
+  /event-recorder/events` no longer takes the caller's word for `tenantId`. See §2e.
 - `AttachmentController.upload` performs no check tying the caller to the `taskId` they
   upload against. Anyone who can reach the gateway can write into any task's folder.
   Pre-existing. The gateway's README already states it does not authenticate callers and
@@ -448,8 +495,9 @@ diff. All three have the same shape — an endpoint trusting a caller-supplied i
   configuration rather than user input, so it is config-injects-config, but a folder path
   containing `..` would traverse within the drive.
 
-The first of those is the argument for reviewing the recorder properly rather than assuming
-this section covers it.
+Both remaining ones are in the attachment gateway, whose README already says it authenticates
+nobody and must sit behind the same ingress and auth as the apps. That sentence is what these
+two look like in practice; neither is closed by writing it down.
 
 ### Translation
 

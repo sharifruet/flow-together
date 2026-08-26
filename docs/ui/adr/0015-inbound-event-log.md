@@ -96,18 +96,26 @@ operator that no events arrived when in truth nothing was watching.
 - **Payloads are personal data** (§13.7). Retention defaults to seven days rather than
   forever, `store-payload: false` keeps the arrival without the contents, and the endpoint
   inherits the host application's authentication — it must not be exposed unauthenticated.
-- **The endpoint has no tenant boundary, and its default is unfiltered.** `tenantId` is an
-  optional parameter applied only when supplied — `JdbcEventRecordStore.query` skips a null
-  filter — so a request that omits it returns **every tenant's rows**. Control always sends
-  the active tenant, but §13.1 requires server-side enforcement behind UI-side scoping and
-  this endpoint has none. The fix is therefore larger than validating a caller-supplied
-  tenant: the leak is the request that supplies none, so enforcement has to *derive* the
-  tenant from the authenticated principal and apply it unconditionally — which needs the
-  host application's interceptor and is outside this module. Recorded as a known
-  limitation rather than left to be discovered: a multi-tenant deployment that must not
-  leak payloads across tenants should run `store-payload: false`, or leave the recorder
-  undeployed until the scope is enforced. The query is parameter-bound throughout, so this
-  is purely an authorization gap with no injection issue beside it.
+- **The tenant boundary is the host application's to draw, and the recorder makes it draw
+  it.** `tenantId` was originally an optional parameter applied only when supplied —
+  `JdbcEventRecordStore.query` skips a null filter — so a request that omitted it came back
+  with **every tenant's rows**, payloads included. Control always sent the active tenant,
+  but §13.1 requires server-side enforcement behind UI-side scoping, and that value came
+  from a client-side setting. Validating a caller-supplied tenant would not have fixed it:
+  the leak was the request that supplied none.
+
+  Resolved by making the module ask. `EventRecorderTenantResolver` is a one-method
+  interface the host implements over whatever principal it already has; under the default
+  `tenant-scope=strict` every query is filtered to what it returns, a disagreeing
+  `tenantId` is refused with `403`, and a resolver that returns `null` refuses the request
+  rather than widening it. Enabling the recorder without one **fails startup**. A
+  single-tenant deployment writes `tenant-scope=single-tenant` and gets the old behaviour.
+
+  The shape of the decision matters more than the mechanism: this module has no Spring
+  Security dependency and cannot know how the host authenticates, so the only options were
+  to guess, to document and hope, or to refuse to start until told. It refuses to start.
+  The store is parameter-bound throughout, so this was purely an authorization gap with no
+  injection issue beside it.
 - Not verified against a real broker. The tests drive the processor directly; that
   replacing the processor on a live engine records real JMS/Kafka/RabbitMQ traffic has not
   been exercised.

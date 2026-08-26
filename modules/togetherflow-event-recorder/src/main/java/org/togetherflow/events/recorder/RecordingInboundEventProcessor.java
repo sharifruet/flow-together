@@ -54,6 +54,9 @@ public class RecordingInboundEventProcessor implements InboundEventProcessor {
 
     private static final Logger LOGGER = LoggerFactory.getLogger(RecordingInboundEventProcessor.class);
 
+    /** The width of {@code ERROR_}. Anything longer would fail the insert. */
+    private static final int MAX_ERROR_LENGTH = 1000;
+
     private final EventRegistry eventRegistry;
     private final EventRecordStore store;
     private final EventRecorderProperties properties;
@@ -69,7 +72,9 @@ public class RecordingInboundEventProcessor implements InboundEventProcessor {
 
     @Override
     public void eventReceived(InboundChannelModel channelModel, InboundEvent event) {
-        String channelKey = channelModel == null ? null : channelModel.getKey();
+        // Not null-guarded: the pipeline is read off it below, so a null would have thrown
+        // two lines later anyway. Guarding only the key read made it look otherwise.
+        String channelKey = channelModel.getKey();
         String payload = payloadOf(event);
 
         Collection<EventRegistryEvent> produced;
@@ -148,10 +153,21 @@ public class RecordingInboundEventProcessor implements InboundEventProcessor {
         return payload instanceof EventInstance instance ? instance.getTenantId() : null;
     }
 
-    /** Class name included: "null" on its own has sent people looking in the wrong place. */
-    private static String describe(RuntimeException failure) {
+    /**
+     * Class name included: "null" on its own has sent people looking in the wrong place.
+     *
+     * <p>The message is dropped when payload storage is off, because it can carry the
+     * payload. The stock pipeline throws {@code "No event model found for event key " +
+     * eventKey}, and on a JSON channel that key is read straight out of the body — so the
+     * one setting offered for "record the arrival, not the contents" was being bypassed on
+     * exactly the rows most likely to hold malformed personal data.
+     */
+    private String describe(RuntimeException failure) {
+        if (!properties.isStorePayload()) {
+            return failure.getClass().getSimpleName();
+        }
         String message = failure.getMessage();
         String text = failure.getClass().getSimpleName() + (message == null ? "" : ": " + message);
-        return text.length() > 1000 ? text.substring(0, 1000) : text;
+        return text.length() > MAX_ERROR_LENGTH ? text.substring(0, MAX_ERROR_LENGTH) : text;
     }
 }

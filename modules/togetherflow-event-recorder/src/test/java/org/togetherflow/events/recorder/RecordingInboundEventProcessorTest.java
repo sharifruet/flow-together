@@ -164,6 +164,42 @@ class RecordingInboundEventProcessorTest {
         });
     }
 
+    /*
+     * The other half of turning payload storage off. The pipeline's own message can quote
+     * the payload — the stock one throws "No event model found for event key " + eventKey,
+     * and on a JSON channel that key comes straight out of the body — so ERROR_ was keeping
+     * payload content on exactly the rows PAYLOAD_ was being denied.
+     */
+    @Test
+    void keepsPayloadContentOutOfTheErrorMessageWhenStorageIsTurnedOff() {
+        properties.setStorePayload(false);
+        InboundChannelModel channel = channel("orders", (model, event) -> {
+            throw new IllegalStateException("No event model found for event key 123-45-6789");
+        });
+
+        assertThatThrownBy(() -> processor().eventReceived(channel, inboundEvent("{\"ssn\":\"123-45-6789\"}")))
+                .isInstanceOf(IllegalStateException.class);
+
+        assertThat(store.records).singleElement().satisfies(recorded -> {
+            assertThat(recorded.payload()).isNull();
+            assertThat(recorded.errorMessage()).isEqualTo("IllegalStateException");
+            assertThat(recorded.errorMessage()).doesNotContain("123-45-6789");
+        });
+    }
+
+    @Test
+    void stillExplainsTheFailureWhenPayloadStorageIsOn() {
+        InboundChannelModel channel = channel("orders", (model, event) -> {
+            throw new IllegalStateException("no key detector");
+        });
+
+        assertThatThrownBy(() -> processor().eventReceived(channel, inboundEvent("bad")))
+                .isInstanceOf(IllegalStateException.class);
+
+        assertThat(store.records).singleElement().satisfies(recorded ->
+                assertThat(recorded.errorMessage()).isEqualTo("IllegalStateException: no key detector"));
+    }
+
     private RecordingInboundEventProcessor processor() {
         return new RecordingInboundEventProcessor(registry, store, properties, fixedClock());
     }

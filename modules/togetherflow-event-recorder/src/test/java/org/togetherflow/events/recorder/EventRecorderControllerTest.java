@@ -32,7 +32,24 @@ class EventRecorderControllerTest {
     @BeforeEach
     void setUp() {
         store = new CapturingStore();
-        mockMvc = MockMvcBuilders.standaloneSetup(new EventRecorderController(store)).build();
+        mockMvc = single(null);
+    }
+
+    /** A recorder that lets every caller read every row, as a single-tenant one does. */
+    private MockMvc single(String unused) {
+        EventRecorderProperties properties = new EventRecorderProperties();
+        properties.setTenantScope(EventRecorderTenantScope.SINGLE_TENANT);
+        return MockMvcBuilders
+                .standaloneSetup(new EventRecorderController(store, properties, null))
+                .build();
+    }
+
+    /** A recorder under the default scope, with a resolver that names {@code tenant}. */
+    private MockMvc strict(String tenant) {
+        EventRecorderProperties properties = new EventRecorderProperties();
+        return MockMvcBuilders
+                .standaloneSetup(new EventRecorderController(store, properties, () -> tenant))
+                .build();
     }
 
     @Test
@@ -73,6 +90,61 @@ class EventRecorderControllerTest {
         mockMvc.perform(get("/event-recorder/events").param("size", "100000")).andExpect(status().isOk());
 
         assertThat(store.lastQuery.size()).isEqualTo(100);
+    }
+
+    /*
+     * The tenant boundary. Before these, `tenantId` was a filter the caller chose: omitting
+     * it returned every tenant's rows, payloads and all, to anyone the host application had
+     * authenticated. Each of these fails against that version.
+     */
+
+    @Test
+    void strictScopeFiltersToTheResolverEvenWhenTheCallerAsksForNothing() throws Exception {
+        strict("acme").perform(get("/event-recorder/events")).andExpect(status().isOk());
+
+        assertThat(store.lastQuery.tenantId()).isEqualTo("acme");
+    }
+
+    @Test
+    void strictScopeRefusesAnotherTenantRatherThanQuietlyNarrowing() throws Exception {
+        strict("acme").perform(get("/event-recorder/events").param("tenantId", "globex"))
+                .andExpect(status().isForbidden());
+
+        assertThat(store.lastQuery).isNull();
+    }
+
+    @Test
+    void strictScopeAllowsTheCallerToRestateTheirOwnTenant() throws Exception {
+        strict("acme").perform(get("/event-recorder/events").param("tenantId", "acme"))
+                .andExpect(status().isOk());
+
+        assertThat(store.lastQuery.tenantId()).isEqualTo("acme");
+    }
+
+    @Test
+    void aResolverThatCannotSayWhoIsAskingGetsNoRowsRatherThanAllOfThem() throws Exception {
+        strict(null).perform(get("/event-recorder/events")).andExpect(status().isForbidden());
+        strict("  ").perform(get("/event-recorder/events")).andExpect(status().isForbidden());
+
+        assertThat(store.lastQuery).isNull();
+    }
+
+    @Test
+    void singleTenantScopeStillTreatsTenantIdAsAnOrdinaryFilter() throws Exception {
+        mockMvc.perform(get("/event-recorder/events").param("tenantId", "globex"))
+                .andExpect(status().isOk());
+
+        assertThat(store.lastQuery.tenantId()).isEqualTo("globex");
+    }
+
+    /** Flooring is EventRecordQuery's job; this pins that the endpoint benefits from it. */
+    @Test
+    void floorsPagingAsWellAsCappingIt() throws Exception {
+        mockMvc.perform(get("/event-recorder/events").param("start", "-5").param("size", "-1"))
+                .andExpect(status().isOk());
+
+        assertThat(store.lastQuery.start()).isZero();
+        assertThat(store.lastQuery.size()).isEqualTo(1);
     }
 
     private static final class CapturingStore implements EventRecordStore {

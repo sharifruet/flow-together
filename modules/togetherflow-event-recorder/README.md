@@ -60,9 +60,10 @@ being on the classpath is not consent.
 | Property | Default | Notes |
 |---|---|---|
 | `enabled` | `false` | Nothing is wired until this is `true` |
+| `tenant-scope` | `strict` | Who may read which rows. `strict` requires an `EventRecorderTenantResolver` bean and **fails startup without one**; `single-tenant` lets every caller read every row. See Tenancy |
 | `table-name` | `TF_EVENT_RECORD` | Must be a plain SQL identifier; validated, because it is interpolated into SQL and a table name cannot be a bind parameter |
 | `store-payload` | `true` | `false` keeps the arrival record but not the contents — see Data protection |
-| `max-payload-length` | `4000` | Longer payloads are truncated and the row says so |
+| `max-payload-length` | `4000` | Longer payloads are truncated and the row says so. Refused at startup above 4000, which is the width of `PAYLOAD_` |
 | `retention` | `7d` | Rows older than this are purged |
 | `purge-interval` | `1h` | Floored at 60s |
 
@@ -111,34 +112,64 @@ event that resolved to nothing and one the pipeline rejected.
   false` and a short retention, or leave it off and switch it on to investigate.
 - **A recorder that cannot write loses a diagnostic, never an event.** Every failure to
   record is logged and swallowed (§13.4); event processing continues regardless.
-- **No security model of its own.** The endpoint mounts alongside the host application's
+- **It authenticates nothing.** The endpoint mounts alongside the host application's own
   and inherits whatever authentication that enforces. It must sit behind the same ingress
-  and the same auth as the engine's own REST API. Do not expose it unauthenticated:
-  payloads are readable through it, and an inbound payload is often the least redacted
-  data in the system.
-- **The endpoint has no tenant boundary, and its default is unfiltered.** `tenantId` is an
-  optional query parameter that is applied only when supplied: `JdbcEventRecordStore.query`
-  skips a null or blank filter, so `GET /event-recorder/events` with no parameters returns
-  **every tenant's rows**. Control always sends the active tenant, but the UI is not the
-  boundary — §13.1 is explicit that server-side enforcement must sit behind UI-side
-  scoping, and here there is none.
+  and the same auth as the engine's REST API. Do not expose it unauthenticated: payloads
+  are readable through it, and an inbound payload is often the least redacted data in the
+  system. Authorization it does enforce — see Tenancy.
 
-  Note what that means for a fix: it is not enough to validate a caller-supplied
-  `tenantId`, because the leak is the request that supplies none. Whatever enforces this
-  has to **derive** the tenant from the authenticated principal and apply it whether or
-  not the caller asked, which needs the host application's interceptor and is outside this
-  module.
+## Tenancy
 
-  Single-tenant deployments are unaffected. In a multi-tenant one where tenants must not
-  read each other's payloads, run `store-payload: false` or leave the recorder undeployed
-  until the scope is enforced. (The query is parameter-bound throughout, so this is purely
-  an authorization gap — there is no injection issue alongside it.)
+`GET /event-recorder/events` returns event payloads, so it needs to know who is asking.
+This module cannot work that out itself: it has no Spring Security dependency and no
+opinion about how the host application authenticates. So the host says.
+
+```java
+@Bean
+EventRecorderTenantResolver tenantResolver() {
+    return () -> currentUser().getTenantId();
+}
+```
+
+Under the default `tenant-scope=strict`, every query is filtered to what that resolver
+returns, whether or not the caller asked; a `tenantId` parameter that disagrees is refused
+with `403` rather than quietly narrowed, because a mismatch is either a UI bug or an
+attempt and they look identical from the server. **A resolver returning `null` does not
+mean "no restriction"** — it means the caller's tenant could not be determined, and the
+answer to that is no rows, not all of them.
+
+Enabling the recorder with no resolver bean **fails startup**, with a message naming the
+two ways out. That is deliberate. A single-tenant deployment says so:
+
+```yaml
+togetherflow:
+  events:
+    recorder:
+      tenant-scope: single-tenant
+```
+
+and gets the old behaviour, where `tenantId` is an ordinary filter and every caller may
+read every row.
+
+**What this replaced.** `tenantId` used to be a filter the caller chose. Omitting it
+returned every tenant's rows, payloads and all, to anyone the host application had
+authenticated — `JdbcEventRecordStore.query` skips a blank filter, so the leak was the
+request that supplied *nothing*, which is also the request a curious browser makes. Control
+always sent the active tenant, but the UI is not a boundary: that value came from a
+client-side setting, and §13.1 is explicit that server-side enforcement sits behind UI-side
+scoping. The store is parameter-bound throughout, so this was purely an authorization gap;
+there was never an injection issue alongside it.
 
 ## Data protection
 
 Event payloads routinely carry personal data (§13.7). Two controls:
 `store-payload: false` records that something arrived on a channel, and when, without
-retaining what it said; and `retention` bounds how long anything is kept. Both are
+retaining what it said; and `retention` bounds how long anything is kept.
+
+`store-payload: false` suppresses the failure message as well as the payload, keeping only
+the exception's class name. It has to: the stock pipeline throws `"No event model found for
+event key " + eventKey`, and on a JSON channel that key is read straight out of the body —
+so `ERROR_` was keeping payload content on exactly the rows `PAYLOAD_` was being denied. Both are
 deployment configuration, neither requires a code change, and the default retention is
 seven days rather than forever.
 
@@ -148,13 +179,18 @@ seven days rather than forever.
 ./mvnw -Ptogetherflow -pl modules/togetherflow-event-recorder verify
 ```
 
-21 tests: the JDBC store against H2 (table creation, idempotent restart, paging across
-boundaries, deterministic ordering when timestamps collide, filters, retention purge,
-that an injected table name is refused, and — pinning the limitation above — that an
-unfiltered query returns every tenant), the recording processor (channel
-attribution, dispatch order, unresolved and failed payloads, truncation, payload
-suppression, and that a broken store does not stop event processing), and the controller's
-parameter binding and page-size cap.
+36 tests. The JDBC store against H2: table creation, idempotent restart, paging across
+boundaries, deterministic ordering when timestamps collide, filters, retention purge, an
+injected table name refused, a payload limit wider than its column refused. The recording
+processor: channel attribution, dispatch order, unresolved and failed payloads, truncation,
+payload suppression — including that suppression covers the error message — and that a
+broken store does not stop event processing. The controller: parameter binding, the page
+size cap, and the tenant boundary in both scopes. The autoconfiguration: that `strict` with
+no resolver fails startup, and that nothing is wired when the recorder is off.
+
+The tenant tests were each run against the previous controller first, and each failed —
+including the one that matters, where a resolver that cannot identify the caller answered
+`200` with every tenant's rows instead of `403`.
 
 **Not verified against a real broker.** Every test drives the processor directly. The
 seam itself — that replacing `InboundEventProcessor` on a live engine records real

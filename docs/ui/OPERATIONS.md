@@ -128,6 +128,7 @@ normally a thin image built over `flowable/flowable-rest` with the jar added.
 | Property | Default | Notes |
 |---|---|---|
 | `togetherflow.events.recorder.enabled` | `false` | Being on the classpath is not consent |
+| `togetherflow.events.recorder.tenant-scope` | `strict` | **The application will not start** with `strict` and no `EventRecorderTenantResolver` bean. Use `single-tenant` only where every caller may read every tenant's recorded payloads |
 | `togetherflow.events.recorder.store-payload` | `true` | `false` keeps arrivals without contents (§7 below) |
 | `togetherflow.events.recorder.retention` | `7d` | Purged on a background schedule |
 | `togetherflow.events.recorder.max-payload-length` | `4000` | Longer payloads truncated; the row says so |
@@ -137,12 +138,16 @@ Then set `TF_EVENT_RECORDER_BASE` on Control to reveal the **Received** tab. Lef
 the tab does not appear at all.
 
 **Before enabling it, read
-[the recorder's README](../../modules/togetherflow-event-recorder/README.md).** Two things
-matter operationally: it **replaces** the engine's inbound event processor, so a
-deployment that has installed a custom `InboundEventProcessor` must not enable it; and it
-adds a write to the path of every inbound event, which is exactly the cost the engine's
-design avoids. On a busy channel, prefer `store-payload: false` and a short retention, or
-leave it off and enable it to investigate.
+[the recorder's README](../../modules/togetherflow-event-recorder/README.md).** Three things
+matter operationally. It **replaces** the engine's inbound event processor, so a deployment
+that has installed a custom `InboundEventProcessor` must not enable it. It adds a write to
+the path of every inbound event, which is exactly the cost the engine's design avoids — on a
+busy channel prefer `store-payload: false` and a short retention, or leave it off and enable
+it to investigate. And it will **refuse to start** until you have said who may read the log:
+supply an `EventRecorderTenantResolver` bean deriving the tenant from your authenticated
+principal, or declare `tenant-scope: single-tenant`. That is a deliberate startup failure
+rather than a warning, because the alternative it prevents is serving every tenant's event
+payloads to every authenticated caller.
 
 ## 5. Observability
 
@@ -175,6 +180,8 @@ leave it off and enable it to investigate.
 | "This screen stopped working" | An unhandled render error, already reported | The Reference on screen matches the error report |
 | Work's attachment widget fails, rest of app fine | Attachment gateway down | Expected degradation — Work stays usable (§13.4) |
 | A case shows no diagram | The `.cmmn` has no CMMNDI | Not a fault; hand-written case files often lack it and the engine answers 400 |
+| The application will not start: "no EventRecorderTenantResolver bean is defined" | The recorder is enabled under the default `tenant-scope=strict` | Intentional, not a bug. Supply a resolver bean deriving the tenant from your authenticated principal, or set `tenant-scope: single-tenant` if every caller of this application may read every tenant's recorded event payloads. The failure exists because the previous default served them to everyone and said so only in a README |
+| The **Received** tab returns 403 | The tenant Control is asking for is not the one the server's resolver returns for this user | Control sends its active tenant; under `strict` the server refuses a mismatch rather than quietly narrowing it, because a UI bug and an attempt look identical from there. Check which tenant the user is actually entitled to |
 | Control shows no "Received" tab | The event recorder is not deployed, or `TF_EVENT_RECORDER_BASE` is unset | The engine keeps no inbound log of its own — `EventInstanceCollectionResource` is POST-only. The optional `togetherflow-event-recorder` provides one; the tab is hidden rather than empty when it is absent, because "nothing arrived" and "nothing was watching" are different answers (ADR 0015) |
 | The Received tab is present but always empty | The recorder is on the classpath but `togetherflow.events.recorder.enabled` is `false`, or nothing has arrived since it started | Check the startup log for "Inbound event recording enabled"; it also names the inbound processor it replaced. The log only covers the period since the recorder was switched on |
 | Received rows show `Matched nothing` | The payload arrived; the pipeline resolved it to no event definition | An unrecognised event key for that channel's detector, or a filter that dropped it. Nothing downstream was started — this is the diagnostic the feed exists for |

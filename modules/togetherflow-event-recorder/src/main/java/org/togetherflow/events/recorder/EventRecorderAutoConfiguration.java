@@ -51,9 +51,28 @@ public class EventRecorderAutoConfiguration {
         return new JdbcEventRecordStore(dataSource, properties);
     }
 
+    /**
+     * Fails the context rather than starting an endpoint that would serve every tenant's
+     * payloads to every caller.
+     *
+     * <p>An operator who has not thought about tenancy gets a startup failure naming the
+     * two ways out. That is deliberately louder than a warning in a log nobody reads, and
+     * it is the difference between a default that is safe and a default that is documented.
+     */
     @Bean
-    public EventRecorderController eventRecorderController(EventRecordStore store) {
-        return new EventRecorderController(store);
+    public EventRecorderController eventRecorderController(EventRecordStore store,
+            EventRecorderProperties properties, ObjectProvider<EventRecorderTenantResolver> tenantResolver) {
+
+        EventRecorderTenantResolver resolver = tenantResolver.getIfAvailable();
+        if (properties.getTenantScope() == EventRecorderTenantScope.STRICT && resolver == null) {
+            throw new IllegalStateException(
+                    "togetherflow.events.recorder is enabled with tenant-scope=strict, but no "
+                            + EventRecorderTenantResolver.class.getSimpleName() + " bean is defined. "
+                            + "Define one so the recorder can tell which tenant a caller may read, or set "
+                            + "togetherflow.events.recorder.tenant-scope=single-tenant if every caller of "
+                            + "this application may read every tenant's recorded event payloads.");
+        }
+        return new EventRecorderController(store, properties, resolver);
     }
 
     @Bean

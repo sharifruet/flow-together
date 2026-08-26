@@ -73,6 +73,19 @@ public class JdbcEventRecordStore implements EventRecordStore {
             throw new IllegalArgumentException(
                     "togetherflow.events.recorder.table-name must be a plain SQL identifier, got: " + name);
         }
+        /*
+         * Checked here rather than left to the insert. A max-payload-length wider than the
+         * column overflows PAYLOAD_ on every write, and the recorder's best-effort catch
+         * swallows the failure — so the feature would look enabled while the table stayed
+         * empty, which is the quietest kind of broken there is.
+         */
+        int payloadLength = properties.getMaxPayloadLength();
+        if (payloadLength < 1 || payloadLength > EventRecorderProperties.MAX_PAYLOAD_COLUMN_LENGTH) {
+            throw new IllegalArgumentException(
+                    "togetherflow.events.recorder.max-payload-length must be between 1 and "
+                            + EventRecorderProperties.MAX_PAYLOAD_COLUMN_LENGTH
+                            + " (the width of the PAYLOAD_ column), got: " + payloadLength);
+        }
         this.jdbc = new JdbcTemplate(dataSource);
         this.table = name;
         this.limitOffsetDialect = usesLimitOffset(dataSource);
@@ -117,7 +130,7 @@ public class JdbcEventRecordStore implements EventRecordStore {
                 + "EVENT_KEY_ VARCHAR(255), "
                 + "TENANT_ID_ VARCHAR(255), "
                 + "STATUS_ VARCHAR(16) NOT NULL, "
-                + "PAYLOAD_ VARCHAR(4000), "
+                + "PAYLOAD_ VARCHAR(" + EventRecorderProperties.MAX_PAYLOAD_COLUMN_LENGTH + "), "
                 + "TRUNCATED_ SMALLINT NOT NULL, "
                 + "ERROR_ VARCHAR(1000), "
                 + "PRIMARY KEY (ID_))");

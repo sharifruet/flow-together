@@ -49,6 +49,38 @@ class JdbcEventRecordStoreTest {
         assertThat(store.query(query(25)).data()).hasSize(1);
     }
 
+    /*
+     * A max-payload-length wider than PAYLOAD_ overflowed the column on every write, and
+     * the recorder's best-effort catch swallowed it — the feature looked enabled and the
+     * table stayed empty. It is refused at construction now, like the table name already was.
+     */
+    @Test
+    void refusesAPayloadLimitWiderThanTheColumn() {
+        EventRecorderProperties properties = new EventRecorderProperties();
+        properties.setMaxPayloadLength(EventRecorderProperties.MAX_PAYLOAD_COLUMN_LENGTH + 1);
+
+        assertThatThrownBy(() -> new JdbcEventRecordStore(dataSource, properties))
+                .isInstanceOf(IllegalArgumentException.class)
+                .hasMessageContaining("max-payload-length");
+    }
+
+    @Test
+    void refusesAPayloadLimitOfNothing() {
+        EventRecorderProperties properties = new EventRecorderProperties();
+        properties.setMaxPayloadLength(0);
+
+        assertThatThrownBy(() -> new JdbcEventRecordStore(dataSource, properties))
+                .isInstanceOf(IllegalArgumentException.class);
+    }
+
+    @Test
+    void acceptsAPayloadLimitExactlyAtTheColumnWidth() {
+        EventRecorderProperties properties = new EventRecorderProperties();
+        properties.setMaxPayloadLength(EventRecorderProperties.MAX_PAYLOAD_COLUMN_LENGTH);
+
+        assertThat(new JdbcEventRecordStore(dataSource, properties).query(query(25)).total()).isZero();
+    }
+
     @Test
     void isIdempotentWhenTheTableAlreadyExists() {
         store.record(record("orders", "orderPlaced", NOON, EventRecordStatus.RECEIVED));
@@ -122,15 +154,17 @@ class JdbcEventRecordStoreTest {
     }
 
     /**
-     * Pins a **known limitation**, not a desired behaviour: with no tenant filter the
-     * store returns every tenant's rows, because {@code appendEquals} skips a null value
-     * and the endpoint's {@code tenantId} parameter is optional.
+     * Pins <em>where the tenant boundary is</em>, which is not here.
      *
-     * <p>Written down as a test so it cannot change silently in either direction. The
-     * README and ADR 0015 both warn about it; if someone enforces tenant scoping here,
-     * this test fails and points at the documents that need updating with it. Note the
-     * fix is not to reject a forged {@code tenantId} — it is to supply one when the
-     * caller does not, which needs the host application's authenticated principal.
+     * <p>A null filter still matches every tenant, because {@code appendEquals} skips it —
+     * the store is a store, and the purge and the retention job both need to see all rows.
+     * Enforcement lives one layer up, in {@link EventRecorderController}, which supplies a
+     * tenant whether or not the caller asked and refuses one that disagrees.
+     *
+     * <p>This used to pin a defect rather than a design: the endpoint's {@code tenantId}
+     * was optional, so an unfiltered request went straight through to this behaviour and
+     * came back with every tenant's payloads. The store did not change; what was missing
+     * was anything above it.
      */
     @Test
     void returnsEveryTenantWhenNoTenantIsAsked() {
