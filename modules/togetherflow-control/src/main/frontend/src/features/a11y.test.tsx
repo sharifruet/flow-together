@@ -11,6 +11,7 @@ import { render, screen } from "@testing-library/react";
 import { describe, it, vi } from "vitest";
 import { expectNoA11yViolations } from "@togetherflow/common/testing/a11y";
 import {
+  RouterProvider,
   ToastProvider,
   type DataResponse,
   type InstanceApi,
@@ -40,9 +41,11 @@ describe("Control screens meet WCAG 2.1 AA", () => {
     } as unknown as JobApi;
 
     const { container } = render(
-      <ToastProvider>
-        <Jobs jobApi={jobApi} />
-      </ToastProvider>,
+      <RouterProvider>
+        <ToastProvider>
+          <Jobs jobApi={jobApi} />
+        </ToastProvider>
+      </RouterProvider>,
     );
     await screen.findByText("Send email");
     await expectNoA11yViolations(container);
@@ -66,9 +69,11 @@ describe("Control screens meet WCAG 2.1 AA", () => {
     } as unknown as InstanceApi;
 
     const { container } = render(
-      <ToastProvider>
-        <Instances instanceApi={instanceApi} />
-      </ToastProvider>,
+      <RouterProvider>
+        <ToastProvider>
+          <Instances instanceApi={instanceApi} />
+        </ToastProvider>
+      </RouterProvider>,
     );
     await screen.findByText("Invoice 42");
     await expectNoA11yViolations(container);

@@ -2,16 +2,21 @@ import { useCallback, useMemo, useState } from "react";
 import {
   ApiError,
   AsyncBoundary,
+  Badge,
   Button,
   ConfirmDialog,
   DataTable,
   EmptyState,
+  Icon,
   NoResultsState,
+  PageHeader,
   Pagination,
   TextInput,
+  UserChip,
   exportUserData,
   useAsync,
   useDebouncedValue,
+  useListState,
   useT,
   useToast,
   userDisplayName,
@@ -22,23 +27,36 @@ import {
 } from "@togetherflow/common";
 import { UserProfile } from "./UserProfile";
 
-const PAGE_SIZE = 25;
+/** What the query string carries for this list (W1.3, F1). */
+interface UsersView {
+  [key: string]: string;
+  q: string;
+}
+
+const DEFAULT_VIEW: UsersView = { q: "" };
 
 export interface UsersProps {
   /** Pictures and custom info live on the process API, not IDM — see UserProfile. */
   profileApi: UserProfileApi;
   idm: IdmApi;
   readOnly: boolean;
+  /**
+   * Id from `/users/:userId`. Opens that user's profile, so a person can be linked to —
+   * the first thing anyone wants to paste into a ticket, and impossible before W1.3.
+   */
+  selectedUserId?: string;
+  /** Called when the open profile changes, so the URL follows it. */
+  onSelectUser?: (userId: string | undefined) => void;
 }
 
-export function Users({ idm, profileApi, readOnly }: UsersProps) {
+export function Users({ idm, profileApi, readOnly, selectedUserId, onSelectUser }: UsersProps) {
   const t = useT();
   const { push } = useToast();
-  const [start, setStart] = useState(0);
-  const [search, setSearch] = useState("");
+  const list = useListState<UsersView>({ defaults: DEFAULT_VIEW, preferenceKey: "identity.users" });
+  const search = list.filters.q;
+  const setStart = list.setStart;
   const debounced = useDebouncedValue(search).trim();
   const [editing, setEditing] = useState<IdmUser | null>(null);
-  const [profileFor, setProfileFor] = useState<IdmUser | null>(null);
   const [creating, setCreating] = useState(false);
   const [pendingDelete, setPendingDelete] = useState<IdmUser | null>(null);
   const [busy, setBusy] = useState(false);
@@ -79,14 +97,14 @@ export function Users({ idm, profileApi, readOnly }: UsersProps) {
 
   const query = useMemo(
     () => ({
-      start,
-      size: PAGE_SIZE,
+      start: list.start,
+      size: list.size,
       sort: "id" as const,
       // The engine matches on a single field at a time, so the free-text box
       // searches by id — the identifier people actually know.
       ...(debounced ? { id: debounced } : {}),
     }),
-    [start, debounced],
+    [list.start, list.size, debounced],
   );
 
   const { data, error, loading, refetch } = useAsync(
@@ -124,11 +142,9 @@ export function Users({ idm, profileApi, readOnly }: UsersProps) {
       {
         key: "id",
         header: t("users.column.user"),
+        required: true,
         render: (user) => (
-          <div className="tf-task-cell">
-            <span className="tf-task-cell__name">{userDisplayName(user)}</span>
-            <span className="tf-task-cell__description">{user.id}</span>
-          </div>
+          <UserChip userId={user.id} name={userDisplayName(user)} size="md" secondary={user.id} />
         ),
       },
       {
@@ -144,7 +160,7 @@ export function Users({ idm, profileApi, readOnly }: UsersProps) {
         render: (user) => (
           <div className="tf-row-actions">
             {/* Viewable even in a directory-backed deployment; editing is gated below. */}
-            <Button variant="ghost" onClick={() => setProfileFor(user)}>
+            <Button variant="ghost" onClick={() => onSelectUser?.(user.id)}>
               {t("users.profile.action")}
             </Button>
             {/*
@@ -169,22 +185,36 @@ export function Users({ idm, profileApi, readOnly }: UsersProps) {
         ),
       },
     ],
-    [readOnly, t, exportData],
+    [readOnly, t, exportData, onSelectUser],
+  );
+
+  /** The row for the id in the URL, once the page holding it has loaded. */
+  const profileFor = useMemo(
+    () => (selectedUserId ? (data?.data ?? []).find((user) => user.id === selectedUserId) : undefined),
+    [selectedUserId, data],
   );
 
   return (
     <section className="tf-panel" aria-label={t("users.label")}>
-      <header className="tf-panel__header">
-        <div>
-          <h1 className="tf-panel__title">{t("users.title")}</h1>
-          <p className="tf-panel__meta">
-            {readOnly
-              ? t("users.meta.readOnly")
-              : t("users.meta")}
-          </p>
-        </div>
-        {!readOnly ? <Button onClick={() => setCreating(true)}>{t("users.new")}</Button> : null}
-      </header>
+      <PageHeader
+        title={t("users.title")}
+        description={readOnly ? t("users.meta.readOnly") : t("users.meta")}
+        meta={
+          data ? (
+            <Badge tone="info" subtle srLabel={t("users.countLabel", { count: data.total })}>
+              {data.total}
+            </Badge>
+          ) : undefined
+        }
+        actions={
+          !readOnly ? (
+            <Button onClick={() => setCreating(true)}>
+              <Icon name="add" size={16} />
+              {t("users.new")}
+            </Button>
+          ) : undefined
+        }
+      />
 
       <div className="tf-panel__search">
         <label className="tf-visually-hidden" htmlFor="tf-user-search">
@@ -196,10 +226,7 @@ export function Users({ idm, profileApi, readOnly }: UsersProps) {
           type="search"
           placeholder={t("users.search")}
           value={search}
-          onChange={(event) => {
-            setSearch(event.target.value);
-            setStart(0);
-          }}
+          onChange={(event) => list.setFilters({ q: event.target.value })}
         />
       </div>
 
@@ -211,14 +238,10 @@ export function Users({ idm, profileApi, readOnly }: UsersProps) {
         isEmpty={(page) => page.data.length === 0}
         empty={
           debounced ? (
-            <NoResultsState
-              onClear={() => {
-                setSearch("");
-                setStart(0);
-              }}
-            />
+            <NoResultsState onClear={list.clearFilters} />
           ) : (
             <EmptyState
+              illustration="no-results"
               title={t("users.empty.title")}
               description={
                 readOnly
@@ -234,15 +257,19 @@ export function Users({ idm, profileApi, readOnly }: UsersProps) {
           <>
             <DataTable
               caption={t("users.caption")}
+              preferenceKey="identity.users"
               columns={columns}
               rows={page.data}
               rowKey={(user) => user.id}
+              selectedKey={selectedUserId}
+              busy={loading}
             />
             <Pagination
               start={page.start}
-              size={page.size || PAGE_SIZE}
+              size={page.size || list.size}
               total={page.total}
               onChange={setStart}
+              onSizeChange={list.setSize}
             />
           </>
         )}
@@ -285,7 +312,7 @@ export function Users({ idm, profileApi, readOnly }: UsersProps) {
           profileApi={profileApi}
           user={profileFor}
           readOnly={readOnly}
-          onClose={() => setProfileFor(null)}
+          onClose={() => onSelectUser?.(undefined)}
         />
       ) : null}
 

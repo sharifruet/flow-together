@@ -5,6 +5,7 @@
 
 import { useMemo, useState } from "react";
 import {
+  Badge,
   AsyncBoundary,
   DataTable,
   EmptyState,
@@ -240,9 +241,9 @@ function MyInstances({ historyApi, userId }: MyHistoryProps) {
         width: "120px",
         render: (instance) =>
           instance.endTime ? (
-            <span className="tf-badge tf-badge--done">{t("history.status.completed")}</span>
+            <Badge tone="success">{t("history.status.completed")}</Badge>
           ) : (
-            <span className="tf-badge tf-badge--running">{t("history.status.running")}</span>
+            <Badge tone="info">{t("history.status.running")}</Badge>
           ),
       },
       {
@@ -349,9 +350,9 @@ function MyCaseHistory({ caseApi, userId }: { caseApi: CaseApi; userId: string }
         width: "120px",
         render: (instance) =>
           instance.endTime ? (
-            <span className="tf-badge tf-badge--done">{t("history.status.completed")}</span>
+            <Badge tone="success">{t("history.status.completed")}</Badge>
           ) : (
-            <span className="tf-badge tf-badge--running">{t("history.status.running")}</span>
+            <Badge tone="info">{t("history.status.running")}</Badge>
           ),
       },
       {

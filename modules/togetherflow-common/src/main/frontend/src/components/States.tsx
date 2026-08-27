@@ -11,6 +11,7 @@ import type { ReactNode } from "react";
 import { ApiError } from "../api/client";
 import { useT } from "../i18n/I18nContext";
 import { Button } from "./Button";
+import { EmptyIllustration, type IllustrationName } from "./EmptyIllustration";
 
 export function Skeleton({ rows = 5, label }: { rows?: number; label?: string }) {
   const t = useT();
@@ -34,12 +35,24 @@ export interface EmptyStateProps {
   title: string;
   description?: string;
   action?: ReactNode;
+  /**
+   * One of the brand illustrations (C4). Preferred over `icon`: an empty screen is the
+   * one place with room for it, and it is what makes an empty state read as designed
+   * rather than as a missing feature.
+   */
+  illustration?: IllustrationName;
+  /** An `<Icon>` where an illustration would be too much — an empty section, not a screen. */
   icon?: ReactNode;
 }
 
-export function EmptyState({ title, description, action, icon }: EmptyStateProps) {
+export function EmptyState({ title, description, action, illustration, icon }: EmptyStateProps) {
   return (
     <div className="tf-state" role="status">
+      {illustration ? (
+        <div className="tf-state__illustration">
+          <EmptyIllustration name={illustration} />
+        </div>
+      ) : null}
       {icon ? <div className="tf-state__icon">{icon}</div> : null}
       <h2 className="tf-state__title">{title}</h2>
       {description ? <p className="tf-state__description">{description}</p> : null}
@@ -53,6 +66,7 @@ export function NoResultsState({ onClear }: { onClear?: () => void }) {
   const t = useT();
   return (
     <EmptyState
+      illustration="no-results"
       title={t("states.noResults.title")}
       description={t("states.noResults.description")}
       action={
@@ -70,6 +84,7 @@ export function PermissionDeniedState({ description }: { description?: string })
   const t = useT();
   return (
     <EmptyState
+      illustration="permission-denied"
       title={t("states.permissionDenied.title")}
       description={description ?? t("states.permissionDenied.description")}
     />
@@ -90,6 +105,9 @@ export function ErrorState({ error, onRetry }: ErrorStateProps) {
 
   return (
     <div className="tf-state tf-state--error" role="alert">
+      <div className="tf-state__illustration">
+        <EmptyIllustration name="error" />
+      </div>
       <h2 className="tf-state__title">{t("states.error.title")}</h2>
       <p className="tf-state__description">{message}</p>
       {apiError ? (

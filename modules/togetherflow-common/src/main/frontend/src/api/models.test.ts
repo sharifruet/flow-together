@@ -1,6 +1,13 @@
-import { describe, expect, it, vi } from "vitest";
+import { beforeEach, describe, expect, it, vi } from "vitest";
 import { ApiClient } from "./client";
-import { MODEL_CATEGORY, ModelApi, modelKindOf, type ModelResponse } from "./models";
+import {
+  ConcurrentEditError,
+  MODEL_CATEGORY,
+  ModelApi,
+  __resetSourceBaselines,
+  modelKindOf,
+  type ModelResponse,
+} from "./models";
 
 function jsonResponse(body: unknown): Response {
   return new Response(JSON.stringify(body), {
@@ -33,6 +40,8 @@ describe("modelKindOf", () => {
 });
 
 describe("ModelApi.saveSource", () => {
+  beforeEach(() => __resetSourceBaselines());
+
   it("sends multipart, which is the only form the source endpoint accepts", async () => {
     const { fetchImpl, api } = setup();
     await api.saveSource("m1", "<xml/>");
@@ -43,6 +52,136 @@ describe("ModelApi.saveSource", () => {
     expect(init.body).toBeInstanceOf(FormData);
     // A hand-set Content-Type would strip the multipart boundary.
     expect(init.headers["Content-Type"]).toBeUndefined();
+  });
+});
+
+/**
+ * The concurrent-edit guard (UI_POLISH_BACKLOG.md I1, ENTERPRISE_PARITY_PLAN.md W1.1).
+ *
+ * The editors autosave every four idle seconds against an unconditional PUT, so before
+ * this two people on one model overwrote each other with neither pressing Save.
+ */
+describe("ModelApi.saveSource — concurrent-edit guard", () => {
+  beforeEach(() => __resetSourceBaselines());
+
+  /**
+   * jsdom's `File` implements no `.text()`, so the multipart part is read the way a
+   * browser without it would: through `FileReader`.
+   */
+  function readPart(part: FormDataEntryValue): Promise<string> {
+    return new Promise((resolve, reject) => {
+      const reader = new FileReader();
+      reader.onload = () => resolve(String(reader.result));
+      reader.onerror = () => reject(reader.error);
+      reader.readAsText(part as Blob);
+    });
+  }
+
+  /** A fetch stub whose stored source can be changed mid-test, as a second editor would. */
+  function editorSetup(stored: string) {
+    const state = { source: stored, writes: [] as string[] };
+    const fetchImpl = vi.fn().mockImplementation(async (url: string, init?: RequestInit) => {
+      if (String(url).endsWith("/source")) {
+        if ((init?.method ?? "GET") === "PUT") {
+          const body = init!.body as FormData;
+          const written = await readPart(body.get("file")!);
+          state.writes.push(written);
+          state.source = written;
+          return new Response(null, { status: 204 });
+        }
+        return new Response(state.source, {
+          status: 200,
+          headers: { "Content-Type": "application/xml" },
+        });
+      }
+      return jsonResponse({ id: "x" });
+    });
+    const client = new ApiClient({ baseUrl: "/process-api", fetchImpl: fetchImpl as never });
+    return { state, fetchImpl, api: new ModelApi(client) };
+  }
+
+  it("refuses a save when someone else wrote since this editor last read", async () => {
+    const { state, api } = editorSetup("<v1/>");
+    expect(await api.getSource("m1")).toBe("<v1/>");
+
+    // A second editor saves.
+    state.source = "<theirs/>";
+
+    await expect(api.saveSource("m1", "<mine/>")).rejects.toBeInstanceOf(ConcurrentEditError);
+    // The point of the guard: their work is still there.
+    expect(state.source).toBe("<theirs/>");
+  });
+
+  it("hands the caller what is stored, so reload needs no second fetch", async () => {
+    const { state, api } = editorSetup("<v1/>");
+    await api.getSource("m1");
+    state.source = "<theirs/>";
+
+    const error = await api.saveSource("m1", "<mine/>").catch((cause) => cause);
+    expect(error).toBeInstanceOf(ConcurrentEditError);
+    expect((error as ConcurrentEditError).modelId).toBe("m1");
+    expect((error as ConcurrentEditError).storedSource).toBe("<theirs/>");
+  });
+
+  it("overwrites on request, which is the other half of reload-or-overwrite", async () => {
+    const { state, api } = editorSetup("<v1/>");
+    await api.getSource("m1");
+    state.source = "<theirs/>";
+
+    await api.saveSource("m1", "<mine/>", { overwrite: true });
+    expect(state.source).toBe("<mine/>");
+  });
+
+  it("allows the save when nothing changed underneath", async () => {
+    const { state, api } = editorSetup("<v1/>");
+    await api.getSource("m1");
+
+    await api.saveSource("m1", "<v2/>");
+    expect(state.source).toBe("<v2/>");
+  });
+
+  it("treats its own last write as the new baseline, so a second autosave is not refused", async () => {
+    const { state, api } = editorSetup("<v1/>");
+    await api.getSource("m1");
+
+    await api.saveSource("m1", "<v2/>");
+    await api.saveSource("m1", "<v3/>");
+    expect(state.writes).toEqual(["<v2/>", "<v3/>"]);
+    expect(state.source).toBe("<v3/>");
+  });
+
+  it("does not guard a model this browser has never read — a new row has no baseline", async () => {
+    const { state, api } = editorSetup("<whatever/>");
+    // No getSource first: this is `create` followed by the first `saveSource`.
+    await api.saveSource("new-1", "<fresh/>");
+    expect(state.source).toBe("<fresh/>");
+  });
+
+  it("saves anyway when the guard's own read fails", async () => {
+    // A transient read error must not become lost work: failing open is the right
+    // trade when the alternative is refusing every save on a flaky connection.
+    const { api } = editorSetup("<v1/>");
+    await api.getSource("m1");
+
+    const failing = vi.fn().mockImplementation(async (url: string, init?: RequestInit) => {
+      if (String(url).endsWith("/source") && (init?.method ?? "GET") === "GET") {
+        throw new TypeError("network down");
+      }
+      return new Response(null, { status: 204 });
+    });
+    const offline = new ModelApi(
+      new ApiClient({ baseUrl: "/process-api", fetchImpl: failing as never, retry: { attempts: 1 } }),
+    );
+
+    await expect(offline.saveSource("m1", "<mine/>")).resolves.toBeUndefined();
+  });
+
+  it("trackSource declares a baseline without a round trip", async () => {
+    const { state, api } = editorSetup("<v1/>");
+    api.trackSource("m1", "<v1/>");
+    state.source = "<theirs/>";
+
+    await expect(api.saveSource("m1", "<mine/>")).rejects.toBeInstanceOf(ConcurrentEditError);
   });
 });
 

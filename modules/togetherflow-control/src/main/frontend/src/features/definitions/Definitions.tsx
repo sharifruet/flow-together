@@ -14,6 +14,7 @@
 
 import { useMemo, useState } from "react";
 import {
+  Badge,
   ApiError,
   AsyncBoundary,
   Button,
@@ -166,9 +167,9 @@ function ProcessDefinitions({ repositoryApi }: { repositoryApi: RepositoryApi })
         width: "120px",
         render: (definition) =>
           definition.suspended ? (
-            <span className="tf-badge tf-badge--danger">{t("definitions.state.suspended")}</span>
+            <Badge tone="danger">{t("definitions.state.suspended")}</Badge>
           ) : (
-            <span className="tf-badge tf-badge--running">{t("definitions.state.active")}</span>
+            <Badge tone="info">{t("definitions.state.active")}</Badge>
           ),
       },
       {
@@ -473,11 +474,11 @@ function StarterDialog({
             <ul className="tf-starters">
               {rows.map((link) => (
                 <li className="tf-starters__item" key={`${link.user ?? ""}:${link.group ?? ""}`}>
-                  <span className="tf-badge tf-badge--running">
+                  <Badge tone="info">
                     {link.user
                       ? t("definitions.starters.user")
                       : t("definitions.starters.group")}
-                  </span>
+                  </Badge>
                   <span className="tf-starters__name">{link.user ?? link.group}</span>
                   <Button variant="ghost" disabled={busy} onClick={() => void revoke(link)}>
                     {t("action.revoke")}

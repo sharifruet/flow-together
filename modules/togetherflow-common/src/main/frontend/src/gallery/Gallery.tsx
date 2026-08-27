@@ -10,6 +10,7 @@
 
 import { useState } from "react";
 import { ToastProvider } from "../components/Toast";
+import { RouterProvider } from "../routing/RouterContext";
 import { useTheme, type ThemePreference } from "../theme/useTheme";
 import { GALLERY, type GalleryEntry, type GalleryState } from "./registry";
 import { TOKEN_GROUPS, readToken } from "./tokens";
@@ -18,9 +19,13 @@ const THEMES: ThemePreference[] = ["system", "light", "dark"];
 
 export function Gallery() {
   return (
-    <ToastProvider>
-      <GalleryShell />
-    </ToastProvider>
+    /* Several primitives render `<Link>`s — Breadcrumb and SidebarNav — so the gallery
+       needs a router the same way it needs a toast provider. */
+    <RouterProvider>
+      <ToastProvider>
+        <GalleryShell />
+      </ToastProvider>
+    </RouterProvider>
   );
 }
 

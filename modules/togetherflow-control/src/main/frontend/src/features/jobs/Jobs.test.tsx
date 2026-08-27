@@ -2,7 +2,13 @@ import { render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { describe, expect, it, vi } from "vitest";
 import type { Mock } from "vitest";
-import { ApiError, ToastProvider, type JobApi, type JobResponse } from "@togetherflow/common";
+import {
+  ApiError,
+  RouterProvider,
+  ToastProvider,
+  type JobApi,
+  type JobResponse,
+} from "@togetherflow/common";
 import { Jobs, truncate } from "./Jobs";
 
 function page(rows: JobResponse[], total = rows.length) {
@@ -39,11 +45,15 @@ function stubApi(overrides: Record<string, unknown> = {}): StubJobApi {
   } as unknown as StubJobApi;
 }
 
+/** The queue and the failed-only filter live in the URL since W1.3. */
 function renderJobs(api: JobApi) {
+  window.history.replaceState({}, "", "/jobs");
   return render(
-    <ToastProvider>
-      <Jobs jobApi={api} />
-    </ToastProvider>,
+    <RouterProvider>
+      <ToastProvider>
+        <Jobs jobApi={api} />
+      </ToastProvider>
+    </RouterProvider>,
   );
 }
 

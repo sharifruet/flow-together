@@ -22,14 +22,20 @@
     "file, and is not worth doing for 2 kB on its own."
   ],
   "groups": {
-    "assets/index": 78,
+    "assets/index": 42,
     "assets/BpmnEditor": 100,
     "assets/DmnEditor": 260,
     "assets/CmmnEditor": 14,
     "assets/AppBuilder": 12,
     "assets/FormBuilder": 8,
     "assets/EventEditor": 8,
-    "assets/lintBpmn": 10
+    "assets/lintBpmn": 10,
+    "assets/src": 90
   },
-  "totalKb": 600
+  "totalKb": 600,
+  "_shared_chunk_note": [
+    "assets/src is the shared chunk the bundler hoists out of the lazily loaded editors.",
+    "It had no group, so nothing bounded it individually and `assets/index` read low",
+    "(38 kB) because most of the entry's code lives here. Only totalKb was holding it."
+  ]
 }

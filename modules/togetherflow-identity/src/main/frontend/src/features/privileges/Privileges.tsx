@@ -71,7 +71,7 @@ export function Privileges({ idm, readOnly }: PrivilegesProps) {
               <li key={privilege.id}>
                 <button
                   type="button"
-                  className="tf-card"
+                  className="tf-card tf-card--interactive"
                   onClick={() => setSelectedId(privilege.id)}
                 >
                   <span className="tf-card__title">{privilege.name}</span>

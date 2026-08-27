@@ -11,14 +11,18 @@ import { useCallback, useMemo, useState } from "react";
 import {
   ApiError,
   AsyncBoundary,
+  Badge,
   Button,
   ConfirmDialog,
   DataTable,
   EmptyState,
+  PageHeader,
   Pagination,
   SavedViews,
   formatDateTime,
+  toneForState,
   useAsync,
+  useListState,
   useToast,
   type Column,
   type JobApi,
@@ -27,7 +31,6 @@ import {
 } from "@togetherflow/common";
 import { useI18n, useRegisterShortcuts, useSavedViews, type Shortcut } from "@togetherflow/common";
 
-const PAGE_SIZE = 25;
 
 /** Order only; the label and blurb for each come from the catalogue. */
 const QUEUES: JobQueue[] = ["async", "timer", "suspended", "deadletter", "history"];
@@ -37,32 +40,48 @@ export interface JobsProps {
 }
 
 /**
- * What a saved view captures (§14.4). The queue is part of it: "failed dead-letter jobs"
- * is one saved view an operator wants back, not two settings to re-pick.
+ * What a saved view captures (§14.4), and — since W1.3 — what the query string carries.
+ * The queue is part of it: "failed dead-letter jobs" is one saved view an operator wants
+ * back, not two settings to re-pick.
+ *
+ * Strings rather than a boolean and a union, because a query string holds strings.
  */
 export interface JobsView {
+  [key: string]: string;
   queue: JobQueue;
-  failedOnly: boolean;
+  failedOnly: string;
 }
 
-const DEFAULT_VIEW: JobsView = { queue: "async", failedOnly: false };
+const DEFAULT_VIEW: JobsView = { queue: "async", failedOnly: "" };
 
 export function Jobs({ jobApi }: JobsProps) {
   const { t, locale } = useI18n();
   const { push } = useToast();
-  const [{ queue, failedOnly }, setView] = useState<JobsView>(DEFAULT_VIEW);
-  const [start, setStart] = useState(0);
+  const list = useListState<JobsView>({ defaults: DEFAULT_VIEW, preferenceKey: "control.jobs" });
+  const queue = (QUEUES as readonly string[]).includes(list.filters.queue)
+    ? list.filters.queue
+    : DEFAULT_VIEW.queue;
+  const failedOnly = list.filters.failedOnly === "true";
+  const setStart = list.setStart;
   const savedViews = useSavedViews<JobsView>("control.jobs");
+  /*
+   * C1's own example: "no multi-select in the shared component, so `Jobs.tsx` hand-rolls
+   * `useState<Set<string>>` plus checkboxes, and no other screen gets bulk actions". The
+   * state stays here — the caller owns what is selected — but the checkbox column, the
+   * select-all and the bulk bar are `DataTable`'s now, so every other list can have them.
+   */
   const [selected, setSelected] = useState<Set<string>>(new Set());
   const [busy, setBusy] = useState(false);
   const [reloadToken, setReloadToken] = useState(0);
   const [stacktraceFor, setStacktraceFor] = useState<string | null>(null);
 
-  const applyView = useCallback((next: JobsView) => {
-    setView(next);
-    setStart(0);
-    setSelected(new Set());
-  }, []);
+  const applyView = useCallback(
+    (next: JobsView) => {
+      list.replaceFilters(next);
+      setSelected(new Set());
+    },
+    [list],
+  );
   const [confirm, setConfirm] = useState<{
     title: string;
     description: string;
@@ -73,8 +92,8 @@ export function Jobs({ jobApi }: JobsProps) {
   } | null>(null);
 
   const query = useMemo(
-    () => ({ start, size: PAGE_SIZE, ...(failedOnly ? { withException: true } : {}) }),
-    [start, failedOnly],
+    () => ({ start: list.start, size: list.size, ...(failedOnly ? { withException: true } : {}) }),
+    [list.start, list.size, failedOnly],
   );
 
   const { data, error, loading, refetch } = useAsync(
@@ -136,33 +155,13 @@ export function Jobs({ jobApi }: JobsProps) {
   const rows = useMemo(() => (data?.data ?? []) as JobResponse[], [data]);
   const allSelected = rows.length > 0 && rows.every((job) => selected.has(job.id));
 
-  const toggle = (id: string) =>
-    setSelected((current) => {
-      const next = new Set(current);
-      if (next.has(id)) next.delete(id);
-      else next.add(id);
-      return next;
-    });
-
   const columns = useMemo<Column<JobResponse>[]>(() => {
+    // The checkbox column that used to live here is `DataTable`'s now (C1).
     const base: Column<JobResponse>[] = [
-      {
-        key: "select",
-        header: "",
-        width: "36px",
-        render: (job) => (
-          <input
-            type="checkbox"
-            checked={selected.has(job.id)}
-            aria-label={t("jobs.select", { id: job.id })}
-            onClick={(event) => event.stopPropagation()}
-            onChange={() => toggle(job.id)}
-          />
-        ),
-      },
       {
         key: "id",
         header: t("jobs.column.job"),
+        required: true,
         render: (job) => (
           <div className="tf-task-cell">
             <span className="tf-task-cell__name">{job.elementName || job.elementId || job.id}</span>
@@ -177,9 +176,11 @@ export function Jobs({ jobApi }: JobsProps) {
         key: "retries",
         header: t("jobs.column.retries"),
         width: "90px",
+        align: "end" as const,
+        // C3: zero retries left is the one number an operator scans for.
         render: (job) =>
           job.retries === 0 ? (
-            <span className="tf-badge tf-badge--danger">0</span>
+            <Badge tone={toneForState("failed")}>0</Badge>
           ) : (
             <span>{job.retries ?? "—"}</span>
           ),
@@ -213,7 +214,8 @@ export function Jobs({ jobApi }: JobsProps) {
       },
     ];
     return base;
-  }, [selected, queue, t, locale]);
+    // `selected` is no longer read here: the checkbox column moved into DataTable (C1).
+  }, [queue, t, locale]);
 
   const activeLabel = t(`jobs.queue.${queue}`);
 
@@ -233,7 +235,7 @@ export function Jobs({ jobApi }: JobsProps) {
       {
         key: "f",
         description: t("shortcuts.failedOnly"),
-        run: () => applyView({ queue, failedOnly: !failedOnly }),
+        run: () => applyView({ queue, failedOnly: failedOnly ? "" : "true" }),
       },
       {
         key: "r",
@@ -244,16 +246,24 @@ export function Jobs({ jobApi }: JobsProps) {
     [t, rows, allSelected, applyView, queue, failedOnly],
   );
   useRegisterShortcuts(shortcuts);
-  const selectedIds = [...selected];
 
   return (
     <section className="tf-panel" aria-label={t("jobs.label")}>
-      <header className="tf-panel__header">
-        <div>
-          <h1 className="tf-panel__title">{t("jobs.title")}</h1>
-          <p className="tf-panel__meta">{t(`jobs.queue.${queue}.blurb`)}</p>
-        </div>
-      </header>
+      <PageHeader
+        title={t("jobs.title")}
+        description={t(`jobs.queue.${queue}.blurb`)}
+        meta={
+          data ? (
+            <Badge
+              tone={queue === "deadletter" && data.total > 0 ? "danger" : "info"}
+              subtle
+              srLabel={t("jobs.countLabel", { count: data.total })}
+            >
+              {data.total}
+            </Badge>
+          ) : undefined
+        }
+      />
 
       <div className="tf-inbox__filters" role="tablist" aria-label={t("jobs.queueLabel")}>
         {QUEUES.map((id) => (
@@ -263,7 +273,7 @@ export function Jobs({ jobApi }: JobsProps) {
             role="tab"
             aria-selected={queue === id}
             className={["tf-chip", queue === id ? "tf-chip--active" : ""].filter(Boolean).join(" ")}
-            onClick={() => applyView({ queue: id, failedOnly })}
+            onClick={() => applyView({ queue: id, failedOnly: failedOnly ? "true" : "" })}
           >
             {t(`jobs.queue.${id}`)}
           </button>
@@ -275,7 +285,9 @@ export function Jobs({ jobApi }: JobsProps) {
           <input
             type="checkbox"
             checked={failedOnly}
-            onChange={(event) => applyView({ queue, failedOnly: event.target.checked })}
+            onChange={(event) =>
+              applyView({ queue, failedOnly: event.target.checked ? "true" : "" })
+            }
           />
           {t("jobs.failedOnly")}
         </label>
@@ -283,32 +295,52 @@ export function Jobs({ jobApi }: JobsProps) {
         {/* Saved filters (§14.4) — see the note on Control's instance list. */}
         <SavedViews
           views={savedViews.views}
-          current={{ queue, failedOnly }}
+          current={{ queue, failedOnly: failedOnly ? "true" : "" }}
           onApply={applyView}
           onSave={savedViews.save}
           onRemove={savedViews.remove}
         />
 
-        {rows.length > 0 ? (
-          <label className="tf-checkbox">
-            <input
-              type="checkbox"
-              checked={allSelected}
-              aria-label={t("jobs.selectAll")}
-              onChange={() =>
-                setSelected(allSelected ? new Set() : new Set(rows.map((job) => job.id)))
-              }
-            />
-            {t("jobs.selectAllShort")}
-          </label>
-        ) : null}
+      </div>
 
-        {selectedIds.length > 0 ? (
-          <div className="tf-toolbar__actions" role="group" aria-label={t("jobs.bulkLabel")}>
-            <span className="tf-muted">{t("jobs.selected", { count: selectedIds.length })}</span>
-            {queue === "deadletter" ? (
-              <Button
-                loading={busy}
+      <AsyncBoundary
+        loading={loading}
+        error={error}
+        data={data}
+        onRetry={refetch}
+        isEmpty={(page) => page.data.length === 0}
+        empty={
+          <EmptyState
+            illustration={failedOnly ? "no-results" : "inbox-clear"}
+            title={
+              failedOnly
+                ? t("jobs.empty.failed.title")
+                : t("jobs.empty.title", { queue: activeLabel.toLowerCase() })
+            }
+            description={
+              failedOnly ? t("jobs.empty.failed.description") : t("jobs.empty.description")
+            }
+          />
+        }
+      >
+        {(page) => (
+          <>
+            <DataTable
+              caption={t("jobs.caption", { queue: activeLabel })}
+              preferenceKey="control.jobs"
+              columns={columns}
+              rows={page.data as JobResponse[]}
+              rowKey={(job) => job.id}
+              busy={loading}
+              selection={selected}
+              onSelectionChange={setSelected}
+              selectionLabel={(job) => t("jobs.select", { id: job.id })}
+              selectAllLabel={t("jobs.selectAll")}
+              bulkActions={(selectedIds) => (
+                <>
+                  {queue === "deadletter" ? (
+                    <Button
+                      loading={busy}
                 onClick={() =>
                   setConfirm({
                     title: t("jobs.moveBack.title", { count: selectedIds.length }),
@@ -327,14 +359,14 @@ export function Jobs({ jobApi }: JobsProps) {
                   })
                 }
               >
-                {t("jobs.moveBack.action")}
-              </Button>
-            ) : (
-              <Button
-                loading={busy}
-                onClick={() =>
-                  setConfirm({
-                    title: t("jobs.runNow.title", { count: selectedIds.length }),
+                      {t("jobs.moveBack.action")}
+                    </Button>
+                  ) : (
+                    <Button
+                      loading={busy}
+                      onClick={() =>
+                        setConfirm({
+                          title: t("jobs.runNow.title", { count: selectedIds.length }),
                     description: t("jobs.runNow.description", { count: selectedIds.length }),
                     confirmLabel: t("jobs.runNow.action"),
                     run: () =>
@@ -344,63 +376,36 @@ export function Jobs({ jobApi }: JobsProps) {
                   })
                 }
               >
-                {t("jobs.runNow.action")}
-              </Button>
-            )}
-            <Button
-              variant="danger"
-              loading={busy}
-              onClick={() =>
-                setConfirm({
-                  title: t("jobs.delete.title", { count: selectedIds.length }),
-                  description: t("jobs.delete.description", { count: selectedIds.length }),
-                  destructive: true,
-                  confirmLabel: t("jobs.delete.action"),
-                  run: () =>
-                    void runEach(selectedIds, t("jobs.verb.deleted"), (id) =>
-                      jobApi.delete(queue, id),
-                    ),
-                })
-              }
-            >
-              {t("jobs.delete.action")}
-            </Button>
-          </div>
-        ) : null}
-      </div>
-
-      <AsyncBoundary
-        loading={loading}
-        error={error}
-        data={data}
-        onRetry={refetch}
-        isEmpty={(page) => page.data.length === 0}
-        empty={
-          <EmptyState
-            title={
-              failedOnly
-                ? t("jobs.empty.failed.title")
-                : t("jobs.empty.title", { queue: activeLabel.toLowerCase() })
-            }
-            description={
-              failedOnly ? t("jobs.empty.failed.description") : t("jobs.empty.description")
-            }
-          />
-        }
-      >
-        {(page) => (
-          <>
-            <DataTable
-              caption={t("jobs.caption", { queue: activeLabel })}
-              columns={columns}
-              rows={page.data as JobResponse[]}
-              rowKey={(job) => job.id}
+                      {t("jobs.runNow.action")}
+                    </Button>
+                  )}
+                  <Button
+                    variant="danger"
+                    loading={busy}
+                    onClick={() =>
+                      setConfirm({
+                        title: t("jobs.delete.title", { count: selectedIds.length }),
+                        description: t("jobs.delete.description", { count: selectedIds.length }),
+                        destructive: true,
+                        confirmLabel: t("jobs.delete.action"),
+                        run: () =>
+                          void runEach(selectedIds, t("jobs.verb.deleted"), (id) =>
+                            jobApi.delete(queue, id),
+                          ),
+                      })
+                    }
+                  >
+                    {t("jobs.delete.action")}
+                  </Button>
+                </>
+              )}
             />
             <Pagination
               start={page.start}
-              size={page.size || PAGE_SIZE}
+              size={page.size || list.size}
               total={page.total}
               onChange={setStart}
+              onSizeChange={list.setSize}
             />
           </>
         )}

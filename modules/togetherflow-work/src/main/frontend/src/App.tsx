@@ -1,4 +1,4 @@
-import { useCallback, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import {
   ApiClient,
   CaseApi,
@@ -8,15 +8,17 @@ import {
   TaskApi,
   UserProfileApi,
   useAuth,
+  useNavigate,
   useRegisterShortcuts,
+  useRoute,
   useT,
   useTenant,
   type Shortcut,
   type CaseInstanceResponse,
-  type TaskResponse,
   type AppLinks,
 } from "@togetherflow/common";
-import { AppShell, WORK_VIEWS, type WorkView } from "./features/shell/AppShell";
+import { AppShell } from "./features/shell/AppShell";
+import { ROUTE_TABLE, WORK_VIEWS, casePath, pathFor, taskPath, type WorkView } from "./routes";
 import { TaskInbox } from "./features/tasks/TaskInbox";
 import { TaskDetail } from "./features/tasks/TaskDetail";
 import { StartWork } from "./features/start/StartWork";
@@ -45,10 +47,32 @@ export function App({
   const t = useT();
   const { session, signOut, getAuthHeaders, isInitialising } = useAuth();
   const { tenantId } = useTenant();
-  const [view, setView] = useState<WorkView>("inbox");
-  const [selectedTask, setSelectedTask] = useState<TaskResponse | undefined>();
-  const [selectedCase, setSelectedCase] = useState<CaseInstanceResponse | undefined>();
+  /*
+   * The screen and the open entity both come from the URL now (F1). Keeping them in
+   * state was what made a task un-linkable, Back leave the app, and a refresh land on
+   * the inbox with the filters cleared.
+   */
+  const route = useRoute(ROUTE_TABLE, "inbox");
+  const navigate = useNavigate();
+  const view = route.id;
+  const selectedTaskId = route.params.taskId;
+  const selectedCaseId = route.params.caseId;
+
+  /*
+   * The case *row*, cached alongside the id so the inspector opened from the list renders
+   * without a second fetch. The id is the source of truth — a deep link arrives with an
+   * id and no row — so a cached row that no longer matches the URL is simply ignored,
+   * derived during render rather than cleared in an effect.
+   *
+   * Tasks need no equivalent: `TaskDetail` takes an id and fetches, so a cached row would
+   * be state nothing reads.
+   */
+  const [cachedCase, setCachedCase] = useState<CaseInstanceResponse | undefined>();
+  const selectedCase = cachedCase?.id === selectedCaseId ? cachedCase : undefined;
   const [refreshToken, setRefreshToken] = useState(0);
+  const [inboxCount, setInboxCount] = useState<number | undefined>();
+
+  const setView = useCallback((next: WorkView) => navigate(pathFor(next)), [navigate]);
 
   const makeClient = useCallback(
     (base: string) =>
@@ -92,9 +116,28 @@ export function App({
 
 
   const onTaskCompleted = useCallback(() => {
-    setSelectedTask(undefined);
+    navigate(pathFor("inbox"));
     refresh();
-  }, [refresh]);
+  }, [navigate, refresh]);
+
+  /*
+   * Inbox depth for the nav badge (B3). §9 rules out an aggregation API, so this is the
+   * `total` off a `size=1` query — one cheap request, not a second endpoint.
+   */
+  useEffect(() => {
+    if (!session) return;
+    let cancelled = false;
+    taskApi
+      .query({ assignee: session.userId, size: 1 })
+      .then((page) => {
+        if (!cancelled) setInboxCount(page.total);
+      })
+      // A count is decoration; failing to fetch it must not surface as an error.
+      .catch(() => undefined);
+    return () => {
+      cancelled = true;
+    };
+  }, [taskApi, session, refreshToken]);
 
   /*
    * App-level shortcuts (§14.4): high-volume triage shouldn't require the mouse. The
@@ -106,8 +149,7 @@ export function App({
       {
         key: "g",
         description: t("shortcuts.cycleViews"),
-        run: () =>
-          setView((current) => WORK_VIEWS[(WORK_VIEWS.indexOf(current) + 1) % WORK_VIEWS.length]),
+        run: () => setView(WORK_VIEWS[(WORK_VIEWS.indexOf(view) + 1) % WORK_VIEWS.length]),
       },
       {
         key: "/",
@@ -118,14 +160,13 @@ export function App({
       },
       {
         key: "Escape",
-        run: () => {
-          setSelectedTask(undefined);
-          setSelectedCase(undefined);
-        },
-        when: Boolean(selectedTask || selectedCase),
+        // Closes the detail pane by navigating back to the list, so Escape and Back
+        // agree about what "close" means.
+        run: () => navigate(pathFor(view)),
+        when: Boolean(selectedTaskId || selectedCaseId),
       },
     ],
-    [t, selectedTask, selectedCase],
+    [t, view, selectedTaskId, selectedCaseId, navigate, setView],
   );
   useRegisterShortcuts(shortcuts);
 
@@ -146,34 +187,25 @@ export function App({
   }
 
   return (
-    <AppShell
-      apps={apps}
-      onChangePassword={changePassword}
-      view={view}
-      onViewChange={(next) => {
-        setView(next);
-        if (next !== "inbox") setSelectedTask(undefined);
-        if (next !== "cases") setSelectedCase(undefined);
-      }}
-    >
+    <AppShell apps={apps} onChangePassword={changePassword} view={view} inboxCount={inboxCount}>
       {view === "inbox" ? (
         <div className="tf-work-layout">
           <TaskInbox
             taskApi={taskApi}
             processApi={processApi}
             userId={session.userId}
-            selectedTaskId={selectedTask?.id}
-            onSelectTask={setSelectedTask}
+            selectedTaskId={selectedTaskId}
+            onSelectTask={(task) => navigate(taskPath(task.id))}
             refreshToken={refreshToken}
             onStartWork={() => setView("start")}
           />
           <TaskDetail
             taskApi={taskApi}
-            taskId={selectedTask?.id}
+            taskId={selectedTaskId}
             userId={session.userId}
             onCompleted={onTaskCompleted}
             onChanged={refresh}
-            onClose={() => setSelectedTask(undefined)}
+            onClose={() => navigate(pathFor("inbox"))}
           />
         </div>
       ) : view === "cases" ? (
@@ -181,14 +213,18 @@ export function App({
           <MyCases
             caseApi={caseApi}
             userId={session.userId}
-            selectedCaseId={selectedCase?.id}
-            onSelectCase={setSelectedCase}
+            selectedCaseId={selectedCaseId}
+            onSelectCase={(instance) => {
+              setCachedCase(instance);
+              navigate(casePath(instance.id));
+            }}
             refreshToken={refreshToken}
           />
           <CaseDetail
             caseApi={caseApi}
             instance={selectedCase}
-            onClose={() => setSelectedCase(undefined)}
+            caseId={selectedCaseId}
+            onClose={() => navigate(pathFor("cases"))}
             onChanged={refresh}
           />
         </div>

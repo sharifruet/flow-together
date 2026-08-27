@@ -1,7 +1,13 @@
 import { render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { describe, expect, it, vi } from "vitest";
-import { ApiError, type DataResponse, type TaskApi, type TaskResponse } from "@togetherflow/common";
+import {
+  ApiError,
+  RouterProvider,
+  type DataResponse,
+  type TaskApi,
+  type TaskResponse,
+} from "@togetherflow/common";
 import { TaskInbox } from "./TaskInbox";
 
 function task(overrides: Partial<TaskResponse> = {}): TaskResponse {
@@ -22,16 +28,24 @@ function stubApi(query: TaskApi["query"]): TaskApi {
   return { query } as unknown as TaskApi;
 }
 
+/**
+ * The inbox reads its filters, sort and page from the URL since W1.3, so it needs a
+ * router the way it already needed an API — this is not test scaffolding around an
+ * incidental dependency.
+ */
 function renderInbox(api: TaskApi, overrides: Partial<Parameters<typeof TaskInbox>[0]> = {}) {
+  window.history.replaceState({}, "", "/inbox");
   return render(
-    <TaskInbox
-      taskApi={api}
-      userId="alice"
-      onSelectTask={vi.fn()}
-      refreshToken={0}
-      onStartWork={vi.fn()}
-      {...overrides}
-    />,
+    <RouterProvider>
+      <TaskInbox
+        taskApi={api}
+        userId="alice"
+        onSelectTask={vi.fn()}
+        refreshToken={0}
+        onStartWork={vi.fn()}
+        {...overrides}
+      />
+    </RouterProvider>,
   );
 }
 

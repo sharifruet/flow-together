@@ -21,6 +21,8 @@ export const identityEn = {
   // Users (§7.3)
   "users.label": "Users",
   "users.title": "Users",
+  "users.countLabel.one": "{count} user",
+  "users.countLabel.other": "{count} users",
   "users.meta": "People who can sign in and be assigned work.",
   "users.meta.readOnly": "Users come from a directory and can't be changed here.",
   "users.new": "New user",

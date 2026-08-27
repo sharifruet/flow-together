@@ -1,11 +1,16 @@
 /**
  * Confirmation for consequential actions (§14.3). The message must name what is about
  * to happen — a bare "Are you sure?" is explicitly not acceptable.
+ *
+ * Built on `Modal` since W1.4 (F6). It used to own its own dialog markup and had none of
+ * the trap/restore/scroll-lock/inert behaviour; that now lives in exactly one place and
+ * this is a shape on top of it.
  */
 
 import { useEffect, useRef } from "react";
 import { useT } from "../i18n/I18nContext";
 import { Button } from "./Button";
+import { Modal } from "./Modal";
 
 export interface ConfirmDialogProps {
   open: boolean;
@@ -34,38 +39,25 @@ export function ConfirmDialog({
   const t = useT();
   const confirmRef = useRef<HTMLButtonElement>(null);
 
+  /*
+   * Modal focuses itself so the title is read first; a confirmation is the one case
+   * where moving on to the action is right — the user already knows what they asked for
+   * and the dialog exists to let them press Enter or Escape.
+   */
   useEffect(() => {
     if (open) confirmRef.current?.focus();
   }, [open]);
 
-  useEffect(() => {
-    if (!open) return;
-    const onKeyDown = (event: KeyboardEvent) => {
-      if (event.key === "Escape") onCancel();
-    };
-    document.addEventListener("keydown", onKeyDown);
-    return () => document.removeEventListener("keydown", onKeyDown);
-  }, [open, onCancel]);
-
-  if (!open) return null;
-
   return (
-    <div className="tf-dialog-backdrop" onMouseDown={onCancel}>
-      <div
-        className="tf-dialog"
-        role="alertdialog"
-        aria-modal="true"
-        aria-labelledby="tf-dialog-title"
-        aria-describedby="tf-dialog-description"
-        onMouseDown={(event) => event.stopPropagation()}
-      >
-        <h2 className="tf-dialog__title" id="tf-dialog-title">
-          {title}
-        </h2>
-        <p className="tf-dialog__description" id="tf-dialog-description">
-          {description}
-        </p>
-        <div className="tf-dialog__actions">
+    <Modal
+      open={open}
+      title={title}
+      description={description}
+      role="alertdialog"
+      size="sm"
+      onClose={onCancel}
+      actions={
+        <>
           <Button variant="secondary" onClick={onCancel} disabled={busy}>
             {cancelLabel ?? t("dialog.cancel")}
           </Button>
@@ -77,8 +69,8 @@ export function ConfirmDialog({
           >
             {confirmLabel ?? t("dialog.confirm")}
           </Button>
-        </div>
-      </div>
-    </div>
+        </>
+      }
+    />
   );
 }

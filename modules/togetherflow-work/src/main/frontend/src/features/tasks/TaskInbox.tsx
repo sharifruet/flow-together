@@ -1,18 +1,24 @@
-import { useCallback, useMemo, useState } from "react";
+import { useCallback, useMemo } from "react";
 import {
   AsyncBoundary,
+  Badge,
   Button,
   DataTable,
   EmptyState,
+  Icon,
   NoResultsState,
+  PageHeader,
   Pagination,
   SavedViews,
+  UserChip,
   dueState,
   formatDate,
   priorityLabel,
+  toneForPriority,
   useAsync,
   useDebouncedValue,
   useI18n,
+  useListState,
   useRegisterShortcuts,
   useSavedViews,
   type Column,
@@ -35,10 +41,15 @@ const FILTERS: InboxFilter[] = ["mine", "claimable", "involved"];
 const DUE_FILTERS: DueFilter[] = ["any", "overdue", "today", "week", "none"];
 const PRIORITY_FILTERS: PriorityFilter[] = ["any", "high", "normal", "low"];
 
-const PAGE_SIZE = 25;
-
-/** What a saved view captures (§14.4) — everything except which page you were on. */
+/**
+ * What a saved view captures (§14.4) — everything except which page you were on — and,
+ * since W1.3, what the query string carries.
+ *
+ * The index signature is what `useListState` needs: a query string holds strings, so a
+ * filter set has to be readable as one. The named members keep the call sites typed.
+ */
 export interface InboxView {
+  [key: string]: string;
   filter: InboxFilter;
   search: string;
   definitionKey: string;
@@ -76,23 +87,24 @@ export function TaskInbox({
   onStartWork,
 }: TaskInboxProps) {
   const { t, locale } = useI18n();
-  const [view, setView] = useState<InboxView>(DEFAULT_VIEW);
-  const [start, setStart] = useState(0);
+  /*
+   * Filters, sort and page live in the URL since W1.3 (F1). A filtered inbox is now a
+   * link an operator can paste into a ticket, and a refresh no longer clears it.
+   */
+  const list = useListState<InboxView>({
+    defaults: DEFAULT_VIEW,
+    defaultSort: { key: "dueDate", order: "asc" },
+    preferenceKey: "work.inbox",
+  });
+  const view = list.filters;
+  const { setStart } = list;
   const savedViews = useSavedViews<InboxView>("work.inbox");
 
   // Type-ahead filtering rather than submit-and-wait (§14.4).
   const debouncedSearch = useDebouncedValue(view.search.trim(), 250);
 
-  /** Any change to the filters invalidates the page the user was on. */
-  const update = useCallback((patch: Partial<InboxView>) => {
-    setView((current) => ({ ...current, ...patch }));
-    setStart(0);
-  }, []);
-
-  const applyView = useCallback((next: InboxView) => {
-    setView(next);
-    setStart(0);
-  }, []);
+  const update = list.setFilters;
+  const applyView = list.replaceFilters;
 
   const definitions = useAsync(
     (signal) =>
@@ -104,10 +116,11 @@ export function TaskInbox({
 
   const request = useMemo<TaskQueryRequest>(() => {
     const base: TaskQueryRequest = {
-      start,
-      size: PAGE_SIZE,
-      sort: "dueDate",
-      order: "asc",
+      start: list.start,
+      size: list.size,
+      // Sortable headers wired to the query (C1); before this it was hardcoded to dueDate.
+      sort: (list.sort?.key ?? "dueDate") as TaskQueryRequest["sort"],
+      order: list.sort?.order ?? "asc",
       active: true,
       ...(debouncedSearch ? { nameLikeIgnoreCase: `%${debouncedSearch}%` } : {}),
       ...(view.definitionKey ? { processDefinitionKey: view.definitionKey } : {}),
@@ -117,7 +130,17 @@ export function TaskInbox({
     if (view.filter === "mine") return { ...base, assignee: userId };
     if (view.filter === "claimable") return { ...base, candidateUser: userId, unassigned: true };
     return { ...base, involvedUser: userId };
-  }, [view.filter, view.definitionKey, view.due, view.priority, debouncedSearch, start, userId]);
+  }, [
+    view.filter,
+    view.definitionKey,
+    view.due,
+    view.priority,
+    debouncedSearch,
+    list.start,
+    list.size,
+    list.sort,
+    userId,
+  ]);
 
   const { data, error, loading, refetch } = useAsync(
     (signal) => taskApi.query(request, signal),
@@ -129,6 +152,8 @@ export function TaskInbox({
       {
         key: "name",
         header: t("inbox.column.task"),
+        sortKey: "name",
+        required: true,
         render: (task) => (
           <div className="tf-task-cell">
             <span className="tf-task-cell__name">{task.name ?? t("inbox.untitled")}</span>
@@ -142,9 +167,11 @@ export function TaskInbox({
         key: "assignee",
         header: t("inbox.column.assignee"),
         secondary: true,
+        sortKey: "assignee",
+        // D1: a raw engine id, on the screen whose whole subject is who is doing what.
         render: (task) =>
           task.assignee ? (
-            task.assignee
+            <UserChip userId={task.assignee} />
           ) : (
             <span className="tf-muted">{t("inbox.unassigned")}</span>
           ),
@@ -153,6 +180,7 @@ export function TaskInbox({
         key: "due",
         header: t("inbox.column.due"),
         width: "150px",
+        sortKey: "dueDate",
         render: (task) => {
           const due = dueState(task.dueDate, {
             locale,
@@ -173,13 +201,18 @@ export function TaskInbox({
         header: t("inbox.column.priority"),
         width: "100px",
         secondary: true,
-        render: (task) => priorityLabel(task.priority, t),
+        sortKey: "priority",
+        // C3: this was the bare words "High"/"Normal" — the backlog's own example of
+        // status rendered as prose.
+        render: (task) => (
+          <Badge tone={toneForPriority(task.priority)}>{priorityLabel(task.priority, t)}</Badge>
+        ),
       },
     ],
     [t, locale],
   );
 
-  const clearFilters = useCallback(() => applyView(DEFAULT_VIEW), [applyView]);
+  const clearFilters = list.clearFilters;
 
   /*
    * Moving through the list without the mouse (§14.4). Registered here rather than at the
@@ -218,6 +251,23 @@ export function TaskInbox({
 
   return (
     <section className="tf-inbox" aria-label={t("inbox.label")}>
+      <PageHeader
+        title={t("inbox.title")}
+        description={t("inbox.description")}
+        meta={
+          data ? (
+            <Badge tone="info" subtle srLabel={t("inbox.countLabel", { count: data.total })}>
+              {data.total}
+            </Badge>
+          ) : undefined
+        }
+        actions={
+          <Button onClick={onStartWork}>
+            <Icon name="add" size={16} />
+            {t("inbox.startWork")}
+          </Button>
+        }
+      >
       <header className="tf-inbox__header">
         <div className="tf-inbox__filters" role="tablist" aria-label={t("inbox.filterLabel")}>
           {FILTERS.map((key) => (
@@ -311,6 +361,7 @@ export function TaskInbox({
           <p className="tf-filter-bar__note">{t("savedViews.note")}</p>
         ) : null}
       </div>
+      </PageHeader>
 
       <AsyncBoundary
         loading={loading}
@@ -323,6 +374,7 @@ export function TaskInbox({
             <NoResultsState onClear={clearFilters} />
           ) : (
             <EmptyState
+              illustration="inbox-clear"
               title={t(`inbox.empty.${view.filter}.title`)}
               description={t(`inbox.empty.${view.filter}.description`)}
               action={
@@ -338,17 +390,22 @@ export function TaskInbox({
           <>
             <DataTable
               caption={t("inbox.caption")}
+              preferenceKey="work.inbox"
               columns={columns}
               rows={page.data}
               rowKey={(task) => task.id}
               selectedKey={selectedTaskId}
               onRowClick={onSelectTask}
+              sort={list.sort}
+              onSortChange={list.setSort}
+              busy={loading}
             />
             <Pagination
               start={page.start}
-              size={page.size || PAGE_SIZE}
+              size={page.size || list.size}
               total={page.total}
               onChange={setStart}
+              onSizeChange={list.setSize}
             />
           </>
         )}

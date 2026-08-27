@@ -3,7 +3,11 @@ import userEvent from "@testing-library/user-event";
 import { describe, expect, it, vi } from "vitest";
 import type { Mock } from "vitest";
 import {
+  RouterProvider,
   ToastProvider,
+  matchPath,
+  useLocation,
+  useNavigate,
   type CaseApi,
   type PlanItemInstanceResponse,
 } from "@togetherflow/common";
@@ -40,11 +44,28 @@ function stubApi(overrides: Record<string, unknown> = {}) {
   } as unknown as CaseApi & Record<string, Mock>;
 }
 
+/** Selection through the router, as `App.tsx` drives it — see the note in Instances.test. */
+function Harness({ caseApi }: { caseApi: CaseApi }) {
+  const { path } = useLocation();
+  const navigate = useNavigate();
+  const selectedId = matchPath("/cases/:caseId", path)?.caseId;
+  return (
+    <CaseInstances
+      caseApi={caseApi}
+      selectedId={selectedId}
+      onSelect={(id) => navigate(id ? `/cases/${id}` : "/cases")}
+    />
+  );
+}
+
 function renderScreen(api: CaseApi) {
+  window.history.replaceState({}, "", "/cases");
   render(
-    <ToastProvider>
-      <CaseInstances caseApi={api} />
-    </ToastProvider>,
+    <RouterProvider>
+      <ToastProvider>
+        <Harness caseApi={api} />
+      </ToastProvider>
+    </RouterProvider>,
   );
 }
 

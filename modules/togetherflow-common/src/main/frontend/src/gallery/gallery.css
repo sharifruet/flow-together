@@ -156,7 +156,7 @@
   border-radius: 2px;
 }
 
-@media (max-width: 720px) {
+@media (max-width: 768px) {
   .tf-gallery {
     grid-template-columns: 1fr;
   }

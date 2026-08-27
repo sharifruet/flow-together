@@ -8,6 +8,7 @@ import {
   type IdmApi,
   type IdmUser,
   type UserProfileApi,
+  RouterProvider,
 } from "@togetherflow/common";
 import { Users } from "./Users";
 
@@ -32,11 +33,15 @@ function stubIdm(overrides: Record<string, unknown> = {}): StubIdm {
   } as unknown as StubIdm;
 }
 
+/** The list reads its search and page from the URL since W1.3, so it needs a router. */
 function renderUsers(idm: IdmApi, readOnly = false) {
+  window.history.replaceState({}, "", "/users");
   return render(
-    <ToastProvider>
-      <Users profileApi={stubProfileApi()} idm={idm} readOnly={readOnly} />
-    </ToastProvider>,
+    <RouterProvider>
+      <ToastProvider>
+        <Users profileApi={stubProfileApi()} idm={idm} readOnly={readOnly} />
+      </ToastProvider>
+    </RouterProvider>,
   );
 }
 

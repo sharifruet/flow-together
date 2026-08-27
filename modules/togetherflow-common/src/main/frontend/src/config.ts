@@ -24,6 +24,15 @@ export interface AppLinks {
 
 export interface RuntimeConfig {
   apiBase: string;
+  /**
+   * Path the app is served under, when it is not at the origin root — "/design" behind a
+   * reverse proxy that fans four apps out of one host.
+   *
+   * The router (ADR 0016) strips it from the path it matches and puts it back on every
+   * href it renders. It cannot be inferred: a hard-coded "/" is exactly how a deep link
+   * works in dev and 404s in production.
+   */
+  basePath: string;
   /** IDM REST base; separate servlet from the process API. */
   idmBase: string;
   /** DMN REST base — Control reads decision-execution history from here. */
@@ -77,6 +86,7 @@ declare global {
   interface Window {
     __TOGETHERFLOW_CONFIG__?: {
       apiBase?: string;
+      basePath?: string;
       idmBase?: string;
       dmnBase?: string;
       cmmnBase?: string;
@@ -106,6 +116,7 @@ declare global {
 export function readRuntimeConfig(): RuntimeConfig {
   const raw = window.__TOGETHERFLOW_CONFIG__ ?? {};
   const apiBase = raw.apiBase ?? window.__TOGETHERFLOW_API_BASE__ ?? "/process-api";
+  const basePath = raw.basePath || "/";
   const idmBase = raw.idmBase ?? "/idm-api";
   const dmnBase = raw.dmnBase ?? "/dmn-api";
   const cmmnBase = raw.cmmnBase ?? "/cmmn-api";
@@ -127,6 +138,7 @@ export function readRuntimeConfig(): RuntimeConfig {
   if (mode === "basic") {
     return {
       apiBase,
+      basePath,
       idmBase,
       dmnBase,
       cmmnBase,
@@ -155,6 +167,7 @@ export function readRuntimeConfig(): RuntimeConfig {
 
   return {
     apiBase,
+    basePath,
     idmBase,
     dmnBase,
     cmmnBase,

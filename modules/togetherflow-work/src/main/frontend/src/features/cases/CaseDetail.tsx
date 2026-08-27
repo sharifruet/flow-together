@@ -22,8 +22,10 @@ import { useCallback, useMemo, useState } from "react";
 import {
   ApiError,
   AsyncBoundary,
+  Badge,
   Button,
   ConfirmDialog,
+  Skeleton,
   availablePlanItemActions,
   formatDateTime,
   useAsync,
@@ -33,12 +35,22 @@ import {
   type CaseInstanceResponse,
   type PlanItemAction,
   type PlanItemInstanceResponse,
+  type BadgeTone,
   type TFunction,
 } from "@togetherflow/common";
 
 export interface CaseDetailProps {
   caseApi: CaseApi;
+  /**
+   * The row the list already has. Rendered immediately where present, so opening a case
+   * from the list does not flash a loading state for data the list is holding.
+   */
   instance?: CaseInstanceResponse;
+  /**
+   * The id from the URL (W1.3). It is the source of truth: a deep link or a refresh
+   * arrives with an id and no row, and the pane fetches the instance itself.
+   */
+  caseId?: string;
   onClose: () => void;
   onChanged: () => void;
 }
@@ -51,7 +63,13 @@ const ACTION_KEYS: Record<PlanItemAction, string> = {
   trigger: "case.action.trigger",
 };
 
-export function CaseDetail({ caseApi, instance, onClose, onChanged }: CaseDetailProps) {
+export function CaseDetail({
+  caseApi,
+  instance: given,
+  caseId: routeCaseId,
+  onClose,
+  onChanged,
+}: CaseDetailProps) {
   const { t, locale } = useI18n();
   const { push } = useToast();
   const [busyItem, setBusyItem] = useState<string | null>(null);
@@ -59,7 +77,27 @@ export function CaseDetail({ caseApi, instance, onClose, onChanged }: CaseDetail
   const [terminating, setTerminating] = useState(false);
   const [localRefresh, setLocalRefresh] = useState(0);
 
-  const caseId = instance?.id;
+  const caseId = given?.id ?? routeCaseId;
+
+  /*
+   * Only fetched when the list did not hand a row over — i.e. a deep link or a refresh.
+   * A completed case has no runtime row, so the historic resource is the fallback rather
+   * than an error.
+   */
+  const fetched = useAsync(
+    async (signal) => {
+      if (given || !routeCaseId) return undefined;
+      try {
+        return await caseApi.get(routeCaseId, signal);
+      } catch (error) {
+        if (error instanceof DOMException && error.name === "AbortError") throw error;
+        return await caseApi.getHistoric(routeCaseId, signal);
+      }
+    },
+    [caseApi, given, routeCaseId],
+  );
+
+  const instance = given ?? fetched.data;
   const ended = Boolean(instance?.endTime);
 
   const planItems = useAsync(
@@ -137,8 +175,14 @@ export function CaseDetail({ caseApi, instance, onClose, onChanged }: CaseDetail
   if (!instance) {
     return (
       <section className="tf-detail tf-detail--empty" aria-label={t("case.detail.label")}>
-        <p className="tf-detail__empty-title">{t("case.detail.none.title")}</p>
-        <p className="tf-detail__empty-hint">{t("case.detail.none.hint")}</p>
+        {routeCaseId && fetched.loading ? (
+          <Skeleton rows={4} label={t("case.detail.label")} />
+        ) : (
+          <>
+            <p className="tf-detail__empty-title">{t("case.detail.none.title")}</p>
+            <p className="tf-detail__empty-hint">{t("case.detail.none.hint")}</p>
+          </>
+        )}
       </section>
     );
   }
@@ -355,7 +399,7 @@ function PlanItemList({
             <div className="tf-planitems__row">
               <span className="tf-planitems__name">{item.name || item.elementId || item.id}</span>
               <span className="tf-planitems__type">{item.planItemDefinitionType}</span>
-              <span className={planItemBadgeClass(item.state)}>{item.state ?? "unknown"}</span>
+              <Badge tone={planItemBadgeTone(item.state)}>{item.state ?? "unknown"}</Badge>
               <span className="tf-planitems__actions">
                 {isOpenTask ? (
                   <span className="tf-planitems__hint">{t("case.planItems.openFromTasks")}</span>
@@ -388,15 +432,20 @@ function PlanItemList({
   );
 }
 
-function planItemBadgeClass(state: string | undefined): string {
-  const s = (state ?? "").toLowerCase();
-  const tone =
-    s === "active"
-      ? "tf-badge--running"
-      : s === "completed"
-        ? "tf-badge--done"
-        : s === "terminated" || s === "disabled"
-          ? "tf-badge--danger"
-          : "tf-badge--warning";
-  return `tf-badge ${tone}`;
+/**
+ * C3: the tone, not a class. Not `toneForState` — a plan item's vocabulary is CMMN's, and
+ * "available"/"enabled" mean something different here than they do for a process instance.
+ */
+function planItemBadgeTone(state: string | undefined): BadgeTone {
+  switch ((state ?? "").toLowerCase()) {
+    case "active":
+      return "info";
+    case "completed":
+      return "success";
+    case "terminated":
+    case "disabled":
+      return "danger";
+    default:
+      return "warning";
+  }
 }

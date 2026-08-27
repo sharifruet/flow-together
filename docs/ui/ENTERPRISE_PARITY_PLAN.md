@@ -1,6 +1,8 @@
 # TogetherFlow — Enterprise Parity Plan
 
-Status: Draft v1 · Written 2026-08-27
+Status: Draft v3 · Written 2026-08-27
+· v2 added [Execution chunks](#execution-chunks)
+· v3 records **Wave 1 as built** — see [Wave 1 — Foundation](#wave-1--foundation)
 Companion to [REQUIREMENTS.md](REQUIREMENTS.md) (scope), [IMPLEMENTATION_PLAN.md](IMPLEMENTATION_PLAN.md)
 (how Phases 1–7 were sequenced), [STATUS.md](STATUS.md) (what is built) and
 [UI_POLISH_BACKLOG.md](UI_POLISH_BACKLOG.md) (the finish-quality and Enterprise-Design gap
@@ -309,8 +311,10 @@ source diff, and should be honest that it is a text diff rather than a graph com
 Not a feature phase. The things that only make sense once the above is built, mirroring
 IMPLEMENTATION_PLAN.md's Phase 7 rather than replacing it:
 
-- **G1** — visual regression across all four apps, light and dark, desktop and tablet.
-  Today it is Work only, three screens, and the baselines predate features already shipped.
+- **G1 — moved to W1.5**, see [Execution chunks](#execution-chunks). Visual regression
+  across all four apps, light and dark, desktop and tablet: today it is Work only, three
+  screens, and the baselines predate features already shipped. Regenerating them here rather
+  than at the end of E1 would leave them stale through every intervening phase.
 - **G2** — keyboard-only and screen-reader passes per app; automated axe coverage is not
   the same thing.
 - **G3** — a usability pass per persona (§14.5), which has no evidence of ever running.
@@ -338,6 +342,186 @@ IMPLEMENTATION_PLAN.md's Phase 7 rather than replacing it:
 
 E2, E3 and E4 are independent of each other and can run in parallel once E1 lands. E5 and
 E6 are strictly sequential and strictly after a decision.
+
+The phases are the scoping structure. [Execution chunks](#execution-chunks) below cuts them
+into the twelve units the work is actually picked up in.
+
+## Execution chunks
+
+The phases above are scoping units: they group work by objective and by dependency. They
+are not work items. E1 in particular is XL and touches every screen in four apps at once,
+which is precisely the shape Risk #1 says gets quietly descoped. This section cuts the plan
+into twelve chunks that can each be picked up, finished and reviewed on their own, grouped
+into three waves.
+
+**A chunk is done when its exit criteria pass, not when its scope list is typed.** Every
+chunk below has one, and they are written to be falsifiable.
+
+### Wave 1 — Foundation
+
+**Built 2026-08-27.** W1.1–W1.5 are done, with one exit criterion partly met and said so
+below. [UI_POLISH_BACKLOG.md §J](UI_POLISH_BACKLOG.md) is the item-by-item record of what
+changed; the ✅ notes here are the exit criteria only.
+
+Strictly serial. Nothing in Wave 2 or Wave 3 starts before W1.5 lands.
+
+**W1.1 — Concurrent-edit guard.** *(Phase E0.1 in full. Defect, not parity work — it jumps
+every queue in this document.)*
+*Scope*: read the stored source before each autosave in `ModelApi.saveSource` and compare it
+with what this editor last wrote; a difference refuses the save with reload-or-overwrite.
+Not `lastUpdateTime` — E0.1 explains why that signal is frozen from the second save onward.
+*Exit*: two sessions editing one model, both autosaving, and the second write is refused
+rather than silently overwriting, covered by a test. The residual window is documented and
+closed later by W3.1's server-side locking.
+*Depends on*: nothing. *Size*: S. *Backend*: no.
+**✅ Done.** `ConcurrentEditError` in `ModelApi.saveSource`, ten tests, reload-or-overwrite
+shared by all six editors, and the residual two-request window documented where the guard
+lives.
+
+**W1.2 — Routing library decision.** *(Phase E0.2.)* Not code.
+*Scope*: pick the library and record it as an ADR beside 0013 and 0014, so W1.3 does not
+re-litigate it mid-implementation.
+*Exit*: an ADR exists naming the library, the URL scheme for entity routes, and how the
+existing keyboard-shortcut registry (§14.4) and saved filters survive becoming URL state.
+*Depends on*: nothing. *Size*: S. *Backend*: —
+**✅ Done.** [ADR 0016](adr/0016-in-house-router.md): an in-house router, with the
+alternatives weighed and the revisit triggers recorded.
+
+**W1.3 — Routing and shell.** *(Phase E1: F1, F5, B5.)*
+*Scope*: URLs for every screen and entity across all four apps; the shell stylesheet
+de-duplicated; full-height layout that uses the viewport.
+*Exit*: every screen in Work, Control, Identity and Design survives a refresh at its own
+URL, and a task, an instance, a job and a model can each be linked to directly; no app
+stylesheet defines a component class.
+*Depends on*: W1.2. *Size*: L. *Backend*: no.
+**✅ Done**, with one deliberate deviation: there is no `/jobs/:jobId`, because Jobs has no
+single-row detail — the exception and stack trace are in the row. A URL that resolved to
+nothing would be worse than an absent one. Everything else is addressable, filters and
+paging included. 816 lines of duplicated shell CSS moved to `theme/shell.css`.
+
+**W1.4 — Component set.** *(Phase E1: F2 first tranche, F3, F4, F6, C3, C4.)*
+*Scope*: `Badge`, `Card`, `PageHeader`, `Modal` (carrying the focus trap F6 needs), `Tabs`,
+`Avatar`, `DropdownMenu`, `Breadcrumb`; the complete token set; the typeface that was named
+but never shipped; the icon set and empty-state illustrations; badges replacing status prose
+everywhere.
+*Exit*: the gallery documents every new primitive and its states, and the existing
+filesystem-coverage test fails if one ships undocumented; no screen renders status as bare
+prose.
+*Depends on*: W1.3. *Size*: L. *Backend*: no.
+**✅ Done.** Eleven primitives, all in the gallery. `theme/tokens.test.ts` now enforces F3
+by reading every stylesheet in every module. Inter is self-hosted with metric-matched
+fallback overrides computed from the fonts' own tables.
+
+**W1.5 — Tables and navigation.** *(Phase E1: C1, C2, B1, B2, B3, plus G1.)*
+*Scope*: the `DataTable` rebuild — sortable headers, selection with a bulk-action bar, row
+overflow menus, column visibility and density, sticky header and first column,
+virtualization; real pagination; left-sidebar navigation for Control, Design and Identity;
+page headers; nav counts.
+*Exit*: Control's largest table renders a realistic row volume without dropping frames;
+every list screen paginates by page rather than Previous/Next; **visual baselines
+regenerated for all four apps, light and dark** — see [One change to Phase E8](#one-change-to-phase-e8).
+*Depends on*: W1.4. *Size*: L. *Backend*: no.
+**⚠️ Done except the baselines.** The table renders a window rather than the page above 60
+rows, and every list paginates by page with a size control. The visual *suites* exist for
+all four apps, light and dark, desktop and tablet, and CI runs all four — but **no baseline
+images are committed**: the machine this was built on is macOS 12, which Playwright 1.62
+refuses to install a browser for, and the pre-existing Work baselines were deleted rather
+than left to report false regressions against a UI they no longer resemble. One
+`--update-snapshots` run in the pinned container finishes it; the procedure is in
+`togetherflow-work/src/main/frontend/e2e/visual/README.md`.
+
+### Wave 2 — Product depth
+
+W2.1, W2.2 and W2.3 are independent of each other and can run in parallel, or in any order,
+once W1.5 lands. Each opens with its phase's discovery step, and a discovery result is
+allowed to cut that chunk's scope — that is what the step is for.
+
+**W2.1 — Control parity.** *(Phase E2 in full; E2.0 discovery first, and its findings set
+the rest of the chunk's scope.)*
+*Exit*: as Phase E2 — an operator can migrate an instance with a mapping editor, retry jobs
+in bulk, edit a running instance's variable and filter by it, all from Control, with e2e
+coverage per §8; every capability E2.0 found unsupported is written down as a gap rather
+than left unmentioned.
+*Depends on*: W1.5. *Size*: L. *Backend*: no.
+
+**W2.2 — Work parity.** *(Phase E3 in full; E3.0 discovery first.)* This chunk delivers D1
+user chips, which W2.1 consumes — if the two run concurrently, D1 lands here and Control
+picks it up rather than building its own.
+*Exit*: as Phase E3 — golden path plus save-without-complete, ad-hoc task creation and the
+two missing filters, all e2e-covered; no screen in Work renders a raw user id.
+*Depends on*: W1.5. *Size*: L. *Backend*: no.
+
+**W2.3 — Design parity, part 1.** *(Phase E4 in full, its items 1–7 in the order stated
+there — the ordering is by cost-to-value and should not be reshuffled toward the visible
+items.)*
+*Exit*: as Phase E4 — a citizen developer can author, from the UI alone, every form the
+renderer can render; no editor has a bespoke toolbar; deleting a referenced model warns.
+*Depends on*: W1.5, and W1.1 must already be in. *Size*: L. *Backend*: no.
+
+**Wave 2 is the last work in this plan that touches no Java.** If only part of the plan gets
+built, finishing at W2.3 is the honest place to stop: axes 1 and 2 are closed, all four apps
+read as finished products, and nothing is left half-converted.
+
+### Wave 3 — Structural
+
+Gated on E0.3. Do not open this wave before Wave 2 finishes — Risk #4 is precisely this
+wave starting early because it is the most interesting work in the document and the least
+valuable per unit of effort until the apps it sits inside feel finished.
+
+**W3.1 — Workspaces and design-time permissions.** *(Phase E5.)*
+*Exit*: as Phase E5 — a model cannot be edited or deleted by someone without the role,
+proven by a test that calls the REST resource directly rather than driving the UI.
+*Depends on*: E0.3 decided; W1.5; in practice W2.3. *Size*: XL, roughly half Java.
+**Estimate only after E0.3** — this chunk has no defensible size before that decision.
+
+**W3.2 — Git connectivity.** *(Phase E6.)*
+*Exit*: an app can be connected to a repository, committed, pulled, branched and
+disconnected with local models intact; the changed-model view states plainly that its diff
+is a source-text diff and not a graph comparison.
+*Depends on*: W3.1. *Size*: XL, mostly Java. *Backend*: **yes**.
+
+**W3.3 — Data model, bindings, runtime preview, per-model translations.** *(Phase E7.)*
+*Exit*: a form field binds to a declared data model rather than a free-text variable name; a
+process or case can be started from Design against a scratch tenant and watched; model
+content is translatable with per-app export and import.
+*Depends on*: W2.3 and W3.1. *Size*: L. *Backend*: some.
+
+**W3.4 — Verification gate.** *(Phase E8, less G1.)*
+*Scope*: G2 keyboard-only and screen-reader passes per app; G3 usability pass per persona
+(§14.5); load testing Control's tables and Design's save/deploy path against realistic
+volumes (§13.5).
+*Depends on*: everything above. *Size*: M. *Backend*: no.
+
+### Chunk table
+
+| Chunk | Phase | Title | Depends on | Size | Backend? | Status |
+|---|---|---|---|---|---|---|
+| **W1.1** | E0.1 | Concurrent-edit guard *(defect)* | — | S | no | ✅ done |
+| W1.2 | E0.2 | Routing library decision | — | S | — | ✅ [ADR 0016](adr/0016-in-house-router.md) |
+| W1.3 | E1 | Routing and shell — F1, F5, B5 | W1.2 | L | no | ✅ done |
+| W1.4 | E1 | Component set — F2, F3, F4, F6, C3, C4 | W1.3 | L | no | ✅ done |
+| W1.5 | E1 | Tables and navigation — C1, C2, B1–B3, G1 | W1.4 | L | no | ⚠️ baselines outstanding |
+| W2.1 | E2 | Control parity | W1.5 | L | no | not started |
+| W2.2 | E3 | Work parity *(delivers D1)* | W1.5 | L | no | not started |
+| W2.3 | E4 | Design parity, part 1 | W1.5, W1.1 | L | no | not started |
+| W3.1 | E5 | Workspaces + permissions | E0.3, W2.3 | XL | **yes** | blocked on E0.3 |
+| W3.2 | E6 | Git connectivity | W3.1 | XL | **yes** | not started |
+| W3.3 | E7 | Data model, preview, translations | W2.3, W3.1 | L | some | not started |
+| W3.4 | E8 | Verification gate *(less G1)* | all | M | no | not started |
+
+**E0.3 and E0.4 are not chunks.** E0.3 is a decision that gates W3.1 and should be taken
+during Wave 1, so that Wave 3 can be estimated at all rather than committed to blind. E0.4
+is absorbed into W2.1 and W2.2, whose discovery steps are what confirm it.
+
+### One change to Phase E8
+
+**G1 moves out of E8 and into W1.5.** As E8 is written, the visual baselines are regenerated
+at the very end, which leaves them stale through the whole of Wave 2 — Risk #5, unmitigated.
+Regenerating them as W1.5's exit criterion is what makes E1's gains defensible across the
+later chunks, and it matches Phase E1's own exit criteria, which already ask for it. E8
+keeps G2, G3 and load testing.
+
+---
 
 ## Explicitly not building
 

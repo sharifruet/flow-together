@@ -8,6 +8,7 @@
 
 import { useMemo, useState } from "react";
 import {
+  Badge,
   AsyncBoundary,
   DataTable,
   EmptyState,
@@ -297,7 +298,7 @@ function Tables({ systemApi }: { systemApi: SystemApi }) {
         <ul className="tf-cards">
           {list.map((table) => (
             <li key={table.name}>
-              <button type="button" className="tf-card" onClick={() => setSelected(table.name)}>
+              <button type="button" className="tf-card tf-card--interactive" onClick={() => setSelected(table.name)}>
                 <span className="tf-card__title tf-mono">{table.name}</span>
                 <span className="tf-card__meta">
                   {t("system.tables.rowCount", { count: table.count ?? 0 })}
@@ -401,7 +402,7 @@ function Batches({ systemApi }: { systemApi: SystemApi }) {
         key: "status",
         header: t("system.batches.column.status"),
         width: "140px",
-        render: (batch) => <span className="tf-badge tf-badge--running">{batch.status || "—"}</span>,
+        render: (batch) => <Badge tone="info">{batch.status || "—"}</Badge>,
       },
       {
         key: "created",
@@ -473,9 +474,9 @@ function Decisions({ api }: { api: DecisionHistoryApi }) {
         width: "120px",
         render: (row) =>
           row.failed ? (
-            <span className="tf-badge tf-badge--danger">{t("system.decisions.failed")}</span>
+            <Badge tone="danger">{t("system.decisions.failed")}</Badge>
           ) : (
-            <span className="tf-badge tf-badge--done">OK</span>
+            <Badge tone="success">OK</Badge>
           ),
       },
       {

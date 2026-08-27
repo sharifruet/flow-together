@@ -1,15 +1,18 @@
-import { useCallback, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import {
   ApiClient,
   IdmApi,
   LoginScreen,
   UserProfileApi,
   useAuth,
+  useNavigate,
+  useRoute,
   useT,
   useTenant,
   type AppLinks,
 } from "@togetherflow/common";
-import { AppShell, type IdentityView } from "./features/shell/AppShell";
+import { AppShell } from "./features/shell/AppShell";
+import { ROUTE_TABLE, pathFor, userPath, type IdentityView } from "./routes";
 import { Users } from "./features/users/Users";
 import { Groups } from "./features/groups/Groups";
 import { Privileges } from "./features/privileges/Privileges";
@@ -33,7 +36,11 @@ export function App({ apps,
   const t = useT();
   const { session, signOut, getAuthHeaders, isInitialising } = useAuth();
   const { tenantId } = useTenant();
-  const [view, setView] = useState<IdentityView>("users");
+  // The screen comes from the URL since W1.3 (F1), so every section is linkable.
+  const route = useRoute(ROUTE_TABLE, "users");
+  const navigate = useNavigate();
+  const view = route.id;
+  const [counts, setCounts] = useState<Partial<Record<IdentityView, number>>>({});
 
   const makeClient = useCallback(
     (baseUrl: string) =>
@@ -66,6 +73,21 @@ export function App({ apps,
   );
 
 
+  useEffect(() => {
+    if (!session) return;
+    let cancelled = false;
+    Promise.all([
+      idm.listUsers({ size: 1 }).then((page) => page.total).catch(() => undefined),
+      idm.listGroups({ size: 1 }).then((page) => page.total).catch(() => undefined),
+      idm.listPrivileges({ size: 1 }).then((page) => page.total).catch(() => undefined),
+    ]).then(([users, groups, privileges]) => {
+      if (!cancelled) setCounts({ users, groups, privileges });
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, [idm, session]);
+
   if (isInitialising) {
     return (
       <main className="tf-login">
@@ -79,14 +101,20 @@ export function App({ apps,
   if (!session) return <LoginScreen app="identity" />;
 
   return (
-    <AppShell view={view} onViewChange={setView} apps={apps} onChangePassword={changePassword}>
+    <AppShell view={view} counts={counts} apps={apps} onChangePassword={changePassword}>
       {readOnly ? (
         <p className="tf-banner" role="status">
           {t("readOnly.banner")}
         </p>
       ) : null}
       {view === "users" ? (
-        <Users idm={idm} profileApi={profileApi} readOnly={readOnly} />
+        <Users
+          idm={idm}
+          profileApi={profileApi}
+          readOnly={readOnly}
+          selectedUserId={route.params.userId}
+          onSelectUser={(userId) => navigate(userId ? userPath(userId) : pathFor("users"))}
+        />
       ) : view === "groups" ? (
         <Groups idm={idm} readOnly={readOnly} />
       ) : (

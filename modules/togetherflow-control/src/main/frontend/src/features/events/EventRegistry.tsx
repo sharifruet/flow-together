@@ -18,6 +18,7 @@
 
 import { useMemo, useState } from "react";
 import {
+  Badge,
   ApiError,
   AsyncBoundary,
   Button,
@@ -202,7 +203,7 @@ function ChannelDefinitions({ eventApi }: { eventApi: EventRegistryApi }) {
         width: "140px",
         render: (definition) =>
           definition.type ? (
-            <span className="tf-badge tf-badge--running">{definition.type}</span>
+            <Badge tone="info">{definition.type}</Badge>
           ) : (
             <span className="tf-muted">—</span>
           ),
@@ -339,17 +340,13 @@ function ReceivedEvents({
         header: t("events.received.column.status"),
         width: "150px",
         render: (row) => (
-          <span
-            className={
-              row.status === "RECEIVED"
-                ? "tf-badge tf-badge--running"
-                : row.status === "UNRESOLVED"
-                  ? "tf-badge tf-badge--warning"
-                  : "tf-badge tf-badge--danger"
+          <Badge
+            tone={
+              row.status === "RECEIVED" ? "info" : row.status === "UNRESOLVED" ? "warning" : "danger"
             }
           >
             {t(`events.received.status.${row.status}`)}
-          </span>
+          </Badge>
         ),
       },
       {

@@ -25,6 +25,7 @@ replacement.
 | [0013](0013-in-house-i18n.md) | An in-house i18n layer rather than react-i18next | Accepted |
 | [0014](0014-resilience-and-error-reporting.md) | Retry only safe requests; report crashes through a transport-agnostic sink | Accepted |
 | [0015](0015-inbound-event-log.md) | Record inbound events in an optional module, on the processor seam | Accepted |
+| [0016](0016-in-house-router.md) | An in-house router rather than React Router | Accepted |
 
 **ADRs 0001–0007 were made by default during Phase 1 and ratified retroactively in Phase 0.**
 That ordering was a process mistake — they should have been settled before code was written

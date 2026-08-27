@@ -25,6 +25,7 @@ import {
   type ModelValidationApi,
   type TFunction,
 } from "@togetherflow/common";
+import { useConflictPrompt } from "../editors/ConflictPrompt";
 import { canDeploy, issuesFromServer, type ValidationIssue } from "../bpmn/validateBpmn";
 import { problemMarkers, validateCmmn } from "./validateCmmn";
 import {
@@ -125,6 +126,12 @@ export interface CmmnEditorProps {
   initialXml: string | null;
   loadError?: string | null;
   onBack: () => void;
+  /**
+   * Discards local changes and re-imports what is stored (W1.1). The parent owns it: a
+   * reload is a refetch plus a remount, which resets the editor's undo stack — which is
+   * exactly what "take theirs, drop mine" means.
+   */
+  onReloadSource?: () => void;
   /** Called after a save or deploy; carries the updated draft where one exists. */
   onSaved: (draft?: ModelResponse) => void;
 }
@@ -136,10 +143,17 @@ export function CmmnEditor({
   initialXml,
   loadError,
   onBack,
+  onReloadSource,
   onSaved,
 }: CmmnEditorProps) {
   const { t, locale } = useI18n();
   const { push } = useToast();
+  /*
+   * The concurrent-edit guard's user half (W1.1). Declared before `save` so the
+   * autosave effect and the save callback can both see it.
+   */
+  const conflict = useConflictPrompt({ onReload: () => onReloadSource?.() });
+
   /**
    * The parse happens during render, and only *edits* live in state, keyed by model
    * id. Syncing parsed input into state from an effect would cost a cascading render
@@ -513,7 +527,11 @@ export function CmmnEditor({
       if (!caseModel) return;
       setSaving(true);
       try {
-        await modelApi.saveSource(model.id, serialiseCmmn(caseModel));
+        const written = await conflict.guard(async (overwrite) => {
+          await modelApi.saveSource(model.id, serialiseCmmn(caseModel), { overwrite });
+          return true;
+        });
+        if (!written) return;
         setDirty(false);
         setLastSavedAt(new Date());
         if (!options.silent) push({ tone: "success", message: t("editor.saved.toast") });
@@ -529,7 +547,7 @@ export function CmmnEditor({
         setSaving(false);
       }
     },
-    [caseModel, modelApi, model.id, push, onSaved, t],
+    [caseModel, modelApi, model.id, push, onSaved, t, conflict],
   );
 
   const saveRef = useRef(save);
@@ -538,10 +556,10 @@ export function CmmnEditor({
   }, [save]);
 
   useEffect(() => {
-    if (!dirty || !caseModel) return;
+    if (!dirty || !caseModel || conflict.blocked) return;
     const timer = setTimeout(() => void saveRef.current({ silent: true }), AUTOSAVE_IDLE_MS);
     return () => clearTimeout(timer);
-  }, [dirty, caseModel]);
+  }, [dirty, caseModel, conflict.blocked]);
 
   useEffect(() => {
     if (!dirty) return;
@@ -881,6 +899,9 @@ export function CmmnEditor({
           void deploy();
         }}
       />
+
+      {/* Reload-or-overwrite, when someone else saved this model (W1.1). */}
+      {conflict.prompt}
     </section>
   );
 }

@@ -1,11 +1,12 @@
 # TogetherFlow UI — Status
 
-**As of**: 2026-08-25. Working tree only — nothing here is committed.
+**As of**: 2026-08-27. Working tree only — nothing here is committed.
 
-Companion to [REQUIREMENTS.md](REQUIREMENTS.md) (what is required and why) and
-[IMPLEMENTATION_PLAN.md](IMPLEMENTATION_PLAN.md) (how it was sequenced). This document is
-the handover: what is built, what is verified, what is not, and what each remaining item
-is waiting on.
+Companion to [REQUIREMENTS.md](REQUIREMENTS.md) (what is required and why),
+[IMPLEMENTATION_PLAN.md](IMPLEMENTATION_PLAN.md) (how Phases 1–7 were sequenced) and
+[ENTERPRISE_PARITY_PLAN.md](ENTERPRISE_PARITY_PLAN.md) (how the parity work is chunked).
+This document is the handover: what is built, what is verified, what is not, and what each
+remaining item is waiting on.
 
 It is written to be read by someone picking this up cold. Where something is unfinished or
 unproven it says so plainly rather than rounding up.
@@ -20,22 +21,63 @@ are substantially built but **not verified end to end**; §5 is explicit about w
 
 | Module | Purpose | Tests |
 |---|---|---|
-| `togetherflow-common` | API clients, auth, design system, i18n, shell, observability | 234 |
-| `togetherflow-work` | Task and case inbox | 84 |
+| `togetherflow-common` | API clients, auth, design system, routing, i18n, shell, observability | 403 |
+| `togetherflow-work` | Task and case inbox | 85 |
 | `togetherflow-control` | Runtime operations | 71 |
 | `togetherflow-identity` | Users, groups, privileges | 41 |
-| `togetherflow-design` | Model authoring across six model types | 524 |
+| `togetherflow-design` | Model authoring across six model types | 531 |
 | `togetherflow-attachment-gateway` | Optional attachment storage (Java) | 38 |
 | `togetherflow-event-recorder` | Optional inbound event log (Java) | 36 |
 
-**954 frontend tests.** Lint, typecheck, production build and bundle
-budget pass for every module; the component gallery builds. On the Java side, the
+**1,131 frontend tests** (was 954 before Wave 1). Lint, typecheck, production build and
+bundle budget pass for every module; the component gallery builds. On the Java side, the
 model-validation resources add 9 REST tests against a real engine, and the attachment
 gateway went from 13 tests to 38; the new event recorder adds 36.
+
+**Visual regression is the one check that is not currently checking anything** — the suites
+exist for all four apps and CI runs them, but no baseline images are committed. See §2's
+Wave 1 note.
 
 ---
 
 ## 2. What changed in this pass
+
+### Wave 1 of the enterprise-parity plan (2026-08-27)
+
+[ENTERPRISE_PARITY_PLAN.md](ENTERPRISE_PARITY_PLAN.md)'s W1.1–W1.5 — the foundation chunk.
+[UI_POLISH_BACKLOG.md §J](UI_POLISH_BACKLOG.md) is the item-by-item record; in summary:
+
+- **A data-loss defect is fixed.** Six editors autosaved every four idle seconds against an
+  unconditional PUT, so two people on one model overwrote each other with neither pressing
+  Save. `ModelApi.saveSource` now compares the stored source against what this browser last
+  read or wrote and refuses the write, with a reload-or-overwrite prompt. It narrows the
+  window rather than closing it — the read and the write are still two requests — and a
+  true fix needs the server-side locking in W3.1.
+- **All four apps have URLs** ([ADR 0016](adr/0016-in-house-router.md), an in-house router).
+  Tasks, cases, instances, deployments, users and models are linkable; filters, sort and
+  page are in the query string; Back closes a detail pane instead of leaving the app.
+- **The design system went from 8 primitives to 19**, with the typeface actually shipped,
+  a complete token set enforced by a test that reads every stylesheet in every module, one
+  modal that owns focus trap/restore/scroll-lock/inert, ~55 icons and six empty-state
+  illustrations.
+- **816 lines of duplicated shell CSS** — byte-identical across the four app stylesheets —
+  became one file in `togetherflow-common`.
+- **`DataTable` was rebuilt**: server-driven sortable headers, selection with a bulk bar,
+  row action menus, column/density preferences, sticky header and first column, and
+  virtualization above 60 rows. Control, Design and Identity gained a left rail with
+  section counts; every list screen has a page header.
+
+**What is not done in Wave 1, and is not hidden:** no visual-regression baselines are
+committed for any app. The suites, the configs and the CI matrix are in place for all four,
+light and dark; the images are not, because the machine this was built on is macOS 12 and
+Playwright 1.62 refuses to install a browser for it. The stale Work baselines were deleted
+rather than left to report false regressions against a UI they no longer resemble. One
+`--update-snapshots` run in the pinned container finishes it — the procedure is in
+`modules/togetherflow-work/src/main/frontend/e2e/visual/README.md`. Until then the `visual`
+CI job stays `continue-on-error`, which means it cannot fail, which means it is not yet a
+check.
+
+### The earlier cross-cutting pass
 
 An audit against the requirements found the functional scope (§7) largely delivered but
 the cross-cutting requirements (§8, §13, §14) treated as aspirational — which is exactly

@@ -16,6 +16,7 @@ import { resolve } from "node:path";
 import { render, screen } from "@testing-library/react";
 import { describe, expect, it } from "vitest";
 import { ToastProvider } from "../components/Toast";
+import { RouterProvider } from "../routing/RouterContext";
 import { GALLERY } from "./registry";
 import { TOKEN_GROUPS } from "./tokens";
 
@@ -100,7 +101,11 @@ describe("gallery coverage", () => {
     for (const entry of GALLERY) {
       for (const state of entry.states) {
         expect(() =>
-          render(<ToastProvider>{state.node}</ToastProvider>),
+          render(
+              <RouterProvider>
+                <ToastProvider>{state.node}</ToastProvider>
+              </RouterProvider>,
+            ),
         ).not.toThrow();
       }
     }

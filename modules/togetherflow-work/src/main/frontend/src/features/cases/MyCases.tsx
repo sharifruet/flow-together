@@ -12,6 +12,7 @@
 
 import { useMemo, useState } from "react";
 import {
+  Badge,
   AsyncBoundary,
   DataTable,
   EmptyState,
@@ -25,6 +26,7 @@ import {
   type CaseInstanceResponse,
   type Column,
   type TFunction,
+  type BadgeTone,
 } from "@togetherflow/common";
 
 const PAGE_SIZE = 25;
@@ -93,7 +95,7 @@ export function MyCases({
         header: t("cases.column.state"),
         width: "120px",
         render: (instance) => (
-          <span className={stateBadgeClass(instance)}>{stateLabel(instance, t)}</span>
+          <Badge tone={stateBadgeTone(instance)}>{stateLabel(instance, t)}</Badge>
         ),
       },
       {
@@ -218,13 +220,10 @@ function stateLabel(instance: CaseInstanceResponse, t: TFunction): string {
   return instance.state ? instance.state[0].toUpperCase() + instance.state.slice(1) : t("cases.state.active");
 }
 
-function stateBadgeClass(instance: CaseInstanceResponse): string {
-  const ended = Boolean(instance.endTime);
-  const terminated = instance.state === "terminated";
-  return [
-    "tf-badge",
-    terminated ? "tf-badge--danger" : ended ? "tf-badge--done" : "tf-badge--running",
-  ].join(" ");
+/** C3: the tone, not a class — `Badge` owns how a tone is drawn. */
+function stateBadgeTone(instance: CaseInstanceResponse): BadgeTone {
+  if (instance.state === "terminated") return "danger";
+  return instance.endTime ? "success" : "info";
 }
 
 function chipClass(active: boolean): string {

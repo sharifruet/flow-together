@@ -1,4 +1,4 @@
-import { useCallback, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import {
   ApiClient,
   CaseApi,
@@ -14,13 +14,24 @@ import {
   SystemApi,
   UserProfileApi,
   useAuth,
+  useNavigate,
   useRegisterShortcuts,
+  useRoute,
   useT,
   useTenant,
   type AppLinks,
   type Shortcut,
 } from "@togetherflow/common";
-import { AppShell, CONTROL_VIEWS, type ControlView } from "./features/shell/AppShell";
+import { AppShell, type ControlCounts } from "./features/shell/AppShell";
+import {
+  CONTROL_VIEWS,
+  ROUTE_TABLE,
+  casePath,
+  deploymentPath,
+  instancePath,
+  pathFor,
+  type ControlView,
+} from "./routes";
 import { Instances } from "./features/instances/Instances";
 import { CaseInstances } from "./features/cases/CaseInstances";
 import { Definitions } from "./features/definitions/Definitions";
@@ -58,7 +69,16 @@ export function App({
   const t = useT();
   const { session, signOut, getAuthHeaders, isInitialising } = useAuth();
   const { tenantId } = useTenant();
-  const [view, setView] = useState<ControlView>("instances");
+  /*
+   * The screen and the open entity come from the URL since W1.3 (F1) — the change F1
+   * argues for hardest in this app: "support and ops cannot paste 'look at this
+   * instance' into a ticket."
+   */
+  const route = useRoute(ROUTE_TABLE, "instances");
+  const navigate = useNavigate();
+  const view = route.id;
+  const setView = useCallback((next: ControlView) => navigate(pathFor(next)), [navigate]);
+  const [counts, setCounts] = useState<ControlCounts>({});
 
   /*
    * §14.4 argues hardest for keyboard support in exactly this app — admins triaging at
@@ -73,7 +93,7 @@ export function App({
         description: t("shortcuts.goTo", { section: t(`nav.${id}`) }),
         run: () => setView(id),
       })),
-    [t],
+    [t, setView],
   );
   useRegisterShortcuts(shortcuts);
 
@@ -142,6 +162,28 @@ export function App({
   );
 
 
+  /*
+   * Nav counts (B3). §9 rules out an aggregation API, so each is the `total` off a
+   * `size=1` query — three cheap requests rather than a new endpoint. A count that fails
+   * to load is simply not shown; it is decoration, not the screen.
+   */
+  useEffect(() => {
+    if (!session) return;
+    let cancelled = false;
+    const total = (promise: Promise<{ total: number }>) =>
+      promise.then((page) => page.total).catch(() => undefined);
+    Promise.all([
+      total(apis.instances.query({ size: 1 })),
+      total(apis.cases.query({ size: 1 })),
+      total(apis.jobs.list("deadletter", { size: 1 })),
+    ]).then(([instances, cases, deadLetterJobs]) => {
+      if (!cancelled) setCounts({ instances, cases, deadLetterJobs });
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, [apis, session]);
+
   if (isInitialising) {
     return (
       <main className="tf-login">
@@ -155,9 +197,21 @@ export function App({
   if (!session) return <LoginScreen app="control" />;
 
   return (
-    <AppShell view={view} onViewChange={setView} apps={apps} onChangePassword={changePassword}>
-      {view === "instances" ? <Instances instanceApi={apis.instances} /> : null}
-      {view === "cases" ? <CaseInstances caseApi={apis.cases} /> : null}
+    <AppShell view={view} counts={counts} apps={apps} onChangePassword={changePassword}>
+      {view === "instances" ? (
+        <Instances
+          instanceApi={apis.instances}
+          selectedId={route.params.instanceId}
+          onSelect={(id) => navigate(id ? instancePath(id) : pathFor("instances"))}
+        />
+      ) : null}
+      {view === "cases" ? (
+        <CaseInstances
+          caseApi={apis.cases}
+          selectedId={route.params.caseId}
+          onSelect={(id) => navigate(id ? casePath(id) : pathFor("cases"))}
+        />
+      ) : null}
       {view === "definitions" ? (
         <Definitions
           repositoryApi={apis.repository}
@@ -170,7 +224,13 @@ export function App({
         <EventRegistry eventApi={apis.events} recorderApi={apis.eventRecorder} />
       ) : null}
       {view === "jobs" ? <Jobs jobApi={apis.jobs} /> : null}
-      {view === "deployments" ? <Deployments repositoryApi={apis.repository} /> : null}
+      {view === "deployments" ? (
+        <Deployments
+          repositoryApi={apis.repository}
+          selectedId={route.params.deploymentId}
+          onSelect={(id) => navigate(id ? deploymentPath(id) : pathFor("deployments"))}
+        />
+      ) : null}
       {view === "system" ? (
         <System
           systemApi={apis.system}

@@ -1,14 +1,22 @@
 {
   "_comment": [
-    "Bundle-size budgets in gzipped kB (REQUIREMENTS.md \u00a713.5). Enforced by",
-    "`npm run budget`, which CI runs after the build \u2014 a regression fails the",
+    "Bundle-size budgets in gzipped kB (REQUIREMENTS.md §13.5). Enforced by",
+    "`npm run budget`, which CI runs after the build — a regression fails the",
     "build rather than being noticed later.",
     "Groups are filename prefixes, not exact names: Vite fingerprints its output.",
-    "Raising a budget is fine when the growth is deliberate \u2014 do it in the same",
+    "Raising a budget is fine when the growth is deliberate — do it in the same",
     "commit as the change, so the increase is reviewed alongside what caused it."
   ],
   "groups": {
-    "assets/index": 110
+    "assets/index": 114
   },
-  "totalKb": 115
+  "totalKb": 118,
+  "_w1_note": [
+    "assets/index went 110 -> 114 with W1.1-W1.5. The growth is the router",
+    "(ADR 0016), the eleven new shared primitives, the ~55-icon set (1.7 kB",
+    "gzipped of path data on its own) and the six empty-state illustrations.",
+    "Smaller than the sum of those because it is partly offset: the 204 duplicated",
+    "shell-CSS lines left every app stylesheet (F5), and the old bespoke table and",
+    "dialog CSS was replaced rather than added to."
+  ]
 }

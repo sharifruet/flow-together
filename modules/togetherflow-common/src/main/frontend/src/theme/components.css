@@ -12,7 +12,9 @@
   font-weight: 500;
   line-height: 1.4;
   cursor: pointer;
-  transition: background-color 0.12s ease, border-color 0.12s ease, color 0.12s ease;
+  transition: background-color var(--tf-duration-fast) var(--tf-ease),
+    border-color var(--tf-duration-fast) var(--tf-ease),
+    color var(--tf-duration-fast) var(--tf-ease);
 }
 .tf-button:disabled {
   opacity: 0.55;
@@ -53,7 +55,7 @@
   border: 2px solid currentColor;
   border-right-color: transparent;
   border-radius: 50%;
-  animation: tf-spin 0.7s linear infinite;
+  animation: tf-spin var(--tf-spin-duration, 700ms) linear infinite;
 }
 @keyframes tf-spin {
   to {
@@ -61,8 +63,10 @@
   }
 }
 @media (prefers-reduced-motion: reduce) {
+  /* Slowed, not stopped: a spinner that does not move says "hung", which is the one
+     thing it must not say. */
   .tf-button__spinner {
-    animation-duration: 2s;
+    --tf-spin-duration: 2000ms;
   }
 }
 
@@ -155,7 +159,7 @@
   border-radius: var(--tf-radius-sm);
   background: linear-gradient(90deg, var(--tf-bg-subtle), var(--tf-border), var(--tf-bg-subtle));
   background-size: 200% 100%;
-  animation: tf-shimmer 1.3s ease-in-out infinite;
+  animation: tf-shimmer var(--tf-shimmer-duration, 1300ms) ease-in-out infinite;
 }
 @keyframes tf-shimmer {
   to {
@@ -168,60 +172,6 @@
   }
 }
 
-/* Table */
-.tf-table-wrap {
-  overflow-x: auto;
-}
-.tf-table {
-  width: 100%;
-  border-collapse: collapse;
-  font-size: var(--tf-text-base);
-}
-.tf-table th,
-.tf-table td {
-  text-align: left;
-  padding: 10px 12px;
-  border-bottom: 1px solid var(--tf-border);
-  vertical-align: top;
-}
-.tf-table th {
-  font-size: var(--tf-text-xs);
-  text-transform: uppercase;
-  letter-spacing: 0.04em;
-  color: var(--tf-text-muted);
-  background: var(--tf-bg-subtle);
-  position: sticky;
-  top: 0;
-  z-index: 1;
-}
-.tf-table tbody tr {
-  cursor: pointer;
-}
-.tf-table tbody tr:hover {
-  background: var(--tf-bg-subtle);
-}
-.tf-table__row--selected {
-  background: var(--tf-info-bg) !important;
-  box-shadow: inset 3px 0 0 var(--tf-accent);
-}
-
-.tf-pagination {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: var(--tf-space-3);
-  padding: var(--tf-space-3) 0;
-  flex-wrap: wrap;
-}
-.tf-pagination__status {
-  margin: 0;
-  font-size: var(--tf-text-sm);
-  color: var(--tf-text-muted);
-}
-.tf-pagination__controls {
-  display: flex;
-  gap: var(--tf-space-2);
-}
 
 /* Toasts */
 .tf-toasts {
@@ -231,7 +181,7 @@
   display: flex;
   flex-direction: column;
   gap: var(--tf-space-2);
-  z-index: 60;
+  z-index: var(--tf-z-toast);
   max-width: min(420px, calc(100vw - 32px));
 }
 .tf-toast {
@@ -274,40 +224,6 @@
   padding: 0 var(--tf-space-1);
 }
 
-/* Dialog */
-.tf-dialog-backdrop {
-  position: fixed;
-  inset: 0;
-  background: rgba(12, 35, 71, 0.45);
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  padding: var(--tf-space-4);
-  z-index: 70;
-}
-.tf-dialog {
-  background: var(--tf-bg-raised);
-  border-radius: var(--tf-radius-lg);
-  box-shadow: var(--tf-shadow-lg);
-  padding: var(--tf-space-5);
-  max-width: 460px;
-  width: 100%;
-}
-.tf-dialog__title {
-  margin: 0 0 var(--tf-space-2);
-  font-size: var(--tf-text-lg);
-}
-.tf-dialog__description {
-  margin: 0 0 var(--tf-space-5);
-  color: var(--tf-text-muted);
-  line-height: 1.5;
-}
-.tf-dialog__actions {
-  display: flex;
-  justify-content: flex-end;
-  gap: var(--tf-space-2);
-}
-
 /* Brand */
 .tf-brand {
   display: inline-flex;
@@ -331,13 +247,6 @@
 @media (prefers-color-scheme: dark) {
   :root:not([data-tf-theme="light"]) .tf-brand__together {
     color: var(--tf-text);
-  }
-}
-
-/* Narrow viewports: drop secondary columns rather than horizontally scrolling the page. */
-@media (max-width: 768px) {
-  .tf-table__cell--secondary {
-    display: none;
   }
 }
 
@@ -463,4 +372,914 @@ a.tf-menu__item:hover {
   font-size: 0.8125rem;
   text-align: center;
   color: var(--tf-text);
+}
+
+/* ══════════════════════════════════════════════════════════════════════════════
+ * W1.4 — the component set (UI_POLISH_BACKLOG.md F2, C1–C4).
+ *
+ * Everything below was previously hand-rolled per app: `.tf-badge` in three
+ * stylesheets, `.tf-card` in three, `.tf-panel` in two, `.tf-chip` in Work. F2's
+ * acceptance is that no app stylesheet defines a component class, so these are the
+ * one definition and the app copies are gone.
+ * ═════════════════════════════════════════════════════════════════════════════ */
+
+/* ── Icons ─────────────────────────────────────────────────────────────────── */
+
+.tf-icon {
+  flex: none;
+  display: inline-block;
+  vertical-align: -0.15em;
+}
+
+/* ── Badge (C3) ────────────────────────────────────────────────────────────── */
+
+.tf-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--tf-space-1);
+  padding: 1px var(--tf-space-2);
+  border-radius: var(--tf-radius-pill);
+  border: var(--tf-border-width) solid transparent;
+  font-size: var(--tf-text-xs);
+  font-weight: var(--tf-weight-semibold);
+  line-height: var(--tf-leading-relaxed);
+  white-space: nowrap;
+}
+.tf-badge--neutral {
+  background: var(--tf-neutral-bg);
+  color: var(--tf-text);
+}
+.tf-badge--info {
+  background: var(--tf-info-bg);
+  color: var(--tf-info);
+}
+.tf-badge--success {
+  background: var(--tf-success-bg);
+  color: var(--tf-success);
+}
+.tf-badge--warning {
+  background: var(--tf-warning-bg);
+  color: var(--tf-warning);
+}
+.tf-badge--danger {
+  background: var(--tf-danger-bg);
+  color: var(--tf-danger);
+}
+/* Hollow, for a dense table where filled badges would stripe the page. */
+.tf-badge--subtle {
+  background: transparent;
+  border-color: currentColor;
+}
+.tf-badge__dot {
+  width: 6px;
+  height: 6px;
+  border-radius: var(--tf-radius-pill);
+  background: currentColor;
+}
+
+/*
+ * Dark mode: the semantic *foreground* tokens are tuned for text on the page background,
+ * and on a tinted badge they sit too close to it. Lifting the text to the page's own
+ * text colour keeps the tint as the signal and the word readable, which is the whole
+ * point of C3's "never colour alone".
+ */
+[data-tf-theme="dark"] .tf-badge:not(.tf-badge--subtle) {
+  color: var(--tf-text);
+}
+@media (prefers-color-scheme: dark) {
+  :root:not([data-tf-theme="light"]) .tf-badge:not(.tf-badge--subtle) {
+    color: var(--tf-text);
+  }
+}
+
+/* ── Card / Panel (F2) ─────────────────────────────────────────────────────── */
+
+.tf-card {
+  background: var(--tf-bg-raised);
+  border: var(--tf-border-width) solid var(--tf-border);
+  border-radius: var(--tf-radius-lg);
+  box-shadow: var(--tf-shadow-sm);
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+}
+/* B5: fills its track and scrolls its own body rather than growing the page. */
+.tf-card--fill {
+  flex: 1;
+  min-height: 0;
+}
+.tf-card__header {
+  flex: none;
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: var(--tf-space-3);
+  padding: var(--tf-space-3) var(--tf-space-4);
+  border-bottom: var(--tf-border-width) solid var(--tf-border);
+}
+.tf-card__heading {
+  min-width: 0;
+}
+.tf-card__title {
+  margin: 0;
+  font-size: var(--tf-text-lg);
+  font-weight: var(--tf-weight-semibold);
+  line-height: var(--tf-leading-snug);
+}
+.tf-card__meta {
+  margin: var(--tf-space-1) 0 0;
+  font-size: var(--tf-text-sm);
+  color: var(--tf-text-muted);
+}
+.tf-card__actions {
+  flex: none;
+  display: flex;
+  align-items: center;
+  gap: var(--tf-space-2);
+}
+.tf-card__body {
+  flex: 1;
+  min-height: 0;
+  padding: var(--tf-space-4);
+  overflow: auto;
+}
+.tf-card__body--flush {
+  padding: 0;
+  /* A flush card's body is a table, which owns its own scrolling. */
+  overflow: visible;
+  display: flex;
+  flex-direction: column;
+}
+
+.tf-cards {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(240px, 1fr));
+  gap: var(--tf-space-3);
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+
+/*
+ * The clickable tile — a card that is itself the control, as in Control's table browser
+ * and Identity's privilege list. Both apps had defined their own `.tf-card` for this,
+ * which collided with the component above; it is a modifier rather than a second
+ * component because everything except "the whole card is the button" is shared.
+ */
+.tf-card--interactive {
+  width: 100%;
+  text-align: left;
+  gap: 2px;
+  padding: var(--tf-space-3);
+  border-radius: var(--tf-radius);
+  font: inherit;
+  cursor: pointer;
+  transition: border-color var(--tf-duration-fast) var(--tf-ease),
+    background-color var(--tf-duration-fast) var(--tf-ease);
+}
+.tf-card--interactive:hover {
+  border-color: var(--tf-accent);
+  background: var(--tf-bg-hover);
+}
+/* No header row in a tile, so the title and meta are direct children. */
+.tf-card--interactive .tf-card__title {
+  font-size: var(--tf-text-base);
+}
+.tf-card--interactive .tf-card__meta {
+  margin: 0;
+}
+
+/* ── PageHeader (B2) ───────────────────────────────────────────────────────── */
+
+.tf-page-header {
+  flex: none;
+  padding: var(--tf-space-4) var(--tf-space-4) var(--tf-space-3);
+  background: var(--tf-bg-raised);
+  border-bottom: var(--tf-border-width) solid var(--tf-border);
+  /* Sticky so the title and the primary action stay put while the list scrolls (B5). */
+  position: sticky;
+  top: 0;
+  z-index: var(--tf-z-sticky);
+}
+.tf-page-header__row {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: var(--tf-space-4);
+  flex-wrap: wrap;
+}
+.tf-page-header__heading {
+  min-width: 0;
+}
+.tf-page-header__title-row {
+  display: flex;
+  align-items: center;
+  gap: var(--tf-space-3);
+  flex-wrap: wrap;
+}
+.tf-page-header__title {
+  margin: 0;
+  font-size: var(--tf-text-2xl);
+  font-weight: var(--tf-weight-semibold);
+  line-height: var(--tf-leading-tight);
+  letter-spacing: var(--tf-tracking-tight);
+}
+.tf-page-header__meta {
+  display: flex;
+  align-items: center;
+  gap: var(--tf-space-2);
+}
+.tf-page-header__description {
+  margin: var(--tf-space-1) 0 0;
+  color: var(--tf-text-muted);
+  max-width: 68ch;
+}
+.tf-page-header__actions {
+  display: flex;
+  align-items: center;
+  gap: var(--tf-space-2);
+  flex-wrap: wrap;
+}
+
+/* ── Breadcrumb ────────────────────────────────────────────────────────────── */
+
+.tf-breadcrumb {
+  margin-bottom: var(--tf-space-2);
+}
+.tf-breadcrumb__list {
+  display: flex;
+  align-items: center;
+  gap: var(--tf-space-2);
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  font-size: var(--tf-text-sm);
+  color: var(--tf-text-muted);
+  flex-wrap: wrap;
+}
+.tf-breadcrumb__link {
+  color: var(--tf-accent);
+  text-decoration: none;
+}
+.tf-breadcrumb__link:hover {
+  text-decoration: underline;
+}
+.tf-breadcrumb__separator {
+  color: var(--tf-border-strong);
+}
+
+/* ── Tabs ──────────────────────────────────────────────────────────────────── */
+
+.tf-tabs {
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+  flex: 1;
+}
+.tf-tabs__list {
+  flex: none;
+  display: flex;
+  gap: var(--tf-space-1);
+  border-bottom: var(--tf-border-width) solid var(--tf-border);
+  overflow-x: auto;
+}
+.tf-tabs__tab {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--tf-space-2);
+  padding: var(--tf-space-2) var(--tf-space-3);
+  border: none;
+  border-bottom: 2px solid transparent;
+  background: none;
+  font: inherit;
+  color: var(--tf-text-muted);
+  cursor: pointer;
+  white-space: nowrap;
+  transition: color var(--tf-duration-fast) var(--tf-ease),
+    border-color var(--tf-duration-fast) var(--tf-ease);
+}
+.tf-tabs__tab:hover:not(:disabled) {
+  color: var(--tf-text);
+}
+.tf-tabs__tab:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+.tf-tabs__tab--active {
+  color: var(--tf-accent);
+  font-weight: var(--tf-weight-semibold);
+  border-bottom-color: var(--tf-accent);
+}
+.tf-tabs__panel {
+  flex: 1;
+  min-height: 0;
+  padding-top: var(--tf-space-4);
+}
+.tf-tabs__panel:focus {
+  outline: none;
+}
+.tf-tabs__panel:focus-visible {
+  outline: var(--tf-border-width-thick) solid var(--tf-accent);
+  outline-offset: -2px;
+}
+
+/* ── Avatar / UserChip (D1) ────────────────────────────────────────────────── */
+
+.tf-avatar {
+  flex: none;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: var(--tf-radius-pill);
+  object-fit: cover;
+  color: #fff;
+  font-weight: var(--tf-weight-semibold);
+  letter-spacing: var(--tf-tracking-normal);
+  user-select: none;
+}
+.tf-avatar--sm {
+  width: 22px;
+  height: 22px;
+  font-size: 9px;
+}
+.tf-avatar--md {
+  width: 30px;
+  height: 30px;
+  font-size: var(--tf-text-xs);
+}
+.tf-avatar--lg {
+  width: 44px;
+  height: 44px;
+  font-size: var(--tf-text-base);
+}
+
+.tf-user-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--tf-space-2);
+  min-width: 0;
+}
+.tf-user-chip__text {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+  line-height: var(--tf-leading-tight);
+}
+.tf-user-chip__name {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.tf-user-chip__secondary {
+  font-size: var(--tf-text-xs);
+  color: var(--tf-text-muted);
+}
+
+/* ── DropdownMenu ──────────────────────────────────────────────────────────── */
+
+.tf-menu-root {
+  position: relative;
+  display: inline-flex;
+}
+.tf-menu-trigger {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--tf-space-2);
+  min-width: 28px;
+  min-height: 28px;
+  justify-content: center;
+  padding: var(--tf-space-1) var(--tf-space-2);
+  border: var(--tf-border-width) solid transparent;
+  border-radius: var(--tf-radius);
+  background: none;
+  font: inherit;
+  font-size: var(--tf-text-sm);
+  color: var(--tf-text-muted);
+  cursor: pointer;
+}
+.tf-menu-trigger:hover,
+.tf-menu-trigger[aria-expanded="true"] {
+  background: var(--tf-bg-hover);
+  color: var(--tf-text);
+}
+.tf-menu-panel {
+  position: absolute;
+  top: calc(100% + var(--tf-space-1));
+  min-width: 200px;
+  padding: var(--tf-space-1);
+  background: var(--tf-bg-raised);
+  border: var(--tf-border-width) solid var(--tf-border);
+  border-radius: var(--tf-radius);
+  box-shadow: var(--tf-shadow-lg);
+  z-index: var(--tf-z-dropdown);
+}
+.tf-menu-panel:focus {
+  outline: none;
+}
+.tf-menu-panel--end {
+  right: 0;
+}
+.tf-menu-panel--start {
+  left: 0;
+}
+.tf-menu-panel__item {
+  display: flex;
+  align-items: center;
+  gap: var(--tf-space-2);
+  width: 100%;
+  padding: var(--tf-space-2) var(--tf-space-3);
+  border: none;
+  border-radius: var(--tf-radius-sm);
+  background: none;
+  font: inherit;
+  text-align: left;
+  color: var(--tf-text);
+  cursor: pointer;
+  white-space: nowrap;
+}
+/* Highlight follows the roving `activeIndex`, not :hover — so keyboard and pointer
+   agree about which item is current. */
+.tf-menu-panel__item--active:not(:disabled) {
+  background: var(--tf-bg-hover);
+}
+.tf-menu-panel__item--destructive {
+  color: var(--tf-danger);
+}
+.tf-menu-panel__item:disabled {
+  color: var(--tf-text-muted);
+  cursor: not-allowed;
+}
+.tf-menu-panel__icon {
+  display: inline-flex;
+  width: 16px;
+}
+
+/* ── Modal (F6) ────────────────────────────────────────────────────────────── */
+
+.tf-modal-backdrop {
+  position: fixed;
+  inset: 0;
+  background: rgba(12, 35, 71, 0.45);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: var(--tf-space-4);
+  z-index: var(--tf-z-modal);
+}
+.tf-modal {
+  display: flex;
+  flex-direction: column;
+  width: 100%;
+  max-height: calc(100vh - 2 * var(--tf-space-6));
+  background: var(--tf-bg-raised);
+  border-radius: var(--tf-radius-lg);
+  box-shadow: var(--tf-shadow-lg);
+  padding: var(--tf-space-5);
+}
+.tf-modal:focus {
+  outline: none;
+}
+.tf-modal--sm {
+  max-width: 460px;
+}
+.tf-modal--md {
+  max-width: 640px;
+}
+.tf-modal--lg {
+  max-width: 900px;
+}
+.tf-modal__header {
+  flex: none;
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: var(--tf-space-3);
+}
+.tf-modal__title {
+  margin: 0;
+  font-size: var(--tf-text-lg);
+  font-weight: var(--tf-weight-semibold);
+}
+.tf-modal__close {
+  flex: none;
+  width: 28px;
+  height: 28px;
+  border: none;
+  border-radius: var(--tf-radius);
+  background: none;
+  font-size: var(--tf-text-xl);
+  line-height: 1;
+  color: var(--tf-text-muted);
+  cursor: pointer;
+}
+.tf-modal__close:hover {
+  background: var(--tf-bg-hover);
+  color: var(--tf-text);
+}
+.tf-modal__description {
+  flex: none;
+  margin: var(--tf-space-2) 0 0;
+  color: var(--tf-text-muted);
+  line-height: var(--tf-leading-normal);
+}
+.tf-modal__body {
+  flex: 1;
+  min-height: 0;
+  overflow: auto;
+  margin-top: var(--tf-space-4);
+}
+.tf-modal__actions {
+  flex: none;
+  display: flex;
+  justify-content: flex-end;
+  gap: var(--tf-space-2);
+  margin-top: var(--tf-space-5);
+}
+
+/* ── Table (C1) ────────────────────────────────────────────────────────────── */
+
+.tf-table-frame {
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+  flex: 1;
+}
+
+.tf-table-toolbar {
+  flex: none;
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: var(--tf-space-2);
+  padding: var(--tf-space-1) var(--tf-space-2);
+}
+
+.tf-bulk-bar {
+  flex: none;
+  display: flex;
+  align-items: center;
+  gap: var(--tf-space-3);
+  padding: var(--tf-space-2) var(--tf-space-3);
+  background: var(--tf-bg-selected);
+  border: var(--tf-border-width) solid var(--tf-accent);
+  border-radius: var(--tf-radius);
+  margin-bottom: var(--tf-space-2);
+}
+.tf-bulk-bar__count {
+  font-weight: var(--tf-weight-semibold);
+}
+.tf-bulk-bar__actions {
+  display: flex;
+  align-items: center;
+  gap: var(--tf-space-2);
+  flex: 1;
+  flex-wrap: wrap;
+}
+
+/* The scroll container. B5: the table scrolls inside its frame, not with the page. */
+.tf-table-wrap {
+  flex: 1;
+  min-height: 0;
+  overflow: auto;
+}
+.tf-table-wrap:focus-visible {
+  outline: var(--tf-border-width-thick) solid var(--tf-accent);
+  outline-offset: -2px;
+}
+
+.tf-table {
+  width: 100%;
+  border-collapse: separate;
+  border-spacing: 0;
+  font-size: var(--tf-text-base);
+}
+.tf-table--busy {
+  opacity: 0.6;
+  transition: opacity var(--tf-duration) var(--tf-ease);
+}
+.tf-table th,
+.tf-table td {
+  text-align: left;
+  padding: 10px 12px;
+  border-bottom: var(--tf-border-width) solid var(--tf-border);
+  vertical-align: top;
+}
+.tf-table--compact th,
+.tf-table--compact td {
+  padding: 6px 10px;
+}
+.tf-table th {
+  font-size: var(--tf-text-xs);
+  font-weight: var(--tf-weight-semibold);
+  text-transform: uppercase;
+  letter-spacing: var(--tf-tracking-wide);
+  color: var(--tf-text-muted);
+  background: var(--tf-bg-subtle);
+  position: sticky;
+  top: 0;
+  /* Above the sticky first column, so a scrolled-right header still covers it. */
+  z-index: 1;
+  white-space: nowrap;
+}
+.tf-table__cell--end {
+  text-align: right;
+}
+.tf-table tbody tr {
+  cursor: pointer;
+}
+.tf-table tbody tr:hover {
+  background: var(--tf-bg-hover);
+}
+.tf-table__row--selected {
+  background: var(--tf-bg-selected);
+  box-shadow: inset 3px 0 0 var(--tf-accent);
+}
+.tf-table__row--checked {
+  background: var(--tf-bg-selected);
+}
+.tf-table__empty {
+  padding: 0;
+}
+.tf-table__empty:hover {
+  background: none;
+}
+
+/*
+ * Sticky first column. Only where the table is selectable or has a leading identity
+ * column worth pinning — applied by the first data column, so a horizontally scrolled
+ * wide table still says which row you are on.
+ */
+.tf-table--selectable th:first-child,
+.tf-table--selectable td:first-child {
+  position: sticky;
+  left: 0;
+  background: var(--tf-bg-raised);
+}
+.tf-table--selectable th:first-child {
+  background: var(--tf-bg-subtle);
+}
+.tf-table--selectable tbody tr:hover td:first-child {
+  background: var(--tf-bg-hover);
+}
+
+.tf-table__select-cell,
+.tf-table__actions-cell {
+  width: 1%;
+  white-space: nowrap;
+}
+
+.tf-table__sort {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--tf-space-1);
+  padding: 0;
+  border: none;
+  background: none;
+  font: inherit;
+  font-size: inherit;
+  font-weight: inherit;
+  text-transform: inherit;
+  letter-spacing: inherit;
+  color: inherit;
+  cursor: pointer;
+}
+.tf-table__sort:hover {
+  color: var(--tf-text);
+}
+/* Unsorted arrows are a hint, not a state; the active one is not. */
+.tf-table__sort-icon {
+  opacity: 0.35;
+}
+.tf-table__sort-icon--active {
+  opacity: 1;
+  color: var(--tf-accent);
+}
+
+.tf-checkbox {
+  width: 16px;
+  height: 16px;
+  accent-color: var(--tf-accent);
+  cursor: pointer;
+}
+
+/* Narrow viewports: drop secondary columns rather than horizontally scrolling the page. */
+@media (max-width: 768px) {
+  .tf-table__cell--secondary {
+    display: none;
+  }
+}
+
+/* ── Pagination (C2) ───────────────────────────────────────────────────────── */
+
+.tf-pagination {
+  flex: none;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--tf-space-3);
+  padding: var(--tf-space-3) var(--tf-space-2);
+  border-top: var(--tf-border-width) solid var(--tf-border);
+  flex-wrap: wrap;
+}
+.tf-pagination__status {
+  margin: 0;
+  font-size: var(--tf-text-sm);
+  color: var(--tf-text-muted);
+}
+.tf-pagination__size {
+  display: flex;
+  align-items: center;
+  gap: var(--tf-space-2);
+  font-size: var(--tf-text-sm);
+  color: var(--tf-text-muted);
+}
+.tf-pagination__size .tf-select {
+  width: auto;
+}
+.tf-pagination__controls {
+  display: flex;
+  align-items: center;
+  gap: var(--tf-space-2);
+}
+.tf-pagination__page {
+  padding: 0 var(--tf-space-1);
+}
+/* The second chevron in first/last, tucked against the first to read as "jump". */
+.tf-pagination__stack {
+  margin-left: -12px;
+}
+
+/* ── Empty-state illustrations (C4) ────────────────────────────────────────── */
+
+.tf-state__illustration {
+  display: flex;
+  justify-content: center;
+  margin-bottom: var(--tf-space-4);
+}
+.tf-state__icon {
+  display: flex;
+  justify-content: center;
+  margin-bottom: var(--tf-space-3);
+  color: var(--tf-text-muted);
+}
+.tf-illustration__surface {
+  fill: var(--tf-bg-sunken);
+}
+.tf-illustration__ground {
+  fill: var(--tf-border);
+  opacity: 0.5;
+}
+.tf-illustration__line {
+  fill: none;
+  stroke: var(--tf-border-strong);
+  stroke-width: 2;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+.tf-illustration__muted {
+  fill: none;
+  stroke: var(--tf-border);
+  stroke-width: 2;
+  stroke-linecap: round;
+}
+.tf-illustration__accent {
+  fill: none;
+  stroke: var(--tf-accent);
+  stroke-width: 2.5;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+.tf-illustration__danger {
+  fill: none;
+  stroke: var(--tf-danger);
+  stroke-width: 2.5;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+
+/* ── Shared bits the apps each re-invented (F2) ────────────────────────────── */
+
+.tf-banner {
+  margin: 0 0 var(--tf-space-4);
+  padding: var(--tf-space-3) var(--tf-space-4);
+  border-radius: var(--tf-radius);
+  border-left: 4px solid var(--tf-info);
+  background: var(--tf-info-bg);
+  color: var(--tf-text);
+}
+
+.tf-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--tf-space-2);
+  padding: 4px var(--tf-space-3);
+  border: var(--tf-border-width) solid var(--tf-border);
+  border-radius: var(--tf-radius-pill);
+  background: var(--tf-bg-raised);
+  font: inherit;
+  font-size: var(--tf-text-sm);
+  color: var(--tf-text-muted);
+  cursor: pointer;
+  white-space: nowrap;
+}
+.tf-chip:hover {
+  border-color: var(--tf-border-strong);
+  color: var(--tf-text);
+}
+.tf-chip--active {
+  background: var(--tf-bg-selected);
+  border-color: var(--tf-accent);
+  color: var(--tf-accent);
+  font-weight: var(--tf-weight-semibold);
+}
+.tf-chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--tf-space-2);
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+.tf-chip-item {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--tf-space-2);
+  padding: 2px var(--tf-space-2);
+  border: var(--tf-border-width) solid var(--tf-border);
+  border-radius: var(--tf-radius-pill);
+  background: var(--tf-bg-subtle);
+  font-size: var(--tf-text-sm);
+}
+.tf-chip-item__remove {
+  border: none;
+  background: none;
+  padding: 0;
+  font: inherit;
+  line-height: 1;
+  color: var(--tf-text-muted);
+  cursor: pointer;
+}
+.tf-chip-item__remove:hover {
+  color: var(--tf-danger);
+}
+
+.tf-muted {
+  color: var(--tf-text-muted);
+}
+.tf-mono {
+  font-family: var(--tf-font-mono);
+  font-size: 0.92em;
+}
+.tf-danger-text {
+  color: var(--tf-danger);
+}
+.tf-back {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--tf-space-1);
+  border: none;
+  background: none;
+  padding: 0;
+  font: inherit;
+  font-size: var(--tf-text-sm);
+  color: var(--tf-accent);
+  cursor: pointer;
+}
+.tf-back:hover {
+  text-decoration: underline;
+}
+.tf-link-button {
+  border: none;
+  background: none;
+  padding: 0;
+  font: inherit;
+  color: var(--tf-accent);
+  text-decoration: underline;
+  cursor: pointer;
+}
+.tf-row-actions {
+  display: flex;
+  gap: var(--tf-space-2);
+  flex-wrap: wrap;
+}
+.tf-inline-form {
+  display: flex;
+  align-items: flex-end;
+  gap: var(--tf-space-2);
+  flex-wrap: wrap;
+}
+.tf-inline-form .tf-field {
+  margin-bottom: 0;
+}
+.tf-toolbar {
+  display: flex;
+  align-items: center;
+  gap: var(--tf-space-3);
+  flex-wrap: wrap;
+}
+.tf-toolbar__actions {
+  margin-left: auto;
+  display: flex;
+  align-items: center;
+  gap: var(--tf-space-2);
 }

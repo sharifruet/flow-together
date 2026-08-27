@@ -1,5 +1,11 @@
 /**
- * Visual regression baseline (REQUIREMENTS.md §14.5).
+ * Visual regression baseline for TogetherFlow Work (REQUIREMENTS.md §14.5,
+ * UI_POLISH_BACKLOG.md G1).
+ *
+ * G1's finding was that this covered "one app, three screens, and is stale". W1.5 gives
+ * every app a suite and adds a dark shot per app; the baselines are regenerated at the
+ * end of W1.5 rather than at the end of the programme, which is Risk #5 in
+ * ENTERPRISE_PARITY_PLAN.md.
  *
  * Runs against the built app with the REST layer stubbed, so a screenshot diff means
  * the UI changed — not that the backend returned different data. Deliberately separate
@@ -115,5 +121,20 @@ test.describe("appearance", () => {
     await page.emulateMedia({ colorScheme: "dark" });
     await signIn(page);
     await expect(page).toHaveScreenshot("inbox-dark.png", { fullPage: true });
+  });
+
+  /*
+   * The chrome W1.3–W1.5 introduced, which the three shots above do not reach: the page
+   * header's own filter row, a non-default sort, and the paging bar's page indicator and
+   * size control. Baselined separately so a change to one does not diff all four.
+   */
+  test("inbox filtered and sorted", async ({ page }) => {
+    // A deep link, which is also the assertion that F1's URL scheme survives a cold load.
+    await page.goto("/inbox?filter=claimable&due=week&sort=priority&order=desc");
+    await page.getByLabel("Username").fill("alice");
+    await page.getByLabel("Password").fill("secret");
+    await page.getByRole("button", { name: /sign in/i }).click();
+    await page.locator("tbody tr").first().waitFor();
+    await expect(page).toHaveScreenshot("inbox-filtered.png", { fullPage: true });
   });
 });

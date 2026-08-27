@@ -3,21 +3,25 @@
  * across every language, with create / open / duplicate / delete.
  */
 
-import { useCallback, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   ApiError,
   AsyncBoundary,
+  Badge,
   Button,
   ConfirmDialog,
   DataTable,
   EmptyState,
+  Icon,
   NoResultsState,
+  PageHeader,
   Pagination,
   TextInput,
   formatDateTime,
   useAsync,
   useI18n,
   useDebouncedValue,
+  useListState,
   useToast,
   type Column,
   type ModelApi,
@@ -39,19 +43,33 @@ import {
 } from "./importExport";
 import { VersionHistory } from "./VersionHistory";
 
-const PAGE_SIZE = 25;
+
+/** What the query string carries for this list (W1.3, F1). */
+interface LibraryView {
+  [key: string]: string;
+  q: string;
+}
+
+const DEFAULT_VIEW: LibraryView = { q: "" };
 
 export interface ModelLibraryProps {
   modelApi: ModelApi;
   onOpen: (model: ModelResponse) => void;
+  /** Reports the model count for the nav badge (B3). */
+  onCount?: (total: number) => void;
   refreshToken: number;
 }
 
-export function ModelLibrary({ modelApi, onOpen, refreshToken }: ModelLibraryProps) {
+export function ModelLibrary({ modelApi, onOpen, onCount, refreshToken }: ModelLibraryProps) {
   const { t, locale } = useI18n();
   const { push } = useToast();
-  const [start, setStart] = useState(0);
-  const [search, setSearch] = useState("");
+  const list = useListState<LibraryView>({
+    defaults: DEFAULT_VIEW,
+    defaultSort: { key: "lastUpdateTime", order: "desc" },
+    preferenceKey: "design.library",
+  });
+  const search = list.filters.q;
+  const setStart = list.setStart;
   const debounced = useDebouncedValue(search).trim();
   const [creating, setCreating] = useState<ModelKind | null>(null);
   const importRef = useRef<HTMLInputElement>(null);
@@ -62,21 +80,27 @@ export function ModelLibrary({ modelApi, onOpen, refreshToken }: ModelLibraryPro
 
   const query = useMemo(
     () => ({
-      start,
-      size: PAGE_SIZE,
+      start: list.start,
+      size: list.size,
+      sort: list.sort?.key as "lastUpdateTime" | undefined,
+      order: list.sort?.order,
       // Only working drafts: the model table is versioned natively, so without this the
       // library would list every historical version alongside the one being edited
       // (§7.4.1).
       latestVersion: true,
       ...(debounced ? { nameLike: `%${debounced}%` } : {}),
     }),
-    [start, debounced],
+    [list.start, list.size, list.sort, debounced],
   );
 
   const { data, error, loading, refetch } = useAsync(
     (signal) => modelApi.list(query, signal),
     [modelApi, query, reloadToken, refreshToken],
   );
+
+  useEffect(() => {
+    if (data) onCount?.(data.total);
+  }, [data, onCount]);
 
   const run = useCallback(
     async <T,>(message: string, action: () => Promise<T>): Promise<T | undefined> => {
@@ -182,7 +206,7 @@ export function ModelLibrary({ modelApi, onOpen, refreshToken }: ModelLibraryPro
         header: t("library.column.type"),
         width: "100px",
         render: (model) => (
-          <span className="tf-badge tf-badge--running">{modelKindOf(model).toUpperCase()}</span>
+          <Badge tone="info">{modelKindOf(model).toUpperCase()}</Badge>
         ),
       },
       {
@@ -230,16 +254,22 @@ export function ModelLibrary({ modelApi, onOpen, refreshToken }: ModelLibraryPro
 
   return (
     <section className="tf-panel" aria-label={t("library.label")}>
-      <header className="tf-panel__header">
-        <div>
-          <h1 className="tf-panel__title">{t("library.title")}</h1>
-          <p className="tf-panel__meta">
-            Drafts you can edit and deploy. Deploying does not delete the draft — keep
-            editing and deploy again to publish a new version.
-          </p>
-        </div>
-        <div className="tf-row-actions">
-          <Button onClick={() => setCreating("bpmn")}>{t("library.newProcess")}</Button>
+      <PageHeader
+        title={t("library.title")}
+        description={t("library.description")}
+        meta={
+          data ? (
+            <Badge tone="info" subtle srLabel={t("library.countLabel", { count: data.total })}>
+              {data.total}
+            </Badge>
+          ) : undefined
+        }
+        actions={
+          <>
+          <Button onClick={() => setCreating("bpmn")}>
+            <Icon name="add" size={16} />
+            {t("library.newProcess")}
+          </Button>
           <Button variant="secondary" onClick={() => setCreating("cmmn")}>
             {t("library.new.cmmn")}
           </Button>
@@ -276,8 +306,9 @@ export function ModelLibrary({ modelApi, onOpen, refreshToken }: ModelLibraryPro
               if (file) void importFile(file);
             }}
           />
-        </div>
-      </header>
+          </>
+        }
+      />
 
       <div className="tf-panel__search">
         <label className="tf-visually-hidden" htmlFor="tf-model-search">
@@ -289,10 +320,7 @@ export function ModelLibrary({ modelApi, onOpen, refreshToken }: ModelLibraryPro
           type="search"
           placeholder={t("library.search")}
           value={search}
-          onChange={(event) => {
-            setSearch(event.target.value);
-            setStart(0);
-          }}
+          onChange={(event) => list.setFilters({ q: event.target.value })}
         />
       </div>
 
@@ -303,15 +331,11 @@ export function ModelLibrary({ modelApi, onOpen, refreshToken }: ModelLibraryPro
         onRetry={refetch}
         isEmpty={(page) => page.data.length === 0}
         empty={
-          debounced ? (
-            <NoResultsState
-              onClear={() => {
-                setSearch("");
-                setStart(0);
-              }}
-            />
+          list.isFiltered ? (
+            <NoResultsState onClear={list.clearFilters} />
           ) : (
             <EmptyState
+              illustration="no-models"
               title={t("library.empty.title")}
               description={t("library.empty.description")}
               action={<Button onClick={() => setCreating("bpmn")}>{t("library.newProcess")}</Button>}
@@ -323,15 +347,20 @@ export function ModelLibrary({ modelApi, onOpen, refreshToken }: ModelLibraryPro
           <>
             <DataTable
               caption={t("library.caption")}
+              preferenceKey="design.library"
               columns={columns}
               rows={page.data}
               rowKey={(model) => model.id}
+              sort={list.sort}
+              onSortChange={list.setSort}
+              busy={loading}
             />
             <Pagination
               start={page.start}
-              size={page.size || PAGE_SIZE}
+              size={page.size || list.size}
               total={page.total}
               onChange={setStart}
+              onSizeChange={list.setSize}
             />
           </>
         )}

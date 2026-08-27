@@ -27,6 +27,7 @@ import {
   type ModelApi,
   type ModelResponse,
 } from "@togetherflow/common";
+import { useConflictPrompt } from "../editors/ConflictPrompt";
 
 const AUTOSAVE_IDLE_MS = 4000;
 
@@ -37,6 +38,12 @@ export interface EventEditorProps {
   initialSource: string | null;
   loadError?: string | null;
   onBack: () => void;
+  /**
+   * Discards local changes and re-imports what is stored (W1.1). The parent owns it: a
+   * reload is a refetch plus a remount, which resets the editor's undo stack — which is
+   * exactly what "take theirs, drop mine" means.
+   */
+  onReloadSource?: () => void;
   /** Called after a save or deploy; carries the updated draft where one exists. */
   onSaved: (draft?: ModelResponse) => void;
 }
@@ -48,10 +55,17 @@ export function EventEditor({
   initialSource,
   loadError,
   onBack,
+  onReloadSource,
   onSaved,
 }: EventEditorProps) {
   const t = useT();
   const { push } = useToast();
+  /*
+   * The concurrent-edit guard's user half (W1.1). Declared before `save` so the
+   * autosave effect and the save callback can both see it.
+   */
+  const conflict = useConflictPrompt({ onReload: () => onReloadSource?.() });
+
   const parsed = useMemo(
     () => parseEventDraft(initialSource, model.key ?? "event", model.name ?? "Event"),
     [initialSource, model.key, model.name],
@@ -77,7 +91,11 @@ export function EventEditor({
     async (options: { silent?: boolean } = {}) => {
       setSaving(true);
       try {
-        await modelApi.saveSource(model.id, JSON.stringify(draft, null, 2));
+        const written = await conflict.guard(async (overwrite) => {
+          await modelApi.saveSource(model.id, JSON.stringify(draft, null, 2), { overwrite });
+          return true;
+        });
+        if (!written) return;
         setDirty(false);
         if (!options.silent) push({ tone: "success", message: t("editor.saved.toast") });
         onSaved();
@@ -92,7 +110,7 @@ export function EventEditor({
         setSaving(false);
       }
     },
-    [modelApi, model.id, draft, push, onSaved, t],
+    [modelApi, model.id, draft, push, onSaved, t, conflict],
   );
 
   const saveRef = useRef(save);
@@ -100,10 +118,10 @@ export function EventEditor({
     saveRef.current = save;
   }, [save]);
   useEffect(() => {
-    if (!dirty) return;
+    if (!dirty || conflict.blocked) return;
     const timer = setTimeout(() => void saveRef.current({ silent: true }), AUTOSAVE_IDLE_MS);
     return () => clearTimeout(timer);
-  }, [dirty]);
+  }, [dirty, conflict.blocked]);
   useEffect(() => {
     if (!dirty) return;
     const onBeforeUnload = (event: BeforeUnloadEvent) => {
@@ -439,6 +457,9 @@ export function EventEditor({
           onBack();
         }}
       />
+
+      {/* Reload-or-overwrite, when someone else saved this model (W1.1). */}
+      {conflict.prompt}
     </section>
   );
 }

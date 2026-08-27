@@ -8,6 +8,10 @@
  * and is easy to get subtly wrong: the boundary has to sit *inside* the i18n provider so
  * its own copy can be translated, and *inside* the toast provider so a crash screen can
  * still raise one.
+ *
+ * The router (W1.3, ADR 0016) is outermost of the app-level providers: auth and tenant
+ * both want to read the URL — a deep link has to survive the sign-in round trip — and a
+ * provider cannot read a context declared inside it.
  */
 
 import { useEffect, useMemo, type ReactNode } from "react";
@@ -17,6 +21,7 @@ import { ToastProvider } from "../components/Toast";
 import { ErrorBoundary } from "../components/ErrorBoundary";
 import { I18nProvider, mergeCatalogues, type Catalogues } from "../i18n/I18nContext";
 import { ShortcutProvider } from "../shortcuts/ShortcutContext";
+import { RouterProvider } from "../routing/RouterContext";
 import { commonMessages } from "../i18n/messages";
 import {
   configureErrorReporting,
@@ -53,25 +58,27 @@ export function AppRoot({ app, config, messages, children }: AppRootProps) {
 
   return (
     <I18nProvider catalogues={catalogues} locale={config.locale}>
-      <AuthProvider baseUrl={config.apiBase} mode={config.auth.mode} oidc={config.auth.oidc}>
-        <TenantProvider>
-          <ToastProvider>
-            <ErrorReportingBridge
-              app={app}
-              endpoint={config.observability.errorEndpoint}
-              release={config.observability.release}
-            />
-            {/*
-              Inside the boundary's providers but outside the boundary itself: a crashed
-              screen has unmounted its bindings, so the shortcut set is correct without
-              the provider having to know a crash happened.
-            */}
-            <ShortcutProvider>
-              <ErrorBoundary boundary={app}>{children}</ErrorBoundary>
-            </ShortcutProvider>
-          </ToastProvider>
-        </TenantProvider>
-      </AuthProvider>
+      <RouterProvider basePath={config.basePath}>
+        <AuthProvider baseUrl={config.apiBase} mode={config.auth.mode} oidc={config.auth.oidc}>
+          <TenantProvider>
+            <ToastProvider>
+              <ErrorReportingBridge
+                app={app}
+                endpoint={config.observability.errorEndpoint}
+                release={config.observability.release}
+              />
+              {/*
+                Inside the boundary's providers but outside the boundary itself: a crashed
+                screen has unmounted its bindings, so the shortcut set is correct without
+                the provider having to know a crash happened.
+              */}
+              <ShortcutProvider>
+                <ErrorBoundary boundary={app}>{children}</ErrorBoundary>
+              </ShortcutProvider>
+            </ToastProvider>
+          </TenantProvider>
+        </AuthProvider>
+      </RouterProvider>
     </I18nProvider>
   );
 }

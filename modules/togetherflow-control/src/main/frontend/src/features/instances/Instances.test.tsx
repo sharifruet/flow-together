@@ -4,7 +4,11 @@ import { describe, expect, it, vi } from "vitest";
 import type { Mock } from "vitest";
 import {
   ApiError,
+  RouterProvider,
   ToastProvider,
+  matchPath,
+  useLocation,
+  useNavigate,
   type InstanceApi,
   type ProcessInstanceResponse,
 } from "@togetherflow/common";
@@ -50,11 +54,32 @@ function stubApi(overrides: Record<string, unknown> = {}): StubApi {
   } as unknown as StubApi;
 }
 
+/**
+ * Selection is driven through the router, exactly as `App.tsx` drives it — so these
+ * tests also cover W1.3's round trip: clicking a row puts the id in the URL, and the
+ * detail view is rendered from the URL rather than from component state.
+ */
+function Harness({ instanceApi }: { instanceApi: InstanceApi }) {
+  const { path } = useLocation();
+  const navigate = useNavigate();
+  const selectedId = matchPath("/instances/:instanceId", path)?.instanceId;
+  return (
+    <Instances
+      instanceApi={instanceApi}
+      selectedId={selectedId}
+      onSelect={(id) => navigate(id ? `/instances/${id}` : "/instances")}
+    />
+  );
+}
+
 function renderInstances(api: InstanceApi) {
+  window.history.replaceState({}, "", "/instances");
   return render(
-    <ToastProvider>
-      <Instances instanceApi={api} />
-    </ToastProvider>,
+    <RouterProvider>
+      <ToastProvider>
+        <Harness instanceApi={api} />
+      </ToastProvider>
+    </RouterProvider>,
   );
 }
 

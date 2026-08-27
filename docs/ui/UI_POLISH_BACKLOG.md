@@ -14,10 +14,19 @@ visual baselines under `togetherflow-work/src/main/frontend/e2e/visual/`.
 ## Progress
 
 **Forms — done (2026-08-27).** The form stack has been through this pass end to end: see
-[§H](#h-forms--completed) for what changed and which items below it closes. Nothing else in
-this document has been started.
+[§H](#h-forms--completed) for what changed and which items below it closes.
+
+**Wave 1 — done (2026-08-27).** [ENTERPRISE_PARITY_PLAN.md](ENTERPRISE_PARITY_PLAN.md)'s
+W1.1–W1.5. This closes **F1, F2, F3, F4, F5, F6, B1, B2, B3, B5, C1, C2, C3, C4** and
+**I1**, and delivers the `UserChip` primitive **D1** asks for (Work's inbox and Identity's
+user list use it; the remaining screens are W2.1/W2.2). What is still open in §A–C is
+**B4** (⌘K palette) and **F7–F10**, which were never in Wave 1's scope. See
+[§J](#j-wave-1--completed) for what changed and how each item was closed.
 
 ## Verdict
+
+*Written before Wave 1; kept as the record of what the pass was answering. §J says what
+changed.*
 
 The apps are **functionally deep and visually shallow**. §7's feature scope is largely
 there; §13's hardening is largely there. What reads as "basic" is a presentation layer
@@ -298,7 +307,7 @@ history" are routine compliance asks (§13.7) and today produce the app chrome o
 
 ## G. Verification
 
-### G1 — Visual regression covers one app, three screens, and is stale.
+### G1 — Visual regression covers one app, three screens, and is stale. *(suites built in W1.5 — baselines still outstanding, see [§J](#j-wave-1--completed))*
 **Gap.** Only `togetherflow-work` has `playwright.visual.config.ts`; baselines exist for
 login, inbox and task-detail at three widths plus one dark variant. Control, Identity and
 Design have none. The inbox baseline shows neither the definition/due/priority filter bar
@@ -499,3 +508,132 @@ oversight.
 
 F6 is listed in wave 5 by dependency (it needs F2's `Modal`) but is an accessibility defect,
 not polish — schedule it against G2 rather than against the visual work.
+
+---
+
+## J. Wave 1 — completed
+
+**Done 2026-08-27.** [ENTERPRISE_PARITY_PLAN.md](ENTERPRISE_PARITY_PLAN.md)'s W1.1–W1.5.
+Written the way §H is: what changed, and which item above it closes.
+
+### W1.1 — Concurrent-edit guard *(closes I1)*
+
+`ModelApi.saveSource` reads the stored source and compares it with what this browser last
+read or wrote before it writes; a difference throws `ConcurrentEditError` and the write is
+refused. Six editors autosave every four idle seconds against what was an unconditional
+PUT, so before this two people on one model overwrote each other with neither pressing
+Save.
+
+- **Not `lastUpdateTime`.** The plan's first draft proposed the timestamp;
+  `ModelEntityManagerImpl.insertEditorSourceForModel` calls `updateModel` only when
+  `editorSourceValueId` is null — i.e. on the first save — so it is frozen from the second
+  save onward. The guard compares source bytes.
+- **Fails open.** A read the guard itself could not perform does not block the save:
+  turning a transient network error into refused work is worse than the window it closes.
+- **Reload-or-overwrite**, in `features/editors/ConflictPrompt.tsx`, shared by all six
+  editors. Autosave stops while a conflict is unresolved — a prompt that reappeared every
+  four seconds would be worse than none.
+- **Still a narrowed window, not a closed one.** The read and the write are two requests.
+  Closing it needs a server-side precondition, which is W3.1's model locking, and the code
+  says so where the guard lives.
+
+### W1.2 — Routing decision *(ADR 0016)*
+
+An in-house router in `togetherflow-common/src/routing`, ~200 lines, following the
+reasoning already recorded in ADR 0001 and ADR 0013. The two things that tipped it past
+precedent: the bundle budgets (§13.5) had 4 kB and 5 kB of headroom against React Router's
+~12–15 kB, and none of the surface that justifies React Router — nested layout routes,
+data loaders, SSR — is wanted in four flat apps. The ADR records the revisit triggers.
+
+### W1.3 — Routing and shell *(closes F1, F5, B5)*
+
+- **F1.** Every screen in all four apps has a URL, and so does every entity that has a
+  detail view: `/inbox/:taskId`, `/cases/:caseId`, `/instances/:instanceId`,
+  `/deployments/:deploymentId`, `/users/:userId`, `/models/:modelId`. Filters, sort and
+  page are in the query string through a shared `useListState`, so a filtered list is a
+  link. Nav items and rows are real `<a href>`s — modifier-clicks and middle-clicks are
+  left to the browser, which is the half of routing that breaks silently.
+- **F5.** The 204 byte-identical lines at the head of `work.css`, `control.css`,
+  `identity.css` and `design.css` — 816 lines in all, verified identical before removal —
+  are now `togetherflow-common/src/theme/shell.css`. `grep -l "tf-shell__header"
+  **/styles/*.css` returns nothing, which was F5's stated acceptance.
+
+  F2's stronger acceptance — *no app stylesheet defines a component class* — needed a
+  second pass: the shared definitions were added but the app copies were left shadowing
+  them. 70 duplicated base rules are gone, and a check over the four stylesheets confirms
+  none redefines a class `theme/` owns. What stayed are genuine contextual overrides
+  (`.tf-row-actions .tf-button { padding: 4px 8px }` is Control's density choice, not a
+  second copy of Button). The four app stylesheets went from 3,286 lines to 2,014.
+
+  One name collision surfaced and was resolved rather than papered over: Control's and
+  Identity's `.tf-card` was a *clickable tile*, a different component that happened to
+  share the shared `Card`'s name. It is now `.tf-card--interactive`, a modifier in
+  `togetherflow-common`.
+- **B5.** `.tf-shell` is `height: 100%` with `overflow: hidden` and the main region as the
+  only scroll container, so a page header stays put while its list scrolls. Before, the
+  frame was `min-height: 100vh` with the page as the scroller — which is why the old inbox
+  baseline showed content in the top 340px of a 900px viewport and grey below.
+
+### W1.4 — Component set *(closes F2, F3, F4, F6, C3, C4)*
+
+- **F2.** Eleven primitives added: `Badge`, `Card`, `PageHeader`, `Modal`, `Tabs`,
+  `Avatar`/`UserChip`, `DropdownMenu`, `Breadcrumb`, `SidebarNav`, `Icon`,
+  `EmptyIllustration`. Every one is documented in the gallery, enforced by the existing
+  filesystem coverage check. The classes each app was re-inventing — `.tf-panel`,
+  `.tf-card`, `.tf-chip`, `.tf-badge`, `.tf-banner`, `.tf-toolbar` — have one definition.
+- **F3.** Motion, z-index, breakpoints, line-height, font-weight, border-width and a type
+  ramp reaching 40px are now tokens, and `theme/tokens.test.ts` reads every stylesheet in
+  every module and fails on a raw literal. That is what makes F3's acceptance a rule
+  rather than a convention — it was a convention before, which is how `0.12s ease` reached
+  five files and 20/30/60/70/100 reached five more.
+- **F4.** Inter is shipped: the `latin` and `latin-ext` variable subsets, self-hosted (no
+  third-party origin in the CSP), with a metric-matched `Inter Fallback` face so the
+  `font-display: swap` costs no layout shift. The four override values are computed from
+  the fonts' own OS/2 tables rather than copied — the arithmetic is in `theme/fonts.css`.
+- **F6.** One `Modal` owns focus trap, focus restore, body scroll lock and `inert` +
+  `aria-hidden` on everything behind. It renders through a portal, which is what makes the
+  inert logic correct at all: in place, "everything except the dialog" would include the
+  React root the dialog is inside. `ConfirmDialog` is built on it. Twelve tests cover the
+  trap, including an axe pass.
+- **C3.** One `Badge` with the semantic tones, plus `toneForState`/`toneForPriority` as the
+  documented engine-state → tone mapping C3 asks for, so Work and Control cannot disagree
+  about what colour a suspended definition is. The word always stays (WCAG 1.4.1). All 30
+  hand-rolled `<span className="tf-badge tf-badge--running">` sites across the four apps
+  are converted, and the two class-returning helpers (`stateBadgeClass`,
+  `planItemBadgeClass`) now return a tone instead — `Badge` owns how a tone is drawn.
+- **C4.** ~55 icons on one 24×24 grid and six empty-state illustrations built from the
+  brand glyph, drawn in-house for the bundle reason C4 itself flags. `EmptyState` finally
+  has callers passing its illustration.
+
+### W1.5 — Tables and navigation *(closes C1, C2, B1, B2, B3; moves G1)*
+
+- **C1.** `DataTable` rebuilt: sortable headers wired to the *server* query (`aria-sort`
+  existed nowhere in the repo before), optional selection with a shared bulk-action bar,
+  per-row overflow menu, column visibility and density persisted per browser, sticky
+  header and first column, and virtualization above 60 rows. `Jobs.tsx`'s hand-rolled
+  `useState<Set<string>>` and its own checkbox column are gone — the behaviour is the
+  component's, so every other list can have it.
+- **C2.** `Pagination` has page numbers, first/last, and a 25/50/100 size control; the
+  choice is remembered per list *and* encoded in the URL, so a shared link shows the
+  sender's page rather than re-paginating to the recipient's preference.
+- **B1.** A collapsible left rail for Control, Design and Identity, with icons, grouped
+  sections and a persisted collapsed state; Work keeps the top bar, as B1 specifies.
+- **B2.** `PageHeader` on every list screen, owning the screen's single `<h1>`.
+- **B3.** Nav counts from `total` on `size=1` queries — Work's inbox depth, Control's
+  instance/case counts and its dead-letter count in the danger tone, Identity's three
+  section counts, Design's model count. §9 rules out an aggregation API; these are one
+  cheap request each and nothing more is claimed for them.
+- **G1 — moved here from E8, and honestly incomplete.** Visual-regression suites now exist
+  for all four apps, light and dark, desktop and tablet, and CI runs all four. **No
+  baseline images are committed**, for the reason set out in
+  `togetherflow-work/src/main/frontend/e2e/visual/README.md`: the old Work baselines
+  predated this pass and were deleted rather than left to report false regressions, and
+  they could not be regenerated on the machine this was written on (macOS 12, which
+  Playwright 1.62 refuses to install a browser for). One `--update-snapshots` run on a
+  supported platform or in the pinned container completes it.
+
+### Not closed, and not attempted
+
+Still open in §A–C: **B4** (⌘K command palette) and **F7–F10** (designed responsiveness,
+motion design, toast affordances, print/export). None was in Wave 1's scope. **D1** has its
+primitive and two screens; the rest of Work and Control is W2.1/W2.2.

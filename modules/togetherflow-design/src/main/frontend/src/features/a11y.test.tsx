@@ -11,6 +11,7 @@ import { render, screen } from "@testing-library/react";
 import { describe, it, vi } from "vitest";
 import { expectNoA11yViolations } from "@togetherflow/common/testing/a11y";
 import {
+  RouterProvider,
   ToastProvider,
   type DataResponse,
   type ModelApi,
@@ -36,9 +37,11 @@ describe("Design screens meet WCAG 2.1 AA", () => {
   it("the model library", async () => {
     const modelApi = { list: vi.fn().mockResolvedValue(page([MODEL])) } as unknown as ModelApi;
     const { container } = render(
-      <ToastProvider>
-        <ModelLibrary modelApi={modelApi} onOpen={vi.fn()} refreshToken={0} />
-      </ToastProvider>,
+      <RouterProvider>
+        <ToastProvider>
+          <ModelLibrary modelApi={modelApi} onOpen={vi.fn()} refreshToken={0} />
+        </ToastProvider>
+      </RouterProvider>,
     );
     await screen.findByText("Invoice approval");
     await expectNoA11yViolations(container);

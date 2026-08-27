@@ -1,0 +1,421 @@
+/*
+ * The shell (REQUIREMENTS.md §7.5), in one place at last — UI_POLISH_BACKLOG.md F5.
+ *
+ * F5 was a regression against §7.5: `AppShell.tsx` and `LoginScreen.tsx` were centralised
+ * into `togetherflow-common`, but their CSS was not. The first 204 lines of `work.css`,
+ * `control.css`, `identity.css` and `design.css` were byte-identical — verified, not
+ * assumed — so a shell restyle was a four-file edit that would silently diverge on the
+ * first one that got missed.
+ *
+ * Rewritten rather than lifted, because two other items land in the same markup:
+ *
+ *   B1  a left rail for Control, Design and Identity; the top bar kept for Work.
+ *   B5  the frame is full-height and only the main region scrolls. Before, `.tf-shell`
+ *       was `min-height: 100vh` with the page as the scroll container, which is why the
+ *       inbox baseline shows content in the top 340px of a 900px viewport and grey below.
+ */
+
+/* ── Skip link ─────────────────────────────────────────────────────────────── */
+
+.tf-skip-link {
+  position: absolute;
+  left: -9999px;
+  top: 0;
+  background: var(--tf-accent);
+  color: var(--tf-text-inverse);
+  padding: var(--tf-space-2) var(--tf-space-4);
+  border-radius: var(--tf-radius);
+  z-index: var(--tf-z-skip-link);
+}
+.tf-skip-link:focus {
+  left: var(--tf-space-3);
+  top: var(--tf-space-3);
+}
+
+/* ── Frame ─────────────────────────────────────────────────────────────────── */
+
+/*
+ * B5. `height`, not `min-height`: the frame owns the viewport and the main region is the
+ * only scroll container, so a sticky toolbar inside a screen stays put instead of
+ * scrolling away with the page. `html, body, #root { height: 100% }` in tokens.css is
+ * the other half — without it this collapses.
+ */
+.tf-shell {
+  height: 100%;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  background: var(--tf-bg-subtle);
+}
+
+.tf-shell__header {
+  flex: none;
+  height: var(--tf-header-height);
+  display: flex;
+  align-items: center;
+  gap: var(--tf-space-5);
+  padding: 0 var(--tf-space-4);
+  background: var(--tf-bg-raised);
+  border-bottom: var(--tf-border-width) solid var(--tf-border);
+  z-index: var(--tf-z-header);
+}
+
+.tf-shell__body {
+  flex: 1;
+  min-height: 0;
+  display: flex;
+}
+
+.tf-shell__main {
+  flex: 1;
+  min-width: 0;
+  min-height: 0;
+  /* The one scroll container. */
+  overflow: auto;
+}
+/* Focused programmatically on route change (RouteAnnouncer); no ring for that. */
+.tf-shell__main:focus {
+  outline: none;
+}
+
+.tf-shell__brand {
+  display: flex;
+  align-items: center;
+  gap: var(--tf-space-2);
+  flex: none;
+}
+.tf-shell__app-name {
+  padding-left: var(--tf-space-2);
+  border-left: var(--tf-border-width) solid var(--tf-border);
+  color: var(--tf-text-muted);
+  font-weight: var(--tf-weight-semibold);
+  white-space: nowrap;
+}
+.tf-shell__nav-spacer {
+  flex: 1;
+}
+
+/* ── Top-bar nav (Work) ────────────────────────────────────────────────────── */
+
+.tf-shell__nav {
+  display: flex;
+  gap: var(--tf-space-1);
+  overflow-x: auto;
+}
+.tf-shell__nav-item {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--tf-space-2);
+  padding: 6px var(--tf-space-3);
+  border-radius: var(--tf-radius);
+  color: var(--tf-text-muted);
+  text-decoration: none;
+  white-space: nowrap;
+  transition: background-color var(--tf-duration-fast) var(--tf-ease),
+    color var(--tf-duration-fast) var(--tf-ease);
+}
+.tf-shell__nav-item:hover {
+  background: var(--tf-bg-hover);
+  color: var(--tf-text);
+}
+.tf-shell__nav-item--active {
+  background: var(--tf-bg-selected);
+  color: var(--tf-accent);
+  font-weight: var(--tf-weight-semibold);
+}
+
+/* ── Left rail (Control, Design, Identity) ─────────────────────────────────── */
+
+.tf-sidebar {
+  flex: none;
+  width: var(--tf-sidebar-width);
+  display: flex;
+  flex-direction: column;
+  gap: var(--tf-space-4);
+  padding: var(--tf-space-3) var(--tf-space-2);
+  background: var(--tf-bg-raised);
+  border-right: var(--tf-border-width) solid var(--tf-border);
+  overflow-y: auto;
+  transition: width var(--tf-duration) var(--tf-ease);
+}
+.tf-sidebar--collapsed {
+  width: var(--tf-sidebar-width-collapsed);
+}
+
+.tf-sidebar__group-label {
+  margin: 0 0 var(--tf-space-1);
+  padding: 0 var(--tf-space-2);
+  font-size: var(--tf-text-xs);
+  font-weight: var(--tf-weight-semibold);
+  text-transform: uppercase;
+  letter-spacing: var(--tf-tracking-wide);
+  color: var(--tf-text-muted);
+}
+.tf-sidebar__list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+.tf-sidebar__item {
+  display: flex;
+  align-items: center;
+  gap: var(--tf-space-3);
+  padding: var(--tf-space-2) var(--tf-space-3);
+  border-radius: var(--tf-radius);
+  color: var(--tf-text-muted);
+  text-decoration: none;
+  white-space: nowrap;
+  transition: background-color var(--tf-duration-fast) var(--tf-ease),
+    color var(--tf-duration-fast) var(--tf-ease);
+}
+.tf-sidebar__item:hover {
+  background: var(--tf-bg-hover);
+  color: var(--tf-text);
+}
+.tf-sidebar__item--active {
+  background: var(--tf-bg-selected);
+  color: var(--tf-accent);
+  font-weight: var(--tf-weight-semibold);
+  /* Not colour alone: the bar carries the state for anyone who cannot see the tint. */
+  box-shadow: inset 3px 0 0 var(--tf-accent);
+}
+.tf-sidebar__label {
+  flex: 1;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.tf-sidebar__count {
+  flex: none;
+}
+.tf-sidebar--collapsed .tf-sidebar__item {
+  justify-content: center;
+  padding-inline: 0;
+}
+/* A count in a rail with no room for it becomes a dot on the icon. */
+.tf-sidebar--collapsed .tf-sidebar__count {
+  position: absolute;
+  margin-left: var(--tf-space-4);
+  margin-top: -18px;
+}
+.tf-sidebar--collapsed .tf-sidebar__item {
+  position: relative;
+}
+
+.tf-sidebar__toggle {
+  margin-top: auto;
+  display: flex;
+  align-items: center;
+  gap: var(--tf-space-2);
+  padding: var(--tf-space-2) var(--tf-space-3);
+  border: none;
+  background: none;
+  font: inherit;
+  font-size: var(--tf-text-sm);
+  color: var(--tf-text-muted);
+  border-radius: var(--tf-radius);
+  cursor: pointer;
+}
+.tf-sidebar__toggle:hover {
+  background: var(--tf-bg-hover);
+  color: var(--tf-text);
+}
+.tf-sidebar--collapsed .tf-sidebar__toggle {
+  justify-content: center;
+}
+
+/*
+ * Tablet and below: the rail becomes a horizontal strip above the content rather than
+ * eating a third of the width. Not hidden — these apps have no other navigation.
+ */
+@media (max-width: 768px) {
+  .tf-shell__body {
+    flex-direction: column;
+  }
+  .tf-sidebar {
+    width: auto;
+    flex-direction: row;
+    gap: var(--tf-space-2);
+    overflow-x: auto;
+    border-right: none;
+    border-bottom: var(--tf-border-width) solid var(--tf-border);
+  }
+  .tf-sidebar__group {
+    display: flex;
+  }
+  .tf-sidebar__group-label {
+    display: none;
+  }
+  .tf-sidebar__list {
+    flex-direction: row;
+  }
+  .tf-sidebar__item--active {
+    box-shadow: inset 0 -3px 0 var(--tf-accent);
+  }
+  .tf-sidebar__toggle {
+    display: none;
+  }
+}
+
+/* ── Account menu ──────────────────────────────────────────────────────────── */
+
+.tf-shell__actions {
+  margin-left: auto;
+  display: flex;
+  align-items: center;
+  gap: var(--tf-space-3);
+  flex: none;
+}
+.tf-shell__menu {
+  position: relative;
+}
+.tf-shell__avatar {
+  width: 34px;
+  height: 34px;
+  border-radius: var(--tf-radius-pill);
+  border: var(--tf-border-width) solid var(--tf-border-strong);
+  background: var(--tf-info-bg);
+  color: var(--tf-accent);
+  font-weight: var(--tf-weight-bold);
+  font-size: var(--tf-text-xs);
+  cursor: pointer;
+}
+.tf-menu {
+  position: absolute;
+  right: 0;
+  top: calc(100% + var(--tf-space-2));
+  min-width: 240px;
+  background: var(--tf-bg-raised);
+  border: var(--tf-border-width) solid var(--tf-border);
+  border-radius: var(--tf-radius);
+  box-shadow: var(--tf-shadow-lg);
+  padding: var(--tf-space-2);
+  z-index: var(--tf-z-dropdown);
+}
+.tf-menu__user {
+  margin: 0;
+  padding: var(--tf-space-2);
+  font-size: var(--tf-text-sm);
+  color: var(--tf-text-muted);
+  border-bottom: var(--tf-border-width) solid var(--tf-border);
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+.tf-menu__tenant {
+  font-size: var(--tf-text-xs);
+}
+.tf-menu__section {
+  padding: var(--tf-space-2) 0;
+  border-bottom: var(--tf-border-width) solid var(--tf-border);
+}
+.tf-menu__label {
+  margin: 0 0 var(--tf-space-1);
+  padding: 0 var(--tf-space-2);
+  font-size: var(--tf-text-xs);
+  text-transform: uppercase;
+  letter-spacing: var(--tf-tracking-wide);
+  color: var(--tf-text-muted);
+}
+.tf-menu__item {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: var(--tf-space-3);
+  width: 100%;
+  text-align: left;
+  padding: var(--tf-space-2);
+  border: none;
+  background: none;
+  font: inherit;
+  border-radius: var(--tf-radius-sm);
+  cursor: pointer;
+  color: var(--tf-text);
+}
+.tf-menu__item:hover:not(.tf-menu__item--disabled) {
+  background: var(--tf-bg-hover);
+}
+.tf-menu__item--disabled {
+  color: var(--tf-text-muted);
+  cursor: default;
+}
+.tf-menu__item em {
+  font-style: normal;
+  font-size: var(--tf-text-xs);
+  color: var(--tf-text-muted);
+}
+
+/* ── Login ─────────────────────────────────────────────────────────────────── */
+
+.tf-login {
+  min-height: 100vh;
+  display: grid;
+  place-items: center;
+  padding: var(--tf-space-4);
+  background: linear-gradient(160deg, var(--tf-bg-subtle), var(--tf-info-bg));
+}
+.tf-login__card {
+  width: 100%;
+  max-width: 380px;
+  background: var(--tf-bg-raised);
+  border: var(--tf-border-width) solid var(--tf-border);
+  border-radius: var(--tf-radius-lg);
+  box-shadow: var(--tf-shadow);
+  padding: var(--tf-space-6);
+}
+.tf-login__brand {
+  display: flex;
+  justify-content: center;
+  margin-bottom: var(--tf-space-5);
+}
+.tf-login__title {
+  margin: 0 0 var(--tf-space-1);
+  font-size: var(--tf-text-xl);
+  text-align: center;
+}
+.tf-login__subtitle {
+  margin: 0 0 var(--tf-space-5);
+  text-align: center;
+  color: var(--tf-text-muted);
+  font-size: var(--tf-text-sm);
+}
+.tf-login__error {
+  background: var(--tf-danger-bg);
+  border: var(--tf-border-width) solid var(--tf-danger);
+  color: var(--tf-danger);
+  border-radius: var(--tf-radius);
+  padding: var(--tf-space-3);
+  margin-bottom: var(--tf-space-4);
+  font-size: var(--tf-text-sm);
+}
+.tf-login__submit {
+  width: 100%;
+  justify-content: center;
+}
+
+/* ── Screen scaffolding ────────────────────────────────────────────────────── */
+
+/*
+ * The standard screen: a page header that does not scroll away, and a body that does.
+ * Screens opt into it rather than each inventing a layout — the reason B2 found
+ * `MyHistory` rendering its `<h1>` with the Start screen's class.
+ */
+.tf-screen {
+  height: 100%;
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+}
+.tf-screen__body {
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  padding: var(--tf-space-4);
+  gap: var(--tf-space-4);
+}
+.tf-screen__body--flush {
+  padding: 0;
+}

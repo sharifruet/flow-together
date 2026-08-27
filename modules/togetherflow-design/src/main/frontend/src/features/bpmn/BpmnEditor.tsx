@@ -25,6 +25,7 @@ import {
   type ModelResponse,
   type ModelValidationApi,
 } from "@togetherflow/common";
+import { useConflictPrompt } from "../editors/ConflictPrompt";
 import { useBpmnModeler } from "./useBpmnModeler";
 import type { IdentitySource } from "./useIdentities";
 import { canDeploy, issuesFromServer, validateBpmn, type ValidationIssue } from "./validateBpmn";
@@ -47,6 +48,12 @@ export interface BpmnEditorProps {
   initialXml: string | null;
   loadError?: string | null;
   onBack: () => void;
+  /**
+   * Discards local changes and re-imports what is stored (W1.1). The parent owns it: a
+   * reload is a refetch plus a remount, which resets the editor's undo stack — which is
+   * exactly what "take theirs, drop mine" means.
+   */
+  onReloadSource?: () => void;
   /** Called after a save or deploy; carries the updated draft where one exists. */
   onSaved: (draft?: ModelResponse) => void;
 }
@@ -59,10 +66,17 @@ export function BpmnEditor({
   initialXml,
   loadError,
   onBack,
+  onReloadSource,
   onSaved,
 }: BpmnEditorProps) {
   const { t, locale } = useI18n();
   const { push } = useToast();
+  /*
+   * The concurrent-edit guard's user half (W1.1). Declared before `save` so the
+   * autosave effect and the save callback can both see it.
+   */
+  const conflict = useConflictPrompt({ onReload: () => onReloadSource?.() });
+
   // Destructured rather than kept as an object: the members are passed as props, and
   // property access on the hook's result confuses the refs lint rule.
   const {
@@ -290,7 +304,13 @@ export function BpmnEditor({
       setSaving(true);
       try {
         const xml = await getXml();
-        await modelApi.saveSource(model.id, xml);
+        const written = await conflict.guard(async (overwrite) => {
+          await modelApi.saveSource(model.id, xml, { overwrite });
+          return true;
+        });
+        // Refused: someone else saved since this editor last read. The prompt is up and
+        // autosave is paused; returning false lets a caller that was going to deploy stop.
+        if (!written) return false;
         markSaved();
         setLastSavedAt(new Date());
         if (!options.silent) push({ tone: "success", message: t("editor.saved.toast") });
@@ -308,7 +328,7 @@ export function BpmnEditor({
         setSaving(false);
       }
     },
-    [getXml, markSaved, modelApi, model.id, push, onSaved, t],
+    [getXml, markSaved, modelApi, model.id, push, onSaved, t, conflict],
   );
 
   // Autosave once editing goes idle. Held in a ref so a re-render mid-typing does not
@@ -321,10 +341,10 @@ export function BpmnEditor({
     saveRef.current = save;
   }, [save]);
   useEffect(() => {
-    if (!dirty || !ready) return;
+    if (!dirty || !ready || conflict.blocked) return;
     const timer = setTimeout(() => void saveRef.current({ silent: true }), AUTOSAVE_IDLE_MS);
     return () => clearTimeout(timer);
-  }, [dirty, ready]);
+  }, [dirty, ready, conflict.blocked]);
 
   // Browser-level guard: covers reloads and tab closes, which no in-app router can.
   useEffect(() => {
@@ -588,6 +608,9 @@ export function BpmnEditor({
           void deploy();
         }}
       />
+
+      {/* Reload-or-overwrite, when someone else saved this model (W1.1). */}
+      {conflict.prompt}
     </section>
   );
 }

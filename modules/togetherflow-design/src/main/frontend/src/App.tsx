@@ -13,12 +13,15 @@ import {
   modelKindOf,
   useAsync,
   useAuth,
+  useNavigate,
+  useRoute,
   useT,
   useTenant,
   type ModelResponse,
   type AppLinks,
 } from "@togetherflow/common";
 import { AppShell } from "./features/shell/AppShell";
+import { ROUTE_TABLE, modelPath, pathFor } from "./routes";
 import { ModelLibrary } from "./features/library/ModelLibrary";
 import { useIdentities } from "./features/bpmn/useIdentities";
 
@@ -67,8 +70,28 @@ export function App({ apps,
   const t = useT();
   const { session, signOut, getAuthHeaders, isInitialising } = useAuth();
   const { tenantId } = useTenant();
-  const [editing, setEditing] = useState<ModelResponse | null>(null);
+  /*
+   * Which model is open comes from the URL since W1.3 (F1). A model could not be linked
+   * to before, so "review this process" had to be "open Design, find it, open it".
+   */
+  const route = useRoute(ROUTE_TABLE, "models");
+  const navigate = useNavigate();
+  const editingId = route.params.modelId;
+  /**
+   * The row for the open model, cached so opening one from the library needs no second
+   * fetch. Derived against the URL rather than cleared in an effect: the id is the
+   * source of truth, and a cached row that does not match it is simply not used.
+   */
+  const [cachedModel, setCachedModel] = useState<ModelResponse | null>(null);
+  const editing = cachedModel?.id === editingId ? cachedModel : null;
   const [refreshToken, setRefreshToken] = useState(0);
+  const [modelCount, setModelCount] = useState<number | undefined>();
+  /*
+   * Bumped by W1.1's "Reload": refetches the source and, through the editor's `key`,
+   * remounts the editor so it re-imports. Losing the undo stack is the point — "take
+   * theirs, drop mine" is exactly that.
+   */
+  const [sourceToken, setSourceToken] = useState(0);
 
   const makeClient = useCallback(
     (baseUrl: string) =>
@@ -117,20 +140,45 @@ export function App({ apps,
   // The editor needs the source before it can import, so it is fetched here and
   // handed down — that keeps the editors free of loading states of their own.
   const source = useAsync(
-    async (signal) => (editing ? await modelApi.getSource(editing.id, signal) : null),
-    [modelApi, editing?.id],
+    async (signal) => (editingId ? await modelApi.getSource(editingId, signal) : null),
+    [modelApi, editingId, sourceToken],
   );
 
-  const close = useCallback(() => setEditing(null), []);
+  /*
+   * A deep link arrives with an id and no row. The library hands the row over when it
+   * opens one, so this only fetches for the cold-start case — which makes it a genuine
+   * synchronisation with an external system rather than derived state.
+   */
+  const fetchedModel = useAsync(
+    async (signal) => {
+      if (!editingId || editing) return null;
+      try {
+        return await modelApi.get(editingId, signal);
+      } catch (error) {
+        if (error instanceof DOMException && error.name === "AbortError") throw error;
+        // A link to a model that no longer exists returns to the library rather than
+        // leaving the user on a blank editor.
+        navigate(pathFor("models"), { replace: true });
+        return null;
+      }
+    },
+    [modelApi, editingId, editing, navigate],
+  );
+  const openModel = editing ?? fetchedModel.data ?? null;
+
+  const close = useCallback(() => navigate(pathFor("models")), [navigate]);
   /**
    * A save or deploy finished. Deploying cuts a version (§7.4.1), which bumps the draft's
    * version number — the row is unchanged, so this updates what the editor displays
    * without re-importing the diagram and discarding the user's undo stack.
    */
   const onSaved = useCallback((draft?: ModelResponse) => {
-    if (draft) setEditing(draft);
+    if (draft) setCachedModel(draft);
     setRefreshToken((token) => token + 1);
   }, []);
+
+  /** W1.1's "Reload": refetch the stored source and remount the editor over it. */
+  const reloadSource = useCallback(() => setSourceToken((token) => token + 1), []);
   /**
    * Self-service password change (§7.5). The identity resource that owns this lives on
    * the *process* API, so every app can offer it without carrying an IDM client.
@@ -156,19 +204,20 @@ export function App({ apps,
 
   if (!session) return <LoginScreen app="design" />;
 
-  if (editing) {
+  if (editingId && openModel) {
     const loadError =
       source.error instanceof Error ? source.error.message : source.error ? String(source.error) : null;
     const props = {
       modelApi,
-      model: editing,
+      model: openModel,
       initialXml: source.loading ? null : (source.data ?? null),
       loadError,
       onBack: close,
       onSaved,
+      onReloadSource: reloadSource,
     };
     return (
-      <AppShell view="models" onViewChange={close} apps={apps} onChangePassword={changePassword}>
+      <AppShell view="models" apps={apps} onChangePassword={changePassword}>
         <Suspense
           fallback={
             <div className="tf-editor__loading-standalone">
@@ -176,34 +225,34 @@ export function App({ apps,
             </div>
           }
         >
-          {modelKindOf(editing) === "dmn" ? (
+          {modelKindOf(openModel) === "dmn" ? (
             <DmnEditor {...props} />
-          ) : modelKindOf(editing) === "cmmn" ? (
+          ) : modelKindOf(openModel) === "cmmn" ? (
             <CmmnEditor {...props} validationApi={validationApi} />
-          ) : modelKindOf(editing) === "form" ? (
+          ) : modelKindOf(openModel) === "form" ? (
             <FormBuilder
               modelApi={modelApi}
-              model={editing}
+              model={openModel}
               initialSource={props.initialXml}
               loadError={loadError}
               onBack={close}
               onSaved={onSaved}
             />
-          ) : modelKindOf(editing) === "event" ? (
+          ) : modelKindOf(openModel) === "event" ? (
             <EventEditor
               modelApi={modelApi}
               eventApi={eventApi}
-              model={editing}
+              model={openModel}
               initialSource={props.initialXml}
               loadError={loadError}
               onBack={close}
               onSaved={onSaved}
             />
-          ) : modelKindOf(editing) === "app" ? (
+          ) : modelKindOf(openModel) === "app" ? (
             <AppBuilder
               modelApi={modelApi}
               appApi={appApi}
-              model={editing}
+              model={openModel}
               initialSource={props.initialXml}
               loadError={loadError}
               onBack={close}
@@ -222,8 +271,23 @@ export function App({ apps,
   }
 
   return (
-    <AppShell view="models" onViewChange={() => undefined} apps={apps} onChangePassword={changePassword}>
-      <ModelLibrary modelApi={modelApi} onOpen={setEditing} refreshToken={refreshToken} />
+    <AppShell
+      view="models"
+      modelCount={modelCount}
+      apps={apps}
+      onChangePassword={changePassword}
+    >
+      <ModelLibrary
+        modelApi={modelApi}
+        onOpen={(model) => {
+          // The row is kept so the editor renders without a second fetch; the URL is
+          // what actually opens it.
+          setCachedModel(model);
+          navigate(modelPath(model.id));
+        }}
+        onCount={setModelCount}
+        refreshToken={refreshToken}
+      />
     </AppShell>
   );
 }

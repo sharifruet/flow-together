@@ -11,6 +11,7 @@ import { render, screen } from "@testing-library/react";
 import { describe, it, vi } from "vitest";
 import { expectNoA11yViolations } from "@togetherflow/common/testing/a11y";
 import {
+  RouterProvider,
   ToastProvider,
   type CaseApi,
   type DataResponse,
@@ -42,14 +43,16 @@ describe("Work screens meet WCAG 2.1 AA", () => {
     } as unknown as ProcessApi;
 
     const { container } = render(
-      <TaskInbox
+      <RouterProvider>
+        <TaskInbox
         taskApi={taskApi}
         processApi={processApi}
         userId="alice"
         onSelectTask={vi.fn()}
         refreshToken={0}
-        onStartWork={vi.fn()}
-      />,
+          onStartWork={vi.fn()}
+        />
+      </RouterProvider>,
     );
     await screen.findByText("Approve invoice");
     await expectNoA11yViolations(container);
@@ -58,13 +61,15 @@ describe("Work screens meet WCAG 2.1 AA", () => {
   it("the task inbox, empty", async () => {
     const taskApi = { query: vi.fn().mockResolvedValue(page([])) } as unknown as TaskApi;
     const { container } = render(
-      <TaskInbox
+      <RouterProvider>
+        <TaskInbox
         taskApi={taskApi}
         userId="alice"
         onSelectTask={vi.fn()}
         refreshToken={0}
-        onStartWork={vi.fn()}
-      />,
+          onStartWork={vi.fn()}
+        />
+      </RouterProvider>,
     );
     await screen.findByText(/no tasks assigned to you/i);
     await expectNoA11yViolations(container);

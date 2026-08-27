@@ -7,9 +7,16 @@
  * history is never rewritten, and that a failure to record history never costs a deploy.
  */
 
-import { describe, expect, it, vi } from "vitest";
+import { beforeEach, describe, expect, it, vi } from "vitest";
 import { ApiClient } from "./client";
-import { MODEL_CATEGORY, ModelApi, type ModelResponse } from "./models";
+import { MODEL_CATEGORY, ModelApi, __resetSourceBaselines, type ModelResponse } from "./models";
+
+/*
+ * The concurrent-edit guard's baselines are module-level and per-tab by design (see
+ * `models.ts`). These tests reuse ids across cases, which a real session never does, so
+ * they start from a clean slate rather than inheriting the previous case's baseline.
+ */
+beforeEach(() => __resetSourceBaselines());
 
 function model(overrides: Partial<ModelResponse> = {}): ModelResponse {
   return {

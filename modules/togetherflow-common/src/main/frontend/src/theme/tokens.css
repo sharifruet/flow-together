@@ -3,6 +3,12 @@
  * Brand colors are seeded from the logo asset (docs/ui/logo.png) per REQUIREMENTS.md §14.2.
  * The logo's own glyph encodes start=green / gateway=gold / end=red, which is reused
  * as the success/warning/danger semantic scale so icon and UI share one visual language.
+ *
+ * Completed in W1.4 against UI_POLISH_BACKLOG.md F3, which found the set covering colour,
+ * spacing, type size, radius and three shadows and nothing else: motion, z-index,
+ * breakpoints, line-height, font-weight and border-width were raw literals scattered
+ * across five stylesheets. Each of those now has a scale here, and `theme/tokens.test.ts`
+ * fails the build if a literal comes back.
  */
 
 :root {
@@ -24,16 +30,24 @@
   --tf-danger-bg: #fbeaea;
   --tf-info: var(--tf-blue-700);
   --tf-info-bg: #e8f2fc;
+  /* Neutral tone for a badge that carries a state with no valence — "Suspended",
+     "Normal priority". Distinct from --tf-text-muted, which is a text colour. */
+  --tf-neutral: #5b6774;
+  --tf-neutral-bg: #eef1f5;
 
   /* Neutrals */
   --tf-bg: #ffffff;
   --tf-bg-subtle: #f6f8fa;
   --tf-bg-raised: #ffffff;
+  --tf-bg-sunken: #eef1f5;
   --tf-border: #d8dee6;
   --tf-border-strong: #79899a;
   --tf-text: #16202e;
   --tf-text-muted: #5b6774;
   --tf-text-inverse: #ffffff;
+  /* Selection/hover wash for rows and nav items — a tint, not a fill. */
+  --tf-bg-hover: #eef1f5;
+  --tf-bg-selected: var(--tf-info-bg);
 
   /* Interactive */
   --tf-accent: var(--tf-blue-700);
@@ -48,9 +62,11 @@
   --tf-space-5: 24px;
   --tf-space-6: 32px;
   --tf-space-7: 48px;
+  --tf-space-8: 64px;
 
   /* Typography */
-  --tf-font: "Inter", -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+  --tf-font: "Inter Variable", "Inter Fallback", -apple-system, BlinkMacSystemFont,
+    "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
   --tf-font-mono: ui-monospace, SFMono-Regular, "SF Mono", Menlo, monospace;
   --tf-text-xs: 12px;
   --tf-text-sm: 13px;
@@ -58,27 +74,98 @@
   --tf-text-lg: 16px;
   --tf-text-xl: 20px;
   --tf-text-2xl: 26px;
+  /* F3: "The type ramp tops out at 26px, which is why no screen has a real headline." */
+  --tf-text-3xl: 32px;
+  --tf-text-4xl: 40px;
 
-  /* Radius & elevation */
+  --tf-weight-normal: 400;
+  --tf-weight-medium: 500;
+  --tf-weight-semibold: 600;
+  --tf-weight-bold: 700;
+
+  --tf-leading-tight: 1.2;
+  --tf-leading-snug: 1.35;
+  --tf-leading-normal: 1.5;
+  --tf-leading-relaxed: 1.65;
+
+  --tf-tracking-tight: -0.01em;
+  --tf-tracking-normal: 0;
+  --tf-tracking-wide: 0.04em;
+
+  /* Radius, borders & elevation */
+  --tf-border-width: 1px;
+  --tf-border-width-thick: 2px;
   --tf-radius-sm: 4px;
   --tf-radius: 6px;
   --tf-radius-lg: 10px;
+  --tf-radius-pill: 999px;
   --tf-shadow-sm: 0 1px 2px rgba(12, 35, 71, 0.08);
   --tf-shadow: 0 2px 8px rgba(12, 35, 71, 0.12);
   --tf-shadow-lg: 0 8px 28px rgba(12, 35, 71, 0.18);
+
+  /*
+   * Motion. F3 found `0.12s ease` hardcoded in five places and no scale at all.
+   * Every duration in the system is one of these three; @media (prefers-reduced-motion)
+   * at the bottom of this file sets them all to 0 in one place, so a new transition
+   * cannot forget to honour the preference.
+   */
+  --tf-duration-fast: 120ms;
+  --tf-duration: 200ms;
+  --tf-duration-slow: 320ms;
+  --tf-ease: cubic-bezier(0.2, 0, 0.2, 1);
+  --tf-ease-out: cubic-bezier(0, 0, 0.2, 1);
+  --tf-ease-in-out: cubic-bezier(0.4, 0, 0.2, 1);
+
+  /*
+   * Z-index scale. F3 found 20/30/60/70/100 as literals across five files, which is how
+   * a dropdown ends up under a sticky header. One ordered scale, named by what sits at
+   * each level, so a new layer has to pick a place in the stack rather than a number
+   * bigger than the last one someone saw.
+   */
+  --tf-z-base: 0;
+  --tf-z-sticky: 10;
+  --tf-z-header: 20;
+  --tf-z-dropdown: 30;
+  --tf-z-drawer: 40;
+  --tf-z-backdrop: 50;
+  --tf-z-modal: 60;
+  --tf-z-toast: 70;
+  --tf-z-skip-link: 100;
+
+  /*
+   * Breakpoints. CSS cannot use a custom property inside a media query, so these cannot
+   * be referenced by `@media` directly — they are here as the single source of the
+   * *values*, readable from JS, and `theme/tokens.test.ts` fails the build if any
+   * stylesheet in any module uses a width that is not one of them. That is what makes
+   * F3's "every app's media queries reference the same named breakpoints" enforceable
+   * rather than a convention.
+   */
+  --tf-bp-sm: 640px;
+  --tf-bp-md: 768px;
+  --tf-bp-lg: 1024px;
+  --tf-bp-xl: 1280px;
 
   /* Brand figure fill — must stay legible on whatever the header background is. */
   --tf-brand-figure: var(--tf-navy);
 
   /* Layout */
   --tf-header-height: 56px;
+  --tf-sidebar-width: 232px;
+  --tf-sidebar-width-collapsed: 56px;
 }
 
+/*
+ * Dark palette. Declared once and applied by both selectors below, so the two can never
+ * drift — before this the same seventeen declarations were written out twice.
+ */
 @media (prefers-color-scheme: dark) {
   :root:not([data-tf-theme="light"]) {
     --tf-bg: #0f1722;
     --tf-bg-subtle: #151f2e;
     --tf-bg-raised: #1a2532;
+    --tf-bg-sunken: #0b121b;
+    --tf-bg-hover: #1f2b3a;
+    --tf-bg-selected: #14242f;
     --tf-border: #2a3949;
     --tf-border-strong: #62788d;
     --tf-text: #e8edf3;
@@ -93,6 +180,8 @@
     --tf-danger-bg: #2e1a1a;
     --tf-info: #6bb0ea;
     --tf-info-bg: #14242f;
+    --tf-neutral: #9aa8b8;
+    --tf-neutral-bg: #1f2b3a;
     --tf-brand-figure: #cfe0f2;
   }
 }
@@ -101,6 +190,9 @@
   --tf-bg: #0f1722;
   --tf-bg-subtle: #151f2e;
   --tf-bg-raised: #1a2532;
+  --tf-bg-sunken: #0b121b;
+  --tf-bg-hover: #1f2b3a;
+  --tf-bg-selected: #14242f;
   --tf-border: #2a3949;
   --tf-border-strong: #62788d;
   --tf-text: #e8edf3;
@@ -115,6 +207,8 @@
   --tf-danger-bg: #2e1a1a;
   --tf-info: #6bb0ea;
   --tf-info-bg: #14242f;
+  --tf-neutral: #9aa8b8;
+  --tf-neutral-bg: #1f2b3a;
   --tf-brand-figure: #cfe0f2;
 }
 
@@ -124,17 +218,28 @@
   box-sizing: border-box;
 }
 
+/*
+ * B5: "Layout does not use the viewport." The frame can only be full-height if every
+ * ancestor of it is, and #root is the one the app does not otherwise touch.
+ */
+html,
+body,
+#root {
+  height: 100%;
+}
+
 body {
   margin: 0;
   font-family: var(--tf-font);
   font-size: var(--tf-text-base);
+  line-height: var(--tf-leading-normal);
   color: var(--tf-text);
   background: var(--tf-bg-subtle);
   -webkit-font-smoothing: antialiased;
 }
 
 :focus-visible {
-  outline: 2px solid var(--tf-accent);
+  outline: var(--tf-border-width-thick) solid var(--tf-accent);
   outline-offset: 2px;
 }
 
@@ -148,4 +253,17 @@ body {
   clip: rect(0, 0, 0, 0);
   white-space: nowrap;
   border: 0;
+}
+
+/*
+ * One place that honours the preference, rather than every animation remembering to.
+ * Kept as "almost zero" rather than zero: a 0s transition never fires `transitionend`,
+ * and a component that waits for it to unmount would hang.
+ */
+@media (prefers-reduced-motion: reduce) {
+  :root {
+    --tf-duration-fast: 1ms;
+    --tf-duration: 1ms;
+    --tf-duration-slow: 1ms;
+  }
 }

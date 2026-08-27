@@ -92,6 +92,45 @@ export function modelKindOf(model: ModelResponse): ModelKind {
   return "bpmn";
 }
 
+/**
+ * A save was refused because the stored source changed since this editor last read or
+ * wrote it — i.e. somebody else saved in between (UI_POLISH_BACKLOG.md I1).
+ *
+ * `storedSource` is what is on the server right now, so a caller offering "reload" does
+ * not have to fetch it a second time.
+ */
+export class ConcurrentEditError extends Error {
+  readonly modelId: string;
+  readonly storedSource: string | null;
+
+  constructor(modelId: string, storedSource: string | null) {
+    super(`Model ${modelId} was changed by someone else since it was opened.`);
+    this.name = "ConcurrentEditError";
+    this.modelId = modelId;
+    this.storedSource = storedSource;
+  }
+}
+
+/**
+ * What this browser believes is on the server, per model id.
+ *
+ * Module-level rather than an instance field on purpose. `ModelApi` is rebuilt by
+ * `useMemo` whenever the tenant, the auth headers or the translator change, and a
+ * baseline held on the instance would be discarded with it — which would silently
+ * disable the guard at exactly the moments a session is most in flux. One browser tab is
+ * one editor, so a module-level map is the right lifetime.
+ *
+ * A model with no entry is unguarded by design: nothing has been read, so there is no
+ * "since" to compare against, and refusing the first write of a freshly created row
+ * would break `create` → `saveSource`.
+ */
+const sourceBaselines = new Map<string, string>();
+
+/** Test seam. Never call from app code — the baselines are per-tab session state. */
+export function __resetSourceBaselines(): void {
+  sourceBaselines.clear();
+}
+
 export class ModelApi {
   constructor(
     private readonly client: ApiClient,
@@ -152,6 +191,8 @@ export class ModelApi {
         `/repository/models/${encodeURIComponent(modelId)}/source`,
         { signal, responseType: "text" },
       );
+      // Reading establishes the baseline the concurrent-edit guard compares against.
+      sourceBaselines.set(modelId, result ?? "");
       return result ?? null;
     } catch (error) {
       if (error instanceof DOMException && error.name === "AbortError") throw error;
@@ -209,7 +250,13 @@ export class ModelApi {
       metaInfo: model.metaInfo,
       tenantId: model.tenantId,
     });
-    await this.saveSource(archived.id, currentSource);
+    /*
+     * `overwrite`, because the row was created two lines ago: there is nothing to
+     * concurrently edit, and this is the one write in the API that is provably safe.
+     * Relying on "a new id has no baseline" would work today and break the moment an id
+     * is reused — which is exactly what the version tests do.
+     */
+    await this.saveSource(archived.id, currentSource, { overwrite: true });
     return draft;
   }
 
@@ -233,13 +280,78 @@ export class ModelApi {
     return draft;
   }
 
-  saveSource(modelId: string, xml: string): Promise<void> {
+  /**
+   * Writes the source, refusing to clobber somebody else's save (I1).
+   *
+   * The editors autosave after four idle seconds, and this endpoint is an unconditional
+   * PUT, so two people on one model used to overwrite each other repeatedly without
+   * either pressing Save. The guard reads what is stored and compares it with what this
+   * browser last read or wrote; a difference means someone saved in between, and the
+   * write is refused with `ConcurrentEditError` so the caller can offer reload-or-overwrite.
+   *
+   * **Detect by comparing the source, not by `lastUpdateTime`.** The timestamp does not
+   * work: `ModelEntityManagerImpl.insertEditorSourceForModel` calls `updateModel` only
+   * when `editorSourceValueId` is null — i.e. on the very first save. Every later source
+   * save rewrites the byte array and never touches the `ACT_RE_MODEL` row, so
+   * `lastUpdateTime` is frozen from the second save onward.
+   *
+   * This narrows the window rather than closing it: the read and the write are two
+   * requests, so a save landing between them is still lost. Closing it needs a
+   * server-side precondition — the model locking in ENTERPRISE_PARITY_PLAN.md W3.1.
+   */
+  async saveSource(
+    modelId: string,
+    xml: string,
+    options: { overwrite?: boolean } = {},
+  ): Promise<void> {
+    const baseline = sourceBaselines.get(modelId);
+    if (!options.overwrite && baseline !== undefined) {
+      const stored = await this.readSourceForGuard(modelId);
+      // `undefined` means the check itself failed. A save is not blocked because the
+      // guard could not run — that would turn a transient read error into lost work.
+      if (stored !== undefined && stored !== baseline) {
+        throw new ConcurrentEditError(modelId, stored === "" ? null : stored);
+      }
+    }
+
     const form = new FormData();
     form.append("file", new Blob([xml], { type: "application/xml" }), "model.xml");
-    return this.client.request(`/repository/models/${encodeURIComponent(modelId)}/source`, {
+    await this.client.request(`/repository/models/${encodeURIComponent(modelId)}/source`, {
       method: "PUT",
       body: form,
     });
+    // What was just written is the new baseline, so the next autosave compares against
+    // this save rather than against whatever was on screen when the editor opened.
+    sourceBaselines.set(modelId, xml);
+  }
+
+  /**
+   * The guard's read. Distinct from `getSource` in two ways that matter: it does not
+   * move the baseline (that would defeat the comparison it is about to make), and it
+   * reports a failed read as `undefined` rather than flattening it to `null` — which
+   * `getSource` does, and which here would be indistinguishable from "the source was
+   * deleted" and would refuse every save on a flaky connection.
+   */
+  private async readSourceForGuard(modelId: string): Promise<string | undefined> {
+    try {
+      const result = await this.client.request<string | undefined>(
+        `/repository/models/${encodeURIComponent(modelId)}/source`,
+        { responseType: "text" },
+      );
+      return result ?? "";
+    } catch {
+      return undefined;
+    }
+  }
+
+  /**
+   * Declares what this browser believes is stored, without a round trip.
+   *
+   * An editor that has just written through some other path — a bulk import, a restore —
+   * calls this so the next autosave is not refused against a stale baseline.
+   */
+  trackSource(modelId: string, source: string): void {
+    sourceBaselines.set(modelId, source);
   }
 
   /**

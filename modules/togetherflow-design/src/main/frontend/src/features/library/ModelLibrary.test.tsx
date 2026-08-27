@@ -2,7 +2,12 @@ import { render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { describe, expect, it, vi } from "vitest";
 import type { Mock } from "vitest";
-import { ToastProvider, type ModelApi, type ModelResponse } from "@togetherflow/common";
+import {
+  RouterProvider,
+  ToastProvider,
+  type ModelApi,
+  type ModelResponse,
+} from "@togetherflow/common";
 import { ModelLibrary, slugify } from "./ModelLibrary";
 
 function page(rows: ModelResponse[], total = rows.length) {
@@ -44,11 +49,15 @@ function stubApi(overrides: Record<string, unknown> = {}): StubApi {
   } as unknown as StubApi;
 }
 
+/** The library's search and page live in the URL since W1.3. */
 function renderLibrary(api: ModelApi, onOpen = vi.fn()) {
+  window.history.replaceState({}, "", "/models");
   render(
-    <ToastProvider>
-      <ModelLibrary modelApi={api} onOpen={onOpen} refreshToken={0} />
-    </ToastProvider>,
+    <RouterProvider>
+      <ToastProvider>
+        <ModelLibrary modelApi={api} onOpen={onOpen} refreshToken={0} />
+      </ToastProvider>
+    </RouterProvider>,
   );
   return { onOpen };
 }

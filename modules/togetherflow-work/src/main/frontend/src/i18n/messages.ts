@@ -25,6 +25,11 @@ export const workEn = {
 
   // Inbox (§7.1)
   "inbox.label": "Task inbox",
+  "inbox.title": "My inbox",
+  "inbox.description": "Everything waiting on you, and everything you could pick up.",
+  "inbox.countLabel.one": "{count} task",
+  "inbox.countLabel.other": "{count} tasks",
+  "inbox.startWork": "Start work",
   "inbox.caption": "Tasks",
   "inbox.filterLabel": "Task filter",
   "inbox.filter.mine": "Assigned to me",

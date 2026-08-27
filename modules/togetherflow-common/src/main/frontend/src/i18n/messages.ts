@@ -46,10 +46,34 @@ export const commonEn = {
   "pagination.status": "{first}–{last} of {total}",
   "pagination.previous": "Previous",
   "pagination.next": "Next",
+  "pagination.first": "First page",
+  "pagination.last": "Last page",
+  "pagination.page": "Page {page} of {pageCount}",
+  "pagination.perPage": "Per page",
 
   // Confirmation dialog (§14.3)
   "dialog.confirm": "Confirm",
   "dialog.cancel": "Cancel",
+  "dialog.close": "Close",
+
+  // Data table (C1)
+  "table.select.all": "Select every row on this page",
+  "table.select.row": "Select this row",
+  "table.bulk.label": "Bulk actions",
+  "table.bulk.selected.one": "{count} selected",
+  "table.bulk.selected.other": "{count} selected",
+  "table.bulk.clear": "Clear selection",
+  "table.columns.label": "Columns",
+  "table.columns.required": "This column can't be hidden.",
+  "table.density.comfortable": "Comfortable",
+  "table.density.compact": "Compact",
+  "table.rowActions.header": "Row actions",
+  "table.rowActions.label": "Actions for this row",
+
+  // Navigation chrome (B1, F2)
+  "nav.collapse": "Collapse",
+  "nav.expand": "Expand",
+  "breadcrumb.label": "Breadcrumb",
 
   /*
    * Shared action labels. These live here rather than in each app's catalogue because

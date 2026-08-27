@@ -16,6 +16,7 @@
 
 import { useState } from "react";
 import {
+  Badge,
   ApiError,
   AsyncBoundary,
   Button,
@@ -114,9 +115,9 @@ export function VersionHistory({ modelApi, model, onClose, onRestored }: Version
                       {formatDateTime(version.createTime ?? undefined, locale)}
                     </span>
                     {isDraft ? (
-                      <span className="tf-badge tf-badge--running">
+                      <Badge tone="info">
                         {t("library.history.current")}
-                      </span>
+                      </Badge>
                     ) : (
                       <Button
                         variant="secondary"

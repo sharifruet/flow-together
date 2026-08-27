@@ -15,6 +15,7 @@ import {
   type DataResponse,
   type IdmApi,
   type UserProfileApi,
+  RouterProvider,
 } from "@togetherflow/common";
 import { Users } from "./users/Users";
 import { Groups } from "./groups/Groups";
@@ -33,9 +34,11 @@ const PROFILE = {} as unknown as UserProfileApi;
 describe("Identity screens meet WCAG 2.1 AA", () => {
   it("the user list", async () => {
     const { container } = render(
-      <ToastProvider>
-        <Users idm={IDM} profileApi={PROFILE} readOnly={false} />
-      </ToastProvider>,
+      <RouterProvider>
+        <ToastProvider>
+          <Users idm={IDM} profileApi={PROFILE} readOnly={false} />
+        </ToastProvider>
+      </RouterProvider>,
     );
     await screen.findByText("kermit");
     await expectNoA11yViolations(container);
@@ -43,9 +46,11 @@ describe("Identity screens meet WCAG 2.1 AA", () => {
 
   it("the new-user dialog, with its validation errors showing", async () => {
     const { container } = render(
-      <ToastProvider>
-        <Users idm={IDM} profileApi={PROFILE} readOnly={false} />
-      </ToastProvider>,
+      <RouterProvider>
+        <ToastProvider>
+          <Users idm={IDM} profileApi={PROFILE} readOnly={false} />
+        </ToastProvider>
+      </RouterProvider>,
     );
     await screen.findByText("kermit");
     await userEvent.click(screen.getByRole("button", { name: /new user/i }));

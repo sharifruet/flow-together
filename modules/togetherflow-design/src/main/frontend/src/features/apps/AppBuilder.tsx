@@ -14,6 +14,7 @@
 import { useCallback, useMemo, useState } from "react";
 import { zipSync, strToU8 } from "fflate";
 import {
+  Badge,
   ApiError,
   AsyncBoundary,
   Button,
@@ -28,6 +29,7 @@ import {
   type ModelApi,
   type ModelResponse,
 } from "@togetherflow/common";
+import { useConflictPrompt } from "../editors/ConflictPrompt";
 import { parseAppDraft, type AppDraft } from "./appDraft";
 
 export interface AppBuilderProps {
@@ -37,6 +39,12 @@ export interface AppBuilderProps {
   initialSource: string | null;
   loadError?: string | null;
   onBack: () => void;
+  /**
+   * Discards local changes and re-imports what is stored (W1.1). The parent owns it: a
+   * reload is a refetch plus a remount, which resets the editor's undo stack — which is
+   * exactly what "take theirs, drop mine" means.
+   */
+  onReloadSource?: () => void;
   /** Called after a save or deploy; carries the updated draft where one exists. */
   onSaved: (draft?: ModelResponse) => void;
 }
@@ -48,10 +56,14 @@ export function AppBuilder({
   initialSource,
   loadError,
   onBack,
+  onReloadSource,
   onSaved,
 }: AppBuilderProps) {
   const t = useT();
   const { push } = useToast();
+  /* The concurrent-edit guard's user half (W1.1). */
+  const conflict = useConflictPrompt({ onReload: () => onReloadSource?.() });
+
   const parsed = useMemo(() => parseAppDraft(initialSource, model), [initialSource, model]);
   const [edits, setEdits] = useState<{ modelId: string; draft: AppDraft } | null>(null);
   const draft = edits && edits.modelId === model.id ? edits.draft : parsed;
@@ -104,7 +116,12 @@ export function AppBuilder({
   const save = useCallback(async () => {
     setSaving(true);
     try {
-      await modelApi.saveSource(model.id, JSON.stringify(draft, null, 2));
+      const written = await conflict.guard(async (overwrite) => {
+        await modelApi.saveSource(model.id, JSON.stringify(draft, null, 2), { overwrite });
+        return true;
+      });
+      // Refused: someone else saved since this builder last read.
+      if (!written) return false;
       setDirty(false);
       push({ tone: "success", message: t("editor.saved.toast") });
       onSaved();
@@ -120,13 +137,19 @@ export function AppBuilder({
     } finally {
       setSaving(false);
     }
-  }, [modelApi, model.id, draft, push, onSaved, t]);
+  }, [modelApi, model.id, draft, push, onSaved, t, conflict]);
 
   const publish = async () => {
     setPublishing(true);
     try {
       // Save first, so publishing never ships something different from the draft.
-      await modelApi.saveSource(model.id, JSON.stringify(draft, null, 2));
+      const written = await conflict.guard(async (overwrite) => {
+        await modelApi.saveSource(model.id, JSON.stringify(draft, null, 2), { overwrite });
+        return true;
+      });
+      // A refused save must stop the publish: shipping a bundle built from a draft the
+      // server rejected would be the same data loss one step further along.
+      if (!written) return;
       setDirty(false);
 
       const selected = (models.data ?? []).filter((m) => draft.modelIds.includes(m.id));
@@ -295,9 +318,9 @@ export function AppBuilder({
                         <span className="tf-app-models__name">
                           {candidate.name || candidate.key || candidate.id}
                         </span>
-                        <span className="tf-badge tf-badge--running">
+                        <Badge tone="info">
                           {modelKindOf(candidate).toUpperCase()}
-                        </span>
+                        </Badge>
                       </label>
                     </li>
                   );
@@ -331,7 +354,7 @@ export function AppBuilder({
             <ul className="tf-versions">
               {rows.map((definition) => (
                 <li className="tf-versions__item" key={definition.id}>
-                  <span className="tf-badge tf-badge--running">v{definition.version}</span>
+                  <Badge tone="info">v{definition.version}</Badge>
                   <span className="tf-versions__name">{definition.name ?? definition.key}</span>
                   <span className="tf-versions__meta">{definition.deploymentId?.slice(0, 8)}</span>
                 </li>
@@ -370,6 +393,9 @@ export function AppBuilder({
           onBack();
         }}
       />
+
+      {/* Reload-or-overwrite, when someone else saved this model (W1.1). */}
+      {conflict.prompt}
     </section>
   );
 }

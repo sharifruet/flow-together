@@ -325,7 +325,8 @@
   background: var(--tf-bg-subtle);
   color: var(--tf-text-muted);
   text-align: center;
-  transition: border-color 0.12s ease, background-color 0.12s ease;
+  transition: border-color var(--tf-duration-fast) var(--tf-ease),
+    background-color var(--tf-duration-fast) var(--tf-ease);
 }
 .tf-upload__zone:hover:not(.tf-upload__zone--disabled) {
   border-color: var(--tf-accent);
@@ -418,10 +419,10 @@
   border: 2px solid currentColor;
   border-right-color: transparent;
   border-radius: 50%;
-  animation: tf-spin 0.7s linear infinite;
+  animation: tf-spin var(--tf-spin-duration, 700ms) linear infinite;
 }
 @media (prefers-reduced-motion: reduce) {
   .tf-upload__spinner {
-    animation-duration: 2s;
+    --tf-spin-duration: 2000ms;
   }
 }

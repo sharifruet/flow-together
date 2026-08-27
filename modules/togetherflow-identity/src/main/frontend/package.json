@@ -2,7 +2,7 @@
   "name": "@togetherflow/identity",
   "version": "8.1.0-SNAPSHOT",
   "private": true,
-  "description": "TogetherFlow Identity \u2014 users, groups and privileges.",
+  "description": "TogetherFlow Identity — users, groups and privileges.",
   "type": "module",
   "scripts": {
     "dev": "vite",
@@ -13,7 +13,9 @@
     "test:watch": "vitest",
     "e2e": "playwright test",
     "lint": "eslint . --max-warnings 0",
-    "budget": "node node_modules/@togetherflow/common/scripts/bundle-budget.mjs"
+    "budget": "node node_modules/@togetherflow/common/scripts/bundle-budget.mjs",
+    "e2e:visual": "playwright test --config=playwright.visual.config.ts",
+    "e2e:visual:docker": "docker run --rm --network host -v \"$PWD/../../../..:/repo\" -w /repo/togetherflow-identity/src/main/frontend mcr.microsoft.com/playwright:v1.62.1-jammy npx playwright test --config=playwright.visual.config.ts"
   },
   "dependencies": {
     "@togetherflow/common": "file:../../../../togetherflow-common/src/main/frontend",

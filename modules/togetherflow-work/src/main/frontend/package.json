@@ -2,7 +2,7 @@
   "name": "@togetherflow/work",
   "version": "8.1.0-SNAPSHOT",
   "private": true,
-  "description": "TogetherFlow Work \u2014 task and case inbox for business users.",
+  "description": "TogetherFlow Work — task and case inbox for business users.",
   "type": "module",
   "scripts": {
     "dev": "vite",
@@ -15,7 +15,7 @@
     "lint": "eslint . --max-warnings 0",
     "e2e:visual": "playwright test --config=playwright.visual.config.ts",
     "budget": "node node_modules/@togetherflow/common/scripts/bundle-budget.mjs",
-    "e2e:visual:docker": "docker run --rm --network host -v \"$PWD/../../../..:/repo\" -w /repo/togetherflow-work/src/main/frontend mcr.microsoft.com/playwright:v1.49.1-jammy npx playwright test --config=playwright.visual.config.ts"
+    "e2e:visual:docker": "docker run --rm --network host -v \"$PWD/../../../..:/repo\" -w /repo/togetherflow-work/src/main/frontend mcr.microsoft.com/playwright:v1.62.1-jammy npx playwright test --config=playwright.visual.config.ts"
   },
   "dependencies": {
     "@togetherflow/common": "file:../../../../togetherflow-common/src/main/frontend",
@@ -24,7 +24,7 @@
   },
   "devDependencies": {
     "@eslint/js": "^10.0.1",
-    "@playwright/test": "^1.49.1",
+    "@playwright/test": "^1.62.1",
     "@testing-library/jest-dom": "^6.6.3",
     "@testing-library/react": "^16.1.0",
     "@testing-library/user-event": "^14.5.2",

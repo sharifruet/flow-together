@@ -19,10 +19,21 @@
 
 import { useState, type ReactNode } from "react";
 import { ApiError } from "../api/client";
+import { Avatar, UserChip } from "../components/Avatar";
+import { Badge, toneForPriority, toneForState } from "../components/Badge";
 import { Brand } from "../components/Brand";
+import { Breadcrumb } from "../components/Breadcrumb";
 import { Button } from "../components/Button";
+import { Card } from "../components/Card";
 import { ConfirmDialog } from "../components/ConfirmDialog";
 import { DataTable, Pagination } from "../components/DataTable";
+import { DropdownMenu } from "../components/DropdownMenu";
+import { EmptyIllustration } from "../components/EmptyIllustration";
+import { ICON_NAMES, Icon } from "../components/Icon";
+import { Modal } from "../components/Modal";
+import { PageHeader } from "../components/PageHeader";
+import { SidebarNav } from "../components/SidebarNav";
+import { Tabs } from "../components/Tabs";
 import { ErrorBoundary } from "../components/ErrorBoundary";
 import { SelectInput, TextAreaInput, TextInput } from "../components/Field";
 import { SavedViews } from "../components/SavedViews";
@@ -188,7 +199,483 @@ function BoundaryDemo() {
   );
 }
 
+
+function ModalDemo({ size }: { size?: "sm" | "md" | "lg" }) {
+  const [open, setOpen] = useState(false);
+  return (
+    <>
+      <Button onClick={() => setOpen(true)}>Open</Button>
+      <Modal
+        open={open}
+        size={size}
+        title="Migrate 12 process instances"
+        description="Instances move to version 4 of Invoice Approval. Activity mappings below apply to every selected instance."
+        onClose={() => setOpen(false)}
+        actions={
+          <>
+            <Button variant="secondary" onClick={() => setOpen(false)}>
+              Cancel
+            </Button>
+            <Button onClick={() => setOpen(false)}>Migrate</Button>
+          </>
+        }
+      >
+        <p className="tf-muted">
+          Tab and Shift+Tab cycle inside this dialog; Escape closes it and focus returns to
+          the button that opened it. The page behind is inert.
+        </p>
+        <label className="tf-field">
+          <span className="tf-field__label">Target version</span>
+          <input className="tf-input" defaultValue="4" />
+        </label>
+      </Modal>
+    </>
+  );
+}
+
+function TabsDemo() {
+  const [active, setActive] = useState<"task" | "people" | "subtasks" | "documents">("task");
+  return (
+    <Tabs
+      label="Task sections"
+      active={active}
+      onChange={setActive}
+      tabs={[
+        { id: "task", label: "Task" },
+        { id: "people", label: "People", count: 3 },
+        { id: "subtasks", label: "Subtasks", count: 0 },
+        { id: "documents", label: "Documents", count: 2, disabled: true },
+      ]}
+    >
+      <p className="tf-muted">
+        Arrow keys move between tabs, Enter or Space selects. Only the selected tab is a tab
+        stop, so Tab moves into this panel rather than through every tab first.
+      </p>
+    </Tabs>
+  );
+}
+
+function TableDemo() {
+  const [sort, setSort] = useState({ key: "dueDate", order: "asc" as const });
+  const [selection, setSelection] = useState(new Set<string>(["1"]));
+  return (
+    <DataTable
+      caption="Tasks"
+      preferenceKey="gallery.tasks"
+      sort={sort}
+      onSortChange={(next) => setSort(next as typeof sort)}
+      selection={selection}
+      onSelectionChange={setSelection}
+      bulkActions={(selected) => (
+        <Button variant="secondary">Reassign {selected.length}</Button>
+      )}
+      rowActions={(row: Row) => [
+        { id: "open", label: "Open", icon: <Icon name="external" size={16} />, onSelect: () => {} },
+        { id: "claim", label: "Claim", icon: <Icon name="check" size={16} />, onSelect: () => {} },
+        {
+          id: "delete",
+          label: `Delete ${row.task}`,
+          icon: <Icon name="trash" size={16} />,
+          destructive: true,
+          onSelect: () => {},
+        },
+      ]}
+      columns={[
+        { key: "task", header: "Task", sortKey: "name", required: true, render: (row: Row) => row.task },
+        {
+          key: "assignee",
+          header: "Assignee",
+          secondary: true,
+          render: (row: Row) => <UserChip userId={row.assignee} />,
+        },
+        {
+          key: "dueDate",
+          header: "Due",
+          sortKey: "dueDate",
+          align: "end" as const,
+          render: () => "in 2 days",
+        },
+      ]}
+      rows={ROWS}
+      rowKey={(row) => row.id}
+    />
+  );
+}
+
+const MANY_ROWS: Row[] = Array.from({ length: 120 }, (_, index) => ({
+  id: String(index + 1),
+  task: `Approve invoice INV-${2200 + index}`,
+  assignee: index % 2 ? "bob" : "alice",
+}));
+
 export const GALLERY: GalleryEntry[] = [
+  {
+    name: "Badge",
+    description:
+      "Status as a badge rather than prose (C3). Never colour alone — the word always stays, and the tone is redundant encoding.",
+    states: [
+      {
+        label: "Tones",
+        node: (
+          <div className="tf-gallery__row">
+            <Badge tone="neutral">Completed</Badge>
+            <Badge tone="info">Available</Badge>
+            <Badge tone="success">Active</Badge>
+            <Badge tone="warning">Suspended</Badge>
+            <Badge tone="danger">Dead letter</Badge>
+          </div>
+        ),
+      },
+      {
+        label: "Subtle",
+        note: "Hollow, for a dense table where filled badges would stripe the page.",
+        node: (
+          <div className="tf-gallery__row">
+            <Badge tone="neutral" subtle>12</Badge>
+            <Badge tone="info" subtle>v4</Badge>
+            <Badge tone="danger" subtle>3 failed</Badge>
+          </div>
+        ),
+      },
+      {
+        label: "With a dot",
+        note: "For a state that reads as live/stopped rather than as a label.",
+        node: (
+          <div className="tf-gallery__row">
+            <Badge tone="success" dot>Running</Badge>
+            <Badge tone="warning" dot>Suspended</Badge>
+          </div>
+        ),
+      },
+      {
+        label: "Mapped from engine state",
+        note: "toneForState/toneForPriority keep Work and Control agreeing about what colour a state is.",
+        node: (
+          <div className="tf-gallery__row">
+            {["active", "suspended", "terminated", "completed", "deadletter"].map((state) => (
+              <Badge key={state} tone={toneForState(state)}>{state}</Badge>
+            ))}
+            <Badge tone={toneForPriority(80)}>High</Badge>
+            <Badge tone={toneForPriority(50)}>Normal</Badge>
+            <Badge tone={toneForPriority(10)}>Low</Badge>
+          </div>
+        ),
+      },
+      {
+        label: "Screen-reader label",
+        note: "A bare count in a nav badge is meaningless out of context; srLabel supplies the sentence.",
+        node: <Badge tone="danger" srLabel="3 dead-letter jobs">3</Badge>,
+      },
+    ],
+  },
+  {
+    name: "Card",
+    description:
+      "The panel every app re-invented — .tf-panel in two stylesheets, .tf-card in three, .tf-detail in Work (F2).",
+    states: [
+      { label: "Plain", node: <Card>Body content.</Card> },
+      {
+        label: "With header and actions",
+        node: (
+          <Card
+            title="Invoice Approval"
+            meta="v4 · deployed 2 days ago"
+            actions={<Button variant="secondary">Edit</Button>}
+          >
+            Body content.
+          </Card>
+        ),
+      },
+      {
+        label: "Flush",
+        note: "No body padding — for a card whose whole body is a table.",
+        node: (
+          <Card title="Tasks" flush>
+            <DataTable
+              caption="Tasks"
+              columns={[{ key: "task", header: "Task", render: (row: Row) => row.task }]}
+              rows={ROWS}
+              rowKey={(row) => row.id}
+            />
+          </Card>
+        ),
+      },
+    ],
+  },
+  {
+    name: "PageHeader",
+    description:
+      "The title / description / primary-action region every screen was missing (B2). Owns the screen's single <h1>.",
+    states: [
+      {
+        label: "Full",
+        node: (
+          <PageHeader
+            title="Process instances"
+            description="Every running and recently finished process instance in this tenant."
+            breadcrumbs={[{ label: "Control", to: "/" }, { label: "Process instances" }]}
+            meta={<Badge tone="info" subtle>412</Badge>}
+            actions={
+              <>
+                <Button variant="secondary">
+                  <Icon name="download" size={16} />
+                  Export
+                </Button>
+                <Button>
+                  <Icon name="add" size={16} />
+                  Start instance
+                </Button>
+              </>
+            }
+          />
+        ),
+      },
+      { label: "Title only", node: <PageHeader title="System" /> },
+      {
+        label: "With filters underneath",
+        node: (
+          <PageHeader title="Jobs" description="Timers, async work and the dead-letter queue.">
+            <div className="tf-chips" style={{ marginTop: "var(--tf-space-3)" }}>
+              <button type="button" className="tf-chip tf-chip--active">All</button>
+              <button type="button" className="tf-chip">Timers</button>
+              <button type="button" className="tf-chip">Dead letter</button>
+            </div>
+          </PageHeader>
+        ),
+      },
+    ],
+  },
+  {
+    name: "Breadcrumb",
+    description:
+      "Where you are and the way back. Only meaningful now that every screen has a URL (F1) — before W1.3 a trail could only have been decorative.",
+    states: [
+      {
+        label: "Two levels",
+        node: <Breadcrumb items={[{ label: "Models", to: "/models" }, { label: "Invoice Approval" }]} />,
+      },
+      {
+        label: "Three levels",
+        node: (
+          <Breadcrumb
+            items={[
+              { label: "Control", to: "/" },
+              { label: "Process instances", to: "/instances" },
+              { label: "b8f1e0c2" },
+            ]}
+          />
+        ),
+      },
+    ],
+  },
+  {
+    name: "Modal",
+    description:
+      "The one modal (F6): focus trap, focus restore, body scroll lock, and the page behind marked inert. ConfirmDialog is built on it.",
+    states: [
+      { label: "Default", interactive: true, node: <ModalDemo /> },
+      { label: "Large", interactive: true, node: <ModalDemo size="lg" /> },
+    ],
+  },
+  {
+    name: "Tabs",
+    description:
+      "WAI-ARIA tabs with manual activation: arrows move focus, Enter selects. Automatic activation would fire a fetch per arrow press.",
+    states: [
+      { label: "Default", interactive: true, node: <TabsDemo /> },
+    ],
+  },
+  {
+    name: "Avatar",
+    description:
+      "A person, shown as a person (D1). Every screen renders the raw engine id today; this is the primitive that replaces it.",
+    states: [
+      {
+        label: "Sizes",
+        node: (
+          <div className="tf-gallery__row">
+            <Avatar userId="alice" name="Alice Brown" size="sm" />
+            <Avatar userId="alice" name="Alice Brown" size="md" />
+            <Avatar userId="alice" name="Alice Brown" size="lg" />
+          </div>
+        ),
+      },
+      {
+        label: "Stable colour per user",
+        note: "Hashed from the id, so the same person is the same colour on every screen and in every session.",
+        node: (
+          <div className="tf-gallery__row">
+            {["alice", "bob", "carol", "dave", "erin", "frank"].map((id) => (
+              <Avatar key={id} userId={id} size="md" />
+            ))}
+          </div>
+        ),
+      },
+      {
+        label: "UserChip",
+        node: (
+          <div className="tf-gallery__row">
+            <UserChip userId="alice" name="Alice Brown" />
+            <UserChip userId="bob" name="Bob Chen" secondary="Approver" />
+            <UserChip userId="unknown-id" />
+          </div>
+        ),
+      },
+      {
+        label: "UserChip — compact",
+        note: "Avatar alone; the name is still there for assistive tech.",
+        node: <UserChip userId="alice" name="Alice Brown" compact />,
+      },
+    ],
+  },
+  {
+    name: "DropdownMenu",
+    description:
+      "The row-action and toolbar menu (C1). Closes on Escape, on a click outside, on selection, and on focus leaving — the last is how a Tab strands an open popup.",
+    states: [
+      {
+        label: "Row actions",
+        interactive: true,
+        node: (
+          <DropdownMenu
+            label="Actions for Approve invoice INV-2291"
+            items={[
+              { id: "open", label: "Open", icon: <Icon name="external" size={16} />, onSelect: () => {} },
+              { id: "claim", label: "Claim", icon: <Icon name="check" size={16} />, onSelect: () => {} },
+              {
+                id: "delete",
+                label: "Delete",
+                icon: <Icon name="trash" size={16} />,
+                destructive: true,
+                onSelect: () => {},
+              },
+            ]}
+          />
+        ),
+      },
+      {
+        label: "With a disabled item",
+        note: "A disabled control that says nothing is a dead end, so it carries its reason.",
+        interactive: true,
+        node: (
+          <DropdownMenu
+            label="Actions"
+            align="start"
+            trigger={<>Actions <Icon name="chevron-down" size={16} /></>}
+            items={[
+              { id: "retry", label: "Retry", onSelect: () => {} },
+              {
+                id: "move",
+                label: "Move to dead letter",
+                disabled: true,
+                disabledReason: "Already in the dead-letter queue.",
+                onSelect: () => {},
+              },
+            ]}
+          />
+        ),
+      },
+    ],
+  },
+  {
+    name: "SidebarNav",
+    description:
+      "The left rail (B1). Control has seven top-level areas and had a flat button row; every item is a real link, so middle-click works.",
+    states: [
+      {
+        label: "Expanded",
+        node: (
+          <div style={{ height: 320, display: "flex" }}>
+            <SidebarNav
+              label="Control sections"
+              activeId="jobs"
+              preferenceKey="gallery"
+              groups={[
+                {
+                  items: [
+                    { id: "instances", label: "Process instances", to: "/instances", icon: "instances", count: 412 },
+                    { id: "cases", label: "Case instances", to: "/cases", icon: "cases", count: 18 },
+                  ],
+                },
+                {
+                  label: "Operations",
+                  items: [
+                    { id: "jobs", label: "Jobs", to: "/jobs", icon: "jobs", count: 3, countTone: "danger" },
+                    { id: "deployments", label: "Deployments", to: "/deployments", icon: "deployments" },
+                    { id: "system", label: "System", to: "/system", icon: "system" },
+                  ],
+                },
+              ]}
+            />
+          </div>
+        ),
+      },
+    ],
+  },
+  {
+    name: "Icon",
+    description:
+      "The icon set (C4). Two <svg> elements existed in the whole frontend before this. Drawn in-house on one 24x24 grid rather than adopting a library, for the bundle-budget reason C4 itself flags.",
+    states: [
+      {
+        label: "The set",
+        note: "One grid, one stroke width, currentColor — which is what makes them read as a set.",
+        node: (
+          <div className="tf-gallery__row" style={{ flexWrap: "wrap", gap: "var(--tf-space-4)" }}>
+            {ICON_NAMES.map((name) => (
+              <span key={name} title={name} style={{ display: "grid", justifyItems: "center", width: 64, gap: 4 }}>
+                <Icon name={name} size={22} />
+                <small className="tf-muted" style={{ fontSize: 10 }}>{name}</small>
+              </span>
+            ))}
+          </div>
+        ),
+      },
+      {
+        label: "Sizes",
+        node: (
+          <div className="tf-gallery__row">
+            <Icon name="inbox" size={14} />
+            <Icon name="inbox" size={16} />
+            <Icon name="inbox" size={20} />
+            <Icon name="inbox" size={24} />
+            <Icon name="inbox" size={32} />
+          </div>
+        ),
+      },
+      {
+        label: "Labelled",
+        note: "Only where the icon is the whole meaning. With visible text beside it, leave it decorative or a screen reader reads the action twice.",
+        node: (
+          <Button variant="secondary" aria-label="Refresh">
+            <Icon name="refresh" label="Refresh" />
+          </Button>
+        ),
+      },
+    ],
+  },
+  {
+    name: "EmptyIllustration",
+    description:
+      "Empty-state illustrations (C4), built from the brand glyph's own vocabulary so an empty screen still reads as this product. Theme-aware: one asset, both modes.",
+    states: [
+      {
+        label: "All six",
+        node: (
+          <div className="tf-gallery__row" style={{ flexWrap: "wrap" }}>
+            {(["inbox-clear", "no-results", "nothing-deployed", "no-models", "permission-denied", "error"] as const).map(
+              (name) => (
+                <span key={name} style={{ display: "grid", justifyItems: "center" }}>
+                  <EmptyIllustration name={name} width={120} />
+                  <small className="tf-muted">{name}</small>
+                </span>
+              ),
+            )}
+          </div>
+        ),
+      },
+    ],
+  },
   {
     name: "Brand",
     description:
@@ -303,7 +790,14 @@ export const GALLERY: GalleryEntry[] = [
     description: "Server-paged table. Paging is never done client-side (§8).",
     states: [
       {
-        label: "Populated",
+        label: "Full",
+        note:
+          "Sortable headers wired to the server query, selection with a bulk bar, a per-row overflow menu, and the column/density controls — all of which the previous DataTable lacked (C1).",
+        node: <TableDemo />,
+      },
+      {
+        label: "Plain",
+        note: "No preferenceKey, so no column chooser or density control — right for a small fixed table.",
         node: (
           <DataTable
             caption="Tasks"
@@ -311,6 +805,49 @@ export const GALLERY: GalleryEntry[] = [
               { key: "task", header: "Task", render: (row: Row) => row.task },
               { key: "assignee", header: "Assignee", secondary: true, render: (row: Row) => row.assignee },
             ]}
+            rows={ROWS}
+            rowKey={(row) => row.id}
+          />
+        ),
+      },
+      {
+        label: "Virtualized",
+        note:
+          "120 rows; only the window plus an overscan is in the DOM. Kicks in above 60 rows — below that the spacer rows would cost more than they save.",
+        node: (
+          <div style={{ height: 260, display: "flex" }}>
+            <DataTable
+              caption="Many tasks"
+              columns={[
+                { key: "task", header: "Task", render: (row: Row) => row.task },
+                { key: "assignee", header: "Assignee", render: (row: Row) => <UserChip userId={row.assignee} /> },
+              ]}
+              rows={MANY_ROWS}
+              rowKey={(row) => row.id}
+            />
+          </div>
+        ),
+      },
+      {
+        label: "Empty",
+        node: (
+          <DataTable
+            caption="Tasks"
+            columns={[{ key: "task", header: "Task", render: (row: Row) => row.task }]}
+            rows={[]}
+            rowKey={(row) => row.id}
+            empty={<EmptyState illustration="inbox-clear" title="Inbox zero" description="Nothing is waiting on you." />}
+          />
+        ),
+      },
+      {
+        label: "Busy",
+        note: "Refreshing an already-populated table: dimmed rather than replaced with a skeleton, so the rows do not jump.",
+        node: (
+          <DataTable
+            caption="Tasks"
+            busy
+            columns={[{ key: "task", header: "Task", render: (row: Row) => row.task }]}
             rows={ROWS}
             rowKey={(row) => row.id}
           />
@@ -330,10 +867,14 @@ export const GALLERY: GalleryEntry[] = [
           />
         ),
       },
-      { label: "First page", node: <Pagination start={0} size={25} total={60} onChange={() => {}} /> },
-      { label: "Last page", node: <Pagination start={50} size={25} total={60} onChange={() => {}} /> },
       {
-        label: "Single result",
+        label: "Pagination — first page",
+        note: "Page indicator, first/last jumps and a page-size control; previously this was Previous / Next alone (C2).",
+        node: <Pagination start={0} size={25} total={640} onChange={() => {}} onSizeChange={() => {}} />,
+      },
+      { label: "Pagination — last page", node: <Pagination start={50} size={25} total={60} onChange={() => {}} onSizeChange={() => {}} /> },
+      {
+        label: "Pagination — single result",
         note: "A pagination edge §14.1 names explicitly.",
         node: <Pagination start={0} size={25} total={1} onChange={() => {}} />,
       },

@@ -19,6 +19,20 @@ export const designEn = {
   "editor.saved": "Saved {time}",
   "editor.noChanges": "No changes",
   "editor.saved.toast": "Saved.",
+
+  /*
+   * Concurrent-edit guard (W1.1). The copy names what each choice discards: this is a
+   * dialog about losing work, and "OK / Cancel" would be the worst possible wording.
+   */
+  "editor.conflict.title": "Someone else saved this model",
+  "editor.conflict.description":
+    "It changed on the server after you opened it, so saving now would overwrite their work.",
+  "editor.conflict.note":
+    "Reload discards the changes you have made here. Overwrite discards theirs. Autosave is paused until you choose.",
+  "editor.conflict.reload": "Reload theirs",
+  "editor.conflict.overwrite": "Overwrite with mine",
+  "editor.conflict.keepEditing": "Keep editing",
+  "editor.conflict.reloaded": "Reloaded the saved version.",
   "editor.saveVersion": "Save version",
   "editor.versionSaved": "Saved as version {version}. The draft carries on from here.",
   "editor.versionFailed": "Could not save a version of this model.",
@@ -38,6 +52,10 @@ export const designEn = {
   // Model library (§7.4.1)
   "library.label": "Model library",
   "library.title": "Models",
+  "library.description":
+    "Drafts you can edit and deploy. Deploying does not delete the draft — keep editing and deploy again to publish a new version.",
+  "library.countLabel.one": "{count} model",
+  "library.countLabel.other": "{count} models",
   "library.newProcess": "New process",
   "library.search": "Search models…",
   "library.searchLabel": "Search models by name",

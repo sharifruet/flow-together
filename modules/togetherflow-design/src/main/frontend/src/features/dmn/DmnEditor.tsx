@@ -25,6 +25,7 @@ import {
   type ModelApi,
   type ModelResponse,
 } from "@togetherflow/common";
+import { useConflictPrompt } from "../editors/ConflictPrompt";
 
 const AUTOSAVE_IDLE_MS = 4000;
 
@@ -34,6 +35,12 @@ export interface DmnEditorProps {
   initialXml: string | null;
   loadError?: string | null;
   onBack: () => void;
+  /**
+   * Discards local changes and re-imports what is stored (W1.1). The parent owns it: a
+   * reload is a refetch plus a remount, which resets the editor's undo stack — which is
+   * exactly what "take theirs, drop mine" means.
+   */
+  onReloadSource?: () => void;
   /** Called after a save or deploy; carries the updated draft where one exists. */
   onSaved: (draft?: ModelResponse) => void;
 }
@@ -44,10 +51,17 @@ export function DmnEditor({
   initialXml,
   loadError,
   onBack,
+  onReloadSource,
   onSaved,
 }: DmnEditorProps) {
   const { t, locale } = useI18n();
   const { push } = useToast();
+  /*
+   * The concurrent-edit guard's user half (W1.1). Declared before `save` so the
+   * autosave effect and the save callback can both see it.
+   */
+  const conflict = useConflictPrompt({ onReload: () => onReloadSource?.() });
+
   const modelerRef = useRef<DmnModeler | null>(null);
   const [ready, setReady] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -145,7 +159,11 @@ export function DmnEditor({
       setSaving(true);
       try {
         const xml = await getXml();
-        await modelApi.saveSource(model.id, xml);
+        const written = await conflict.guard(async (overwrite) => {
+          await modelApi.saveSource(model.id, xml, { overwrite });
+          return true;
+        });
+        if (!written) return;
         setDirty(false);
         setLastSavedAt(new Date());
         if (!options.silent) push({ tone: "success", message: t("editor.saved.toast") });
@@ -161,7 +179,7 @@ export function DmnEditor({
         setSaving(false);
       }
     },
-    [getXml, modelApi, model.id, push, onSaved, t],
+    [getXml, modelApi, model.id, push, onSaved, t, conflict],
   );
 
   // Synced in an effect, not during render: writing a ref mid-render is unsafe under
@@ -172,10 +190,10 @@ export function DmnEditor({
     saveRef.current = save;
   }, [save]);
   useEffect(() => {
-    if (!dirty || !ready) return;
+    if (!dirty || !ready || conflict.blocked) return;
     const timer = setTimeout(() => void saveRef.current({ silent: true }), AUTOSAVE_IDLE_MS);
     return () => clearTimeout(timer);
-  }, [dirty, ready]);
+  }, [dirty, ready, conflict.blocked]);
 
   useEffect(() => {
     if (!dirty) return;
@@ -289,6 +307,9 @@ export function DmnEditor({
           void deploy();
         }}
       />
+
+      {/* Reload-or-overwrite, when someone else saved this model (W1.1). */}
+      {conflict.prompt}
     </section>
   );
 }

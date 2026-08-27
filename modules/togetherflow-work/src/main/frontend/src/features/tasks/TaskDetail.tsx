@@ -1,5 +1,6 @@
 import { useCallback, useMemo, useState } from "react";
 import {
+  Badge,
   ApiError,
   AsyncBoundary,
   Button,
@@ -323,9 +324,9 @@ export function TaskDetail({
                     {current.scopeType === "cmmn" ? (
                       <>
                         {" · "}
-                        <span className="tf-badge tf-badge--running">
+                        <Badge tone="info">
                           {t("task.detail.caseBadge")}
-                        </span>
+                        </Badge>
                       </>
                     ) : null}
                   </p>

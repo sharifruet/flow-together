@@ -15,6 +15,7 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
+  Badge,
   ApiError,
   Button,
   ConfirmDialog,
@@ -36,6 +37,7 @@ import {
   type ModelResponse,
   type VisibilityOperator,
 } from "@togetherflow/common";
+import { useConflictPrompt } from "../editors/ConflictPrompt";
 import {
   FIELD_TYPES,
   OPTION_TYPES,
@@ -55,6 +57,12 @@ export interface FormBuilderProps {
   initialSource: string | null;
   loadError?: string | null;
   onBack: () => void;
+  /**
+   * Discards local changes and re-imports what is stored (W1.1). The parent owns it: a
+   * reload is a refetch plus a remount, which resets the editor's undo stack — which is
+   * exactly what "take theirs, drop mine" means.
+   */
+  onReloadSource?: () => void;
   /** Called after a save or deploy; carries the updated draft where one exists. */
   onSaved: (draft?: ModelResponse) => void;
 }
@@ -65,10 +73,17 @@ export function FormBuilder({
   initialSource,
   loadError,
   onBack,
+  onReloadSource,
   onSaved,
 }: FormBuilderProps) {
   const t = useT();
   const { push } = useToast();
+  /*
+   * The concurrent-edit guard's user half (W1.1). Declared before `save` so the
+   * autosave effect and the save callback can both see it.
+   */
+  const conflict = useConflictPrompt({ onReload: () => onReloadSource?.() });
+
   const parsed = useMemo(() => parseFormModel(initialSource, model), [initialSource, model]);
   const [edits, setEdits] = useState<{ modelId: string; form: FormModelResponse } | null>(null);
   const form = edits && edits.modelId === model.id ? edits.form : parsed;
@@ -112,7 +127,11 @@ export function FormBuilder({
     async (options: { silent?: boolean } = {}) => {
       setSaving(true);
       try {
-        await modelApi.saveSource(model.id, JSON.stringify(form, null, 2));
+        const written = await conflict.guard(async (overwrite) => {
+          await modelApi.saveSource(model.id, JSON.stringify(form, null, 2), { overwrite });
+          return true;
+        });
+        if (!written) return;
         setDirty(false);
         if (!options.silent) push({ tone: "success", message: t("editor.saved.toast") });
         onSaved();
@@ -127,7 +146,7 @@ export function FormBuilder({
         setSaving(false);
       }
     },
-    [modelApi, model.id, form, push, onSaved, t],
+    [modelApi, model.id, form, push, onSaved, t, conflict],
   );
 
   const saveRef = useRef(save);
@@ -135,10 +154,10 @@ export function FormBuilder({
     saveRef.current = save;
   }, [save]);
   useEffect(() => {
-    if (!dirty) return;
+    if (!dirty || conflict.blocked) return;
     const timer = setTimeout(() => void saveRef.current({ silent: true }), AUTOSAVE_IDLE_MS);
     return () => clearTimeout(timer);
-  }, [dirty]);
+  }, [dirty, conflict.blocked]);
   useEffect(() => {
     if (!dirty) return;
     const onBeforeUnload = (event: BeforeUnloadEvent) => {
@@ -355,7 +374,7 @@ export function FormBuilder({
                       {field.name || field.id}
                       {field.required ? " *" : ""}
                     </span>
-                    <span className="tf-badge tf-badge--running">{field.type}</span>
+                    <Badge tone="info">{field.type}</Badge>
                   </button>
                 </li>
               ))}
@@ -639,6 +658,9 @@ export function FormBuilder({
           onBack();
         }}
       />
+
+      {/* Reload-or-overwrite, when someone else saved this model (W1.1). */}
+      {conflict.prompt}
     </section>
   );
 }

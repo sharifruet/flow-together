@@ -1,0 +1,72 @@
+/*
+ * The typeface, actually shipped (UI_POLISH_BACKLOG.md F4).
+ *
+ * `--tf-font` has led with "Inter" since the tokens were written, but nothing ever
+ * loaded it: no @font-face, no font file, no stylesheet link. Every user has been seeing
+ * the system fallback, so the type the scale was tuned for had never rendered.
+ *
+ * Self-hosted rather than served from Google Fonts, for the reason F4 gives: it keeps a
+ * third-party origin out of the CSP (§13.1) and it works offline and in an air-gapped
+ * deployment, which a hosted font does not.
+ *
+ * Inter is SIL Open Font License 1.1 — see `fonts/LICENSE-Inter.txt`. The files are the
+ * `latin` and `latin-ext` subsets of the variable (`wght`) upright face, taken from
+ * @fontsource-variable/inter 5.3.0. Vendored rather than added as a dependency so that
+ * Vite resolves them relative to this file in all four apps with no per-app build config.
+ *
+ * Only the upright face ships. Italic is rare in this UI — the audit found it in no
+ * component — and the italic subset would double the payload for it; the browser
+ * synthesises an oblique where one is asked for.
+ */
+
+/* latin-ext first: unicode-range makes the browser fetch only the subsets it actually
+   needs to render, so an English session never downloads this one. */
+@font-face {
+  font-family: "Inter Variable";
+  font-style: normal;
+  font-weight: 100 900;
+  font-display: swap;
+  src: url("./fonts/inter-latin-ext-wght-normal.woff2") format("woff2-variations");
+  unicode-range: U+0100-02BA, U+02BD-02C5, U+02C7-02CC, U+02CE-02D7, U+02DD-02FF, U+0304,
+    U+0308, U+0329, U+1D00-1DBF, U+1E00-1E9F, U+1EF2-1EFF, U+2020, U+20A0-20AB, U+20AD-20C0,
+    U+2113, U+2C60-2C7F, U+A720-A7FF;
+}
+
+@font-face {
+  font-family: "Inter Variable";
+  font-style: normal;
+  font-weight: 100 900;
+  font-display: swap;
+  src: url("./fonts/inter-latin-wght-normal.woff2") format("woff2-variations");
+  unicode-range: U+0000-00FF, U+0131, U+0152-0153, U+02BB-02BC, U+02C6, U+02DA, U+02DC,
+    U+0304, U+0308, U+0329, U+2000-206F, U+20AC, U+2122, U+2191, U+2193, U+2212, U+2215,
+    U+FEFF, U+FFFD;
+}
+
+/*
+ * A metric-matched fallback, which is what makes F4's "no layout shift on load" true
+ * rather than aspirational.
+ *
+ * `font-display: swap` above means text paints in the fallback and is then re-laid-out in
+ * Inter — a Cumulative Layout Shift, and CLS is a metric this product already collects
+ * (§13.5), so a regression here would show up in real-user data. Overriding the local
+ * font's metrics to Inter's makes the two occupy the same space, so the swap is invisible.
+ *
+ * The four numbers are computed from the fonts' own OS/2 tables (@capsizecss/metrics
+ * 4.2.0), not copied from a blog post:
+ *
+ *   size-adjust       = Inter xWidthAvg / Arial xWidthAvg   = 978 / 913        = 107.12%
+ *   ascent-override   = (Inter ascent  / upm) / size-adjust = (1984/2048)/1.0712 =  90.44%
+ *   descent-override  = (|Inter descent| / upm) / size-adjust = (494/2048)/1.0712 = 22.52%
+ *   line-gap-override = (Inter lineGap / upm) / size-adjust = 0                 =   0.00%
+ *
+ * Arial and Helvetica share an xWidthAvg of 913, so one adjusted face covers both.
+ */
+@font-face {
+  font-family: "Inter Fallback";
+  src: local("Arial"), local("Helvetica"), local("Liberation Sans");
+  size-adjust: 107.12%;
+  ascent-override: 90.44%;
+  descent-override: 22.52%;
+  line-gap-override: 0%;
+}

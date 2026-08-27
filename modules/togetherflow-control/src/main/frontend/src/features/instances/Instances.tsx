@@ -2,18 +2,22 @@ import { useCallback, useMemo, useState } from "react";
 import {
   ApiError,
   AsyncBoundary,
+  Badge,
   Button,
   ConfirmDialog,
   DataTable,
   EmptyState,
   NoResultsState,
+  PageHeader,
   Pagination,
   SavedViews,
   displayValue,
   formatDateTime,
+  toneForState,
   useAsync,
   useI18n,
   useDebouncedValue,
+  useListState,
   useSavedViews,
   useToast,
   type ActivityInstanceResponse,
@@ -22,48 +26,55 @@ import {
   type ProcessInstanceResponse,
 } from "@togetherflow/common";
 
-const PAGE_SIZE = 25;
-
 export interface InstancesProps {
   instanceApi: InstanceApi;
+  /**
+   * Id from `/instances/:instanceId`. This is the URL F1 argues for most in this app:
+   * "support and ops cannot paste 'look at this instance' into a ticket."
+   */
+  selectedId?: string;
+  onSelect?: (instanceId: string | undefined) => void;
 }
 
-/** What a saved view captures (§14.4) — everything except which page you were on. */
+/**
+ * What a saved view captures (§14.4) — everything except which page you were on — and,
+ * since W1.3, what the query string carries. Values are strings because a query string
+ * holds strings; `suspendedOnly` is "true"/"" rather than a boolean for that reason.
+ */
 export interface InstancesView {
+  [key: string]: string;
   search: string;
-  suspendedOnly: boolean;
+  suspendedOnly: string;
 }
 
-const DEFAULT_VIEW: InstancesView = { search: "", suspendedOnly: false };
+const DEFAULT_VIEW: InstancesView = { search: "", suspendedOnly: "" };
 
-export function Instances({ instanceApi }: InstancesProps) {
+export function Instances({ instanceApi, selectedId, onSelect }: InstancesProps) {
   const { t, locale } = useI18n();
-  const [selected, setSelected] = useState<ProcessInstanceResponse | null>(null);
-  const [start, setStart] = useState(0);
-  const [view, setView] = useState<InstancesView>(DEFAULT_VIEW);
+  const list = useListState<InstancesView>({
+    defaults: DEFAULT_VIEW,
+    defaultSort: { key: "startTime", order: "desc" },
+    preferenceKey: "control.instances",
+  });
+  const view = list.filters;
+  const setStart = list.setStart;
   const debounced = useDebouncedValue(view.search).trim();
   const [reloadToken, setReloadToken] = useState(0);
   const savedViews = useSavedViews<InstancesView>("control.instances");
 
-  /** Any change to the filters invalidates the page the user was on. */
-  const update = useCallback((patch: Partial<InstancesView>) => {
-    setView((current) => ({ ...current, ...patch }));
-    setStart(0);
-  }, []);
-
-  const applyView = useCallback((next: InstancesView) => {
-    setView(next);
-    setStart(0);
-  }, []);
+  const update = list.setFilters;
+  const applyView = list.replaceFilters;
 
   const query = useMemo(
     () => ({
-      start,
-      size: PAGE_SIZE,
+      start: list.start,
+      size: list.size,
+      sort: list.sort?.key,
+      order: list.sort?.order,
       ...(debounced ? { processInstanceNameLikeIgnoreCase: `%${debounced}%` } : {}),
       ...(view.suspendedOnly ? { suspended: true } : {}),
     }),
-    [start, debounced, view.suspendedOnly],
+    [list.start, list.size, list.sort, debounced, view.suspendedOnly],
   );
 
   const { data, error, loading, refetch } = useAsync(
@@ -76,6 +87,8 @@ export function Instances({ instanceApi }: InstancesProps) {
       {
         key: "name",
         header: t("instances.column.instance"),
+        required: true,
+        sortKey: "processDefinitionId",
         render: (instance) => (
           <div className="tf-task-cell">
             <span className="tf-task-cell__name">
@@ -92,11 +105,15 @@ export function Instances({ instanceApi }: InstancesProps) {
         key: "status",
         header: t("instances.column.status"),
         width: "120px",
+        // C3: was a hand-rolled `.tf-badge--running` class defined in three stylesheets;
+        // now the one Badge, with the tone read off the shared engine-state mapping.
         render: (instance) =>
           instance.suspended ? (
-            <span className="tf-badge tf-badge--warning">{t("instances.status.suspended")}</span>
+            <Badge tone={toneForState("suspended")}>{t("instances.status.suspended")}</Badge>
           ) : (
-            <span className="tf-badge tf-badge--running">{t("instances.status.running")}</span>
+            <Badge tone={toneForState("running")} dot>
+              {t("instances.status.running")}
+            </Badge>
           ),
       },
       {
@@ -104,21 +121,22 @@ export function Instances({ instanceApi }: InstancesProps) {
         header: t("instances.column.started"),
         width: "180px",
         secondary: true,
+        sortKey: "startTime",
         render: (instance) => formatDateTime(instance.startTime, locale),
       },
     ],
     [t, locale],
   );
 
-  if (selected) {
+  if (selectedId) {
     return (
       <InstanceDetail
         instanceApi={instanceApi}
-        instanceId={selected.id}
-        onBack={() => setSelected(null)}
+        instanceId={selectedId}
+        onBack={() => onSelect?.(undefined)}
         onChanged={() => setReloadToken((t) => t + 1)}
         onDeleted={() => {
-          setSelected(null);
+          onSelect?.(undefined);
           setReloadToken((t) => t + 1);
         }}
       />
@@ -127,12 +145,17 @@ export function Instances({ instanceApi }: InstancesProps) {
 
   return (
     <section className="tf-panel" aria-label={t("instances.label")}>
-      <header className="tf-panel__header">
-        <div>
-          <h1 className="tf-panel__title">{t("instances.title")}</h1>
-          <p className="tf-panel__meta">{t("instances.meta")}</p>
-        </div>
-      </header>
+      <PageHeader
+        title={t("instances.title")}
+        description={t("instances.meta")}
+        meta={
+          data ? (
+            <Badge tone="info" subtle srLabel={t("instances.countLabel", { count: data.total })}>
+              {data.total}
+            </Badge>
+          ) : undefined
+        }
+      />
 
       <div className="tf-toolbar">
         <div className="tf-panel__search">
@@ -151,8 +174,8 @@ export function Instances({ instanceApi }: InstancesProps) {
         <label className="tf-checkbox">
           <input
             type="checkbox"
-            checked={view.suspendedOnly}
-            onChange={(event) => update({ suspendedOnly: event.target.checked })}
+            checked={view.suspendedOnly === "true"}
+            onChange={(event) => update({ suspendedOnly: event.target.checked ? "true" : "" })}
           />
           {t("instances.suspendedOnly")}
         </label>
@@ -180,10 +203,11 @@ export function Instances({ instanceApi }: InstancesProps) {
         onRetry={refetch}
         isEmpty={(page) => page.data.length === 0}
         empty={
-          debounced || view.suspendedOnly ? (
-            <NoResultsState onClear={() => applyView(DEFAULT_VIEW)} />
+          list.isFiltered ? (
+            <NoResultsState onClear={list.clearFilters} />
           ) : (
             <EmptyState
+              illustration="nothing-deployed"
               title={t("instances.empty.title")}
               description={t("instances.empty.description")}
             />
@@ -194,16 +218,21 @@ export function Instances({ instanceApi }: InstancesProps) {
           <>
             <DataTable
               caption={t("instances.caption")}
+              preferenceKey="control.instances"
               columns={columns}
               rows={page.data}
               rowKey={(instance) => instance.id}
-              onRowClick={setSelected}
+              onRowClick={(instance) => onSelect?.(instance.id)}
+              sort={list.sort}
+              onSortChange={list.setSort}
+              busy={loading}
             />
             <Pagination
               start={page.start}
-              size={page.size || PAGE_SIZE}
+              size={page.size || list.size}
               total={page.total}
               onChange={setStart}
+              onSizeChange={list.setSize}
             />
           </>
         )}

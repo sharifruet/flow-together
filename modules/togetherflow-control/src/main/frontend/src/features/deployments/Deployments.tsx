@@ -3,42 +3,66 @@ import {
   ApiError,
   AsyncBoundary,
   Button,
+  Badge,
   DataTable,
   EmptyState,
+  Icon,
   NoResultsState,
+  PageHeader,
   Pagination,
+  Skeleton,
   formatDateTime,
   useAsync,
   useI18n,
   useDebouncedValue,
+  useListState,
   useToast,
   type Column,
   type DeploymentResponse,
   type RepositoryApi,
 } from "@togetherflow/common";
 
-const PAGE_SIZE = 25;
+/** What the query string carries for this list (W1.3, F1). */
+interface DeploymentsView {
+  [key: string]: string;
+  q: string;
+}
+
+const DEFAULT_VIEW: DeploymentsView = { q: "" };
 
 export interface DeploymentsProps {
   repositoryApi: RepositoryApi;
+  /** Id from `/deployments/:deploymentId`, so a deployment's resources are a link. */
+  selectedId?: string;
+  onSelect?: (deploymentId: string | undefined) => void;
 }
 
-export function Deployments({ repositoryApi }: DeploymentsProps) {
+export function Deployments({ repositoryApi, selectedId, onSelect }: DeploymentsProps) {
   const { t, locale } = useI18n();
   const { push } = useToast();
   const fileInput = useRef<HTMLInputElement>(null);
-  const [start, setStart] = useState(0);
-  const [search, setSearch] = useState("");
+  const list = useListState<DeploymentsView>({
+    defaults: DEFAULT_VIEW,
+    defaultSort: { key: "deployTime", order: "desc" },
+    preferenceKey: "control.deployments",
+  });
+  const search = list.filters.q;
+  const setStart = list.setStart;
   const debounced = useDebouncedValue(search).trim();
-  const [selected, setSelected] = useState<DeploymentResponse | null>(null);
   const [pendingDelete, setPendingDelete] = useState<DeploymentResponse | null>(null);
   const [cascade, setCascade] = useState(false);
   const [busy, setBusy] = useState(false);
   const [reloadToken, setReloadToken] = useState(0);
 
   const query = useMemo(
-    () => ({ start, size: PAGE_SIZE, ...(debounced ? { nameLike: `%${debounced}%` } : {}) }),
-    [start, debounced],
+    () => ({
+      start: list.start,
+      size: list.size,
+      sort: list.sort?.key,
+      order: list.sort?.order,
+      ...(debounced ? { nameLike: `%${debounced}%` } : {}),
+    }),
+    [list.start, list.size, list.sort, debounced],
   );
 
   const { data, error, loading, refetch } = useAsync(
@@ -92,7 +116,7 @@ export function Deployments({ repositoryApi }: DeploymentsProps) {
         width: "180px",
         render: (deployment) => (
           <div className="tf-row-actions">
-            <Button variant="ghost" onClick={() => setSelected(deployment)}>
+            <Button variant="ghost" onClick={() => onSelect?.(deployment.id)}>
               {t("deployments.resources.action")}
             </Button>
             <Button
@@ -108,29 +132,42 @@ export function Deployments({ repositoryApi }: DeploymentsProps) {
         ),
       },
     ],
-    [locale, t],
+    [locale, t, onSelect],
   );
 
-  if (selected) {
-    return (
+  /** The row for the id in the URL, once the page holding it has loaded. */
+  const selected = selectedId
+    ? (data?.data ?? []).find((deployment) => deployment.id === selectedId)
+    : undefined;
+
+  if (selectedId) {
+    return selected ? (
       <DeploymentResources
         repositoryApi={repositoryApi}
         deployment={selected}
-        onBack={() => setSelected(null)}
+        onBack={() => onSelect?.(undefined)}
       />
+    ) : (
+      // A deep link arrives before the list has loaded, and may point at a deployment
+      // that is not on the first page.
+      <Skeleton rows={6} label={t("deployments.label")} />
     );
   }
 
   return (
     <section className="tf-panel" aria-label={t("deployments.label")}>
-      <header className="tf-panel__header">
-        <div>
-          <h1 className="tf-panel__title">{t("deployments.title")}</h1>
-          <p className="tf-panel__meta">
-            What has been deployed to the engine, and the resources inside each one.
-          </p>
-        </div>
-        <div>
+      <PageHeader
+        title={t("deployments.title")}
+        description={t("deployments.description")}
+        meta={
+          data ? (
+            <Badge tone="info" subtle srLabel={t("deployments.countLabel", { count: data.total })}>
+              {data.total}
+            </Badge>
+          ) : undefined
+        }
+        actions={
+          <>
           <input
             ref={fileInput}
             id="tf-deployment-file"
@@ -148,10 +185,12 @@ export function Deployments({ repositoryApi }: DeploymentsProps) {
             }}
           />
           <Button loading={busy} onClick={() => fileInput.current?.click()}>
+            <Icon name="upload" size={16} />
             {t("deployments.deployFile")}
           </Button>
-        </div>
-      </header>
+          </>
+        }
+      />
 
       <div className="tf-panel__search">
         <label className="tf-visually-hidden" htmlFor="tf-deployment-search">
@@ -163,10 +202,7 @@ export function Deployments({ repositoryApi }: DeploymentsProps) {
           type="search"
           placeholder={t("deployments.search")}
           value={search}
-          onChange={(event) => {
-            setSearch(event.target.value);
-            setStart(0);
-          }}
+          onChange={(event) => list.setFilters({ q: event.target.value })}
         />
       </div>
 
@@ -177,15 +213,11 @@ export function Deployments({ repositoryApi }: DeploymentsProps) {
         onRetry={refetch}
         isEmpty={(page) => page.data.length === 0}
         empty={
-          debounced ? (
-            <NoResultsState
-              onClear={() => {
-                setSearch("");
-                setStart(0);
-              }}
-            />
+          list.isFiltered ? (
+            <NoResultsState onClear={list.clearFilters} />
           ) : (
             <EmptyState
+              illustration="nothing-deployed"
               title={t("deployments.empty.title")}
               description={t("deployments.empty.description")}
             />
@@ -196,15 +228,21 @@ export function Deployments({ repositoryApi }: DeploymentsProps) {
           <>
             <DataTable
               caption={t("deployments.caption")}
+              preferenceKey="control.deployments"
               columns={columns}
               rows={page.data}
               rowKey={(deployment) => deployment.id}
+              onRowClick={(deployment) => onSelect?.(deployment.id)}
+              sort={list.sort}
+              onSortChange={list.setSort}
+              busy={loading}
             />
             <Pagination
               start={page.start}
-              size={page.size || PAGE_SIZE}
+              size={page.size || list.size}
               total={page.total}
               onChange={setStart}
+              onSizeChange={list.setSize}
             />
           </>
         )}

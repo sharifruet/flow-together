@@ -18,17 +18,20 @@ import { useMemo, useState } from "react";
 import {
   ApiError,
   AsyncBoundary,
+  Badge,
   Button,
   ConfirmDialog,
   DataTable,
   EmptyState,
   NoResultsState,
+  PageHeader,
   Pagination,
   availablePlanItemActions,
   formatDateTime,
   useAsync,
   useI18n,
   useDebouncedValue,
+  useListState,
   useToast,
   type CaseApi,
   type CaseInstanceResponse,
@@ -37,7 +40,6 @@ import {
   type PlanItemInstanceResponse,
 } from "@togetherflow/common";
 
-const PAGE_SIZE = 25;
 
 /** Message keys per action; Control's wording differs from Work's on purpose (ADR 0011). */
 const ACTION_KEYS: Record<PlanItemAction, string> = {
@@ -47,26 +49,53 @@ const ACTION_KEYS: Record<PlanItemAction, string> = {
   trigger: "cases.action.trigger",
 };
 
-export interface CaseInstancesProps {
-  caseApi: CaseApi;
+/** What the query string carries for this list (W1.3, F1). */
+interface CaseInstancesView {
+  [key: string]: string;
+  q: string;
 }
 
-export function CaseInstances({ caseApi }: CaseInstancesProps) {
+const DEFAULT_VIEW: CaseInstancesView = { q: "" };
+
+export interface CaseInstancesProps {
+  caseApi: CaseApi;
+  /** Id from `/cases/:caseId`, so an inspected case is a link. */
+  selectedId?: string;
+  onSelect?: (caseId: string | undefined) => void;
+}
+
+export function CaseInstances({ caseApi, selectedId, onSelect }: CaseInstancesProps) {
   const { t, locale } = useI18n();
-  const [start, setStart] = useState(0);
-  const [search, setSearch] = useState("");
+  const list = useListState<CaseInstancesView>({
+    defaults: DEFAULT_VIEW,
+    defaultSort: { key: "startTime", order: "desc" },
+    preferenceKey: "control.cases",
+  });
+  const search = list.filters.q;
+  const setStart = list.setStart;
   const debounced = useDebouncedValue(search).trim();
-  const [selected, setSelected] = useState<CaseInstanceResponse | null>(null);
   const [reloadToken, setReloadToken] = useState(0);
 
   const query = useMemo(
-    () => ({ start, size: PAGE_SIZE, ...(debounced ? { businessKey: debounced } : {}) }),
-    [start, debounced],
+    () => ({
+      start: list.start,
+      size: list.size,
+      sort: list.sort?.key,
+      order: list.sort?.order,
+      ...(debounced ? { businessKey: debounced } : {}),
+    }),
+    [list.start, list.size, list.sort, debounced],
   );
 
   const { data, error, loading, refetch } = useAsync(
     (signal) => caseApi.query(query, signal),
     [caseApi, query, reloadToken],
+  );
+
+  /** The row for the id in the URL, once the page holding it has loaded. */
+  const selectedInstance = useMemo(
+    () => (selectedId ? (data?.data ?? []).find((instance) => instance.id === selectedId) : undefined),
+    [selectedId, data],
   );
 
   const columns = useMemo<Column<CaseInstanceResponse>[]>(
@@ -93,7 +122,7 @@ export function CaseInstances({ caseApi }: CaseInstancesProps) {
         header: t("cases.column.state"),
         width: "110px",
         render: (instance) => (
-          <span className="tf-badge tf-badge--running">{instance.state ?? "active"}</span>
+          <Badge tone="info">{instance.state ?? "active"}</Badge>
         ),
       },
       {
@@ -108,22 +137,30 @@ export function CaseInstances({ caseApi }: CaseInstancesProps) {
         header: "",
         width: "110px",
         render: (instance) => (
-          <Button variant="ghost" onClick={() => setSelected(instance)}>
+          <Button variant="ghost" onClick={() => onSelect?.(instance.id)}>
             {t("cases.inspect")}
           </Button>
         ),
       },
     ],
-    [locale, t],
+    [locale, t, onSelect],
   );
 
   return (
     <section className="tf-panel" aria-label={t("cases.label")}>
-      <header className="tf-panel__header">
-        <div>
-          <h1 className="tf-panel__title">{t("cases.title")}</h1>
-          <p className="tf-panel__meta">{t("cases.meta")}</p>
-        </div>
+      <PageHeader
+        title={t("cases.title")}
+        description={t("cases.meta")}
+        meta={
+          data ? (
+            <Badge tone="info" subtle srLabel={t("cases.countLabel", { count: data.total })}>
+              {data.total}
+            </Badge>
+          ) : undefined
+        }
+      />
+
+      <div className="tf-toolbar">
         <div className="tf-panel__search">
           <label className="tf-visually-hidden" htmlFor="tf-case-instance-search">
             {t("cases.searchLabel")}
@@ -134,13 +171,10 @@ export function CaseInstances({ caseApi }: CaseInstancesProps) {
             type="search"
             placeholder={t("cases.search")}
             value={search}
-            onChange={(event) => {
-              setSearch(event.target.value);
-              setStart(0);
-            }}
+            onChange={(event) => list.setFilters({ q: event.target.value })}
           />
         </div>
-      </header>
+      </div>
 
       <AsyncBoundary
         loading={loading}
@@ -149,15 +183,11 @@ export function CaseInstances({ caseApi }: CaseInstancesProps) {
         onRetry={refetch}
         isEmpty={(page) => page.data.length === 0}
         empty={
-          debounced ? (
-            <NoResultsState
-              onClear={() => {
-                setSearch("");
-                setStart(0);
-              }}
-            />
+          list.isFiltered ? (
+            <NoResultsState onClear={list.clearFilters} />
           ) : (
             <EmptyState
+              illustration="nothing-deployed"
               title={t("cases.empty.title")}
               description={t("cases.empty.description")}
             />
@@ -168,27 +198,32 @@ export function CaseInstances({ caseApi }: CaseInstancesProps) {
           <>
             <DataTable
               caption={t("cases.caption")}
+              preferenceKey="control.cases"
               columns={columns}
               rows={page.data}
               rowKey={(instance) => instance.id}
-              onRowClick={setSelected}
-              selectedKey={selected?.id}
+              onRowClick={(instance) => onSelect?.(instance.id)}
+              selectedKey={selectedId}
+              sort={list.sort}
+              onSortChange={list.setSort}
+              busy={loading}
             />
             <Pagination
               start={page.start}
-              size={page.size || PAGE_SIZE}
+              size={page.size || list.size}
               total={page.total}
               onChange={setStart}
+              onSizeChange={list.setSize}
             />
           </>
         )}
       </AsyncBoundary>
 
-      {selected ? (
+      {selectedInstance ? (
         <CaseInspector
           caseApi={caseApi}
-          instance={selected}
-          onClose={() => setSelected(null)}
+          instance={selectedInstance}
+          onClose={() => onSelect?.(undefined)}
           onChanged={() => setReloadToken((n) => n + 1)}
         />
       ) : null}
@@ -353,7 +388,7 @@ function CaseInspector({
                     <div className="tf-planitems__row">
                       <span className="tf-planitems__name">{item.name || item.elementId}</span>
                       <span className="tf-planitems__type">{item.planItemDefinitionType}</span>
-                      <span className="tf-badge tf-badge--running">{item.state}</span>
+                      <Badge tone="info">{item.state}</Badge>
                       <span className="tf-planitems__actions">
                         {actions.map((action) => (
                           <Button
