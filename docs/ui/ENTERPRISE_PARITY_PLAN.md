@@ -66,9 +66,20 @@ short and mostly not code.
 **E0.1 — Fix concurrent-edit data loss first.** *(This is a defect, not parity work, and it
 is the only item in this plan that should jump every queue.)* `ModelApi.saveSource` PUTs
 unconditionally while the editors autosave every four idle seconds, so two people on one
-model overwrite each other repeatedly without either pressing Save. Ship the client-side
-guard now — re-read `lastUpdateTime` before each autosave, refuse on a change, offer
-reload-or-overwrite — and treat real server-side locking as part of E5.
+model overwrite each other repeatedly without either pressing Save.
+
+**Detect by comparing the source, not by `lastUpdateTime`.** An earlier draft of this plan
+proposed the timestamp; reading the engine shows it does not work.
+`ModelSourceResource.setModelSource` calls `repositoryService.addModelEditorSource`, and
+`ModelEntityManagerImpl.insertEditorSourceForModel` calls `updateModel(model)` **only when
+`editorSourceValueId` is null** — i.e. on the very first save. Every later source save
+rewrites the byte array and never touches the `ACT_RE_MODEL` row, so `lastUpdateTime` is
+frozen from the second save onward and is useless as a change signal.
+
+The guard therefore reads the stored source before each autosave and compares it with what
+this editor last wrote; a difference means someone else wrote in between, and the save is
+refused with reload-or-overwrite. This narrows the window rather than closing it — a true
+fix needs a server-side precondition, which is E5's server-side locking.
 **Size: S. Blocks: nothing. Do it this week.**
 
 **E0.2 — Decide the routing library** (blocks E1, and therefore everything).
