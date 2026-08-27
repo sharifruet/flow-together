@@ -984,6 +984,42 @@
   border: 1px solid var(--tf-border);
   border-radius: var(--tf-radius);
 }
+/* Fields / Preview switch above the builder canvas (§7.4.6). */
+.tf-form-canvas__tabs {
+  display: flex;
+  gap: var(--tf-space-2);
+  margin: var(--tf-space-5) 0 var(--tf-space-3);
+}
+
+/*
+ * The preview is the runtime form, so it is framed as a surface of its own rather than
+ * blending into the builder's chrome — an author needs to see where the form ends and
+ * the tool begins.
+ */
+.tf-form-preview {
+  padding: var(--tf-space-5);
+  border: 1px solid var(--tf-border);
+  border-radius: var(--tf-radius-lg);
+  background: var(--tf-bg-raised);
+  box-shadow: var(--tf-shadow-sm);
+}
+.tf-form-preview__note {
+  margin: 0 0 var(--tf-space-5);
+  padding-bottom: var(--tf-space-3);
+  border-bottom: 1px solid var(--tf-border);
+  font-size: var(--tf-text-sm);
+  color: var(--tf-text-muted);
+  line-height: 1.5;
+}
+.tf-form-preview__actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--tf-space-2);
+  margin-top: var(--tf-space-5);
+  padding-top: var(--tf-space-4);
+  border-top: 1px solid var(--tf-border);
+}
+
 .tf-form-fields {
   list-style: none;
   margin: var(--tf-space-2) 0 0;
@@ -1243,6 +1279,20 @@
  * be aimed at its own shape classes. Same two signals as above — colour plus a heavier
  * stroke — so the two editors mark a problem the same way.
  */
+/* The in-place rename box, inside a foreignObject over the shape. */
+.tf-cmmn__rename {
+  width: 100%;
+  box-sizing: border-box;
+  font: inherit;
+  font-size: var(--tf-text-sm);
+  text-align: center;
+  padding: 2px 6px;
+  border: 2px solid var(--tf-accent);
+  border-radius: var(--tf-radius-sm);
+  background: var(--tf-surface);
+  color: var(--tf-text);
+}
+
 .tf-cmmn__shape.tf-problem--error > .tf-cmmn__task,
 .tf-cmmn__shape.tf-problem--error > .tf-cmmn__stage,
 .tf-cmmn__shape.tf-problem--error > .tf-cmmn__milestone,

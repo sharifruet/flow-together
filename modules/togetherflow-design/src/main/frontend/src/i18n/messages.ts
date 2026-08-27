@@ -13,6 +13,7 @@ export const designEn = {
   "nav.models": "Models",
 
   // Shared editor chrome
+  "editor.back": "← Back to models",
   "editor.editing": "Editing {name}",
   "editor.unsaved": "Unsaved changes",
   "editor.saved": "Saved {time}",
@@ -672,6 +673,8 @@ export const designEn = {
   "cmmn.field.attachments.hint": "Expression resolving to a file, a list of files, or a data source.",
   "cmmn.field.exceptionVariableName": "Exception variable",
   "cmmn.field.exceptionVariableName.hint": "Case variable to hold the failure, when exceptions are ignored.",
+  "cmmn.rename": "Rename {name}",
+  "cmmn.duplicate": "Duplicate",
   "cmmn.startTrigger": "Starts after",
   "cmmn.startTrigger.hint":
     "Which plan item has to happen before the clock starts. Left unset, the timer starts as soon as its stage is available.",
@@ -805,6 +808,21 @@ export const designEn = {
   "form.key.hint": "Referenced by a user task's form key.",
   "form.name": "Form name",
   "form.noFields": "No fields yet — add one from the palette.",
+  "form.fields.one": "1 field",
+  "form.fields.other": "{count} fields",
+  "form.field.id": "Id",
+  "form.view": "Form view",
+  "form.tab.preview": "Preview",
+  "form.deployNote":
+    "Forms deploy as part of an app. Add this form to an app in the model library and publish that — and note it only takes effect where a form engine is configured.",
+
+  // Live preview (§7.4.6) — the same renderer the Work app uses at runtime.
+  "form.preview.label": "Form preview",
+  "form.preview.note":
+    "This is the form exactly as someone filling it in will see it. Try it: required fields, visibility rules and validation all behave here as they will on a task.",
+  "form.preview.submit": "Submit",
+  "form.preview.reset": "Reset preview",
+  "form.preview.valid": "The form is complete — nothing would block a submit.",
   "form.outcomes": "Outcomes ({count})",
   "form.outcomes.blurb":
     "Named submit buttons. With none, the task shows a single \"Complete task\"; with outcomes, each becomes its own button and the choice is recorded as a variable.",

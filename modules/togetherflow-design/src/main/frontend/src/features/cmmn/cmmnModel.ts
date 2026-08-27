@@ -26,6 +26,8 @@ export const FLOWABLE_CMMN_NS = "http://flowable.org/cmmn";
  * `<eventListener>` carrying `flowable:eventType`; the type here is what the palette and
  * the properties panel work in, and {@link xmlElementName} maps it back to the tag.
  */
+import { autoLayout } from "./autoLayout";
+
 export type CmmnElementType =
   | "humanTask"
   | "processTask"
@@ -411,7 +413,7 @@ export function parseCmmn(xml: string): CmmnCase {
   const di = firstByLocalName(doc.documentElement, "CMMNDI");
   const diagram = di ? firstByLocalName(di, "CMMNDiagram") : undefined;
 
-  return {
+  const parsed: CmmnCase = {
     caseId: caseEl.getAttribute("id") ?? "case1",
     caseName: caseEl.getAttribute("name") ?? "Case",
     documentation: firstChildByLocalName(caseEl, "documentation")?.textContent?.trim() || undefined,
@@ -441,6 +443,17 @@ export function parseCmmn(xml: string): CmmnCase {
     extraNamespaces: extraNamespaceDeclarations(doc.documentElement),
     rootAttributes: otherRootAttributes(doc.documentElement),
   };
+
+  /*
+   * A case with no CMMNDI at all gets positions computed for it. CMMNDI is optional and
+   * hand-written files routinely omit it; without this every element lands on the same
+   * coordinate, which looks like an empty case rather than an undrawn one.
+   *
+   * Only when the document has *no* shapes. A partially drawn file keeps what its author
+   * placed — moving an element somebody positioned deliberately is worse than leaving a
+   * gap, and mixing the two produces neither layout.
+   */
+  return shapes.size === 0 ? autoLayout(parsed) : parsed;
 }
 
 /** Definition elements this model understands, so anything else is carried through raw. */
@@ -1403,6 +1416,79 @@ export function createElement(
     entrySentries: [],
     exitSentries: [],
   };
+}
+
+/**
+ * Copies of these elements, and of everything inside them, ready to be pasted.
+ *
+ * Ids are regenerated throughout — `id` is `xsd:ID`, so a duplicate makes the whole document
+ * unparseable, and the engine rejects it with a message about the schema rather than about
+ * the two elements involved. References are rewritten to match: a sentry inside the copied
+ * set points at the copy, and one pointing outside it is dropped rather than left aimed at
+ * the original, which would make the copy behave as a remote control for the thing it was
+ * copied from.
+ *
+ * @param offset how far to shift the copies, so they do not land exactly on the originals
+ */
+export function cloneElements(
+  model: CmmnCase,
+  planItemIds: string[],
+  offset: { x: number; y: number },
+): CmmnElement[] {
+  // Copying a stage copies what is in it; a stage without its contents is not the shape
+  // that was on the clipboard.
+  const wanted = new Set(planItemIds);
+  let grew = true;
+  while (grew) {
+    grew = false;
+    for (const element of model.elements) {
+      if (element.parentId && wanted.has(element.parentId) && !wanted.has(element.planItemId)) {
+        wanted.add(element.planItemId);
+        grew = true;
+      }
+    }
+  }
+
+  const source = model.elements.filter((el) => wanted.has(el.planItemId));
+  const newPlanItemId = new Map(source.map((el) => [el.planItemId, nextId("planItem")]));
+
+  return source.map((element) => ({
+    ...element,
+    planItemId: newPlanItemId.get(element.planItemId)!,
+    definitionId: nextId(element.type),
+    bounds: {
+      ...element.bounds,
+      x: element.bounds.x + offset.x,
+      y: element.bounds.y + offset.y,
+    },
+    // A copied child keeps its parent when the parent came too, and otherwise becomes a
+    // sibling of what it was copied from.
+    parentId: element.parentId ? (newPlanItemId.get(element.parentId) ?? element.parentId) : null,
+    entrySentries: rewireSentries(element.entrySentries, newPlanItemId),
+    exitSentries: rewireSentries(element.exitSentries, newPlanItemId),
+    timerStartTrigger:
+      element.timerStartTrigger && newPlanItemId.has(element.timerStartTrigger.sourceRef)
+        ? {
+            ...element.timerStartTrigger,
+            sourceRef: newPlanItemId.get(element.timerStartTrigger.sourceRef)!,
+          }
+        : undefined,
+  }));
+}
+
+/** Sentries with fresh ids, keeping only the parts whose source was copied too. */
+function rewireSentries(sentries: Sentry[], newPlanItemId: Map<string, string>): Sentry[] {
+  return sentries
+    .map((sentry) => ({
+      ...sentry,
+      id: nextId("sentry"),
+      onParts: sentry.onParts
+        .filter((part) => newPlanItemId.has(part.sourceRef))
+        .map((part) => ({ ...part, sourceRef: newPlanItemId.get(part.sourceRef)! })),
+    }))
+    // A criterion left with no parts and no guard waits for nothing, which the browser
+    // checks report as an error — so a paste must not create one.
+    .filter((sentry) => sentry.onParts.length > 0 || sentry.ifPart?.trim());
 }
 
 /** Deleting a stage must take its children with it, or they become unreachable. */

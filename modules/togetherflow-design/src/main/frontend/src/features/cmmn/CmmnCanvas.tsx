@@ -95,6 +95,33 @@ export function CmmnCanvas({
   const t = useT();
   const svgRef = useRef<SVGSVGElement>(null);
   const [gesture, setGesture] = useState<Gesture | null>(null);
+  /**
+   * The shape being renamed in place, if any.
+   *
+   * Renaming used to mean selecting a shape, crossing to the properties panel, and coming
+   * back — for the most common edit there is. Double-clicking a shape now opens an input
+   * over it, which is what every diagram editor does and what makes naming things while
+   * drawing them feel possible at all.
+   */
+  const [renaming, setRenaming] = useState<string | null>(null);
+  const renamingElement = renaming
+    ? (model.elements.find((el) => el.planItemId === renaming) ?? null)
+    : null;
+
+  /** Renaming to the same thing, or to nothing, is not an undo step. */
+  const commitRename = (value: string) => {
+    const next = value.trim();
+    if (renamingElement && next && next !== renamingElement.name) {
+      onCommit({
+        ...model,
+        elements: model.elements.map((el) =>
+          el.planItemId === renaming ? { ...el, name: next } : el,
+        ),
+      });
+    }
+    setRenaming(null);
+  };
+
   const selection = selectedIds ?? (selectedId ? [selectedId] : []);
   const selectionSet = new Set(selection);
   const modelRef = useRef(model);
@@ -177,6 +204,20 @@ export function CmmnCanvas({
 
       const dx = point.x - gesture.startX;
       const dy = point.y - gesture.startY;
+
+      /*
+       * A click that moved nothing is a selection, not an edit.
+       *
+       * Without this every click on a shape pushed an identical model onto the undo stack:
+       * looking at ten elements meant ten presses of Cmd-Z before undoing anything real,
+       * which is the opposite of what an undo stack is for. Nothing moved, so nothing can
+       * have been reparented either.
+       */
+      if (dx === 0 && dy === 0) {
+        setGesture(null);
+        return;
+      }
+
       let next = applyGesture(modelRef.current, gesture, dx, dy);
 
       // Reparent on drop: whichever stage now contains the element's centre owns it.
@@ -393,6 +434,7 @@ export function CmmnCanvas({
           primary={selectedId === element.planItemId}
           disabled={disabled}
           problem={problems?.get(element.planItemId)}
+          onRename={disabled ? undefined : () => setRenaming(element.planItemId)}
           onPointerDown={(event) => startMove(event, element)}
           onResize={(event) => startResize(event, element.planItemId, element.bounds)}
           onConnect={(event) => startConnect(event, element)}
@@ -416,6 +458,43 @@ export function CmmnCanvas({
           markerEnd="url(#tf-arrow)"
         />
       ) : null}
+
+      {/*
+        `foreignObject` because SVG has no editable text. Rendered last so it is above the
+        shapes rather than behind whichever was drawn after it.
+      */}
+      {renamingElement ? (
+        <foreignObject
+          x={renamingElement.bounds.x}
+          y={
+            CONTAINER_TYPES.has(renamingElement.type)
+              ? renamingElement.bounds.y + 6
+              : renamingElement.bounds.y + renamingElement.bounds.height / 2 - 14
+          }
+          width={renamingElement.bounds.width}
+          height={28}
+        >
+          <input
+            className="tf-cmmn__rename"
+            aria-label={t("cmmn.rename", { name: renamingElement.name })}
+            defaultValue={renamingElement.name}
+            autoFocus
+            onFocus={(event) => event.currentTarget.select()}
+            onBlur={(event) => commitRename(event.currentTarget.value)}
+            onKeyDown={(event) => {
+              if (event.key === "Enter") {
+                event.preventDefault();
+                commitRename(event.currentTarget.value);
+              } else if (event.key === "Escape") {
+                event.preventDefault();
+                setRenaming(null);
+              }
+              // Everything else stays in the box: the editor binds Delete and Backspace.
+              event.stopPropagation();
+            }}
+          />
+        </foreignObject>
+      ) : null}
     </svg>
   );
 }
@@ -429,6 +508,7 @@ function ElementShape({
   onPointerDown,
   onConnect,
   onResize,
+  onRename,
 }: {
   element: CmmnElement;
   selected: boolean;
@@ -440,6 +520,7 @@ function ElementShape({
   disabled: boolean;
   onPointerDown: (event: React.PointerEvent) => void;
   onResize: (event: React.PointerEvent) => void;
+  onRename?: () => void;
 }) {
   const t = useT();
   const { bounds: b, type } = element;
@@ -456,6 +537,7 @@ function ElementShape({
         .filter(Boolean)
         .join(" ")}
       onPointerDown={onPointerDown}
+      onDoubleClick={onRename}
       role="button"
       aria-label={t("cmmn.elementLabel", { name: element.name || type, type })}
       tabIndex={0}

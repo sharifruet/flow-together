@@ -217,3 +217,34 @@ describe("applyGesture — multi-element move", () => {
     expect(bounds.height).toBeGreaterThanOrEqual(40);
   });
 });
+
+/*
+ * A click that moves nothing must not become an undo step.
+ *
+ * `applyGesture` is happy to be handed a zero-length drag and returns a model equal to what
+ * it was given — which is exactly the problem: the canvas used to commit that, so looking at
+ * ten shapes cost ten presses of Cmd-Z before undoing anything real. The canvas now returns
+ * early, and this pins the property that made the bug invisible.
+ */
+describe("a gesture that moved nothing", () => {
+  /** A drag of element `a` that never left where it started. */
+  const noOpMove = (): ModelGesture => ({
+    kind: "move",
+    planItemId: "a",
+    alsoMoving: ["a"],
+    startX: 0,
+    startY: 0,
+    origin: model.elements[0].bounds,
+  });
+
+  it("produces a model with identical bounds", () => {
+    const after = applyGesture(model, noOpMove(), 0, 0);
+
+    expect(after.elements.map((el) => el.bounds)).toEqual(model.elements.map((el) => el.bounds));
+  });
+
+  it("is indistinguishable from the original, which is why the canvas has to check first", () => {
+    // Equal in value, not identity — so nothing downstream can tell it was a no-op either.
+    expect(applyGesture(model, noOpMove(), 0, 0)).toEqual(model);
+  });
+});

@@ -41,6 +41,7 @@ import {
   createElement,
   emptyCase,
   parseCmmn,
+  cloneElements,
   removeElement,
   serialiseCmmn,
   type CmmnCase,
@@ -303,6 +304,78 @@ export function CmmnEditor({
     });
   };
 
+  /**
+   * The clipboard.
+   *
+   * Deliberately in a ref rather than the system clipboard: what is copied here is a set of
+   * plan items with their sentries and nesting, and there is no sane text form of that to
+   * put on the system clipboard — nor any way to paste one back reliably across browsers.
+   * The cost is that copy does not cross between two open tabs, which is a smaller loss
+   * than a paste that silently drops half of what was copied.
+   */
+  const clipboard = useRef<CmmnElement[]>([]);
+
+  const copySelection = useCallback(() => {
+    if (!caseModel) return;
+    const copyable = selectedIds.filter((id) => id !== caseModel.planModelId);
+    if (copyable.length === 0) return;
+    clipboard.current = cloneElements(caseModel, copyable, { x: 0, y: 0 });
+  }, [caseModel, selectedIds]);
+
+  /** Adds copies to the model and selects them, so the paste can be moved straight away. */
+  const addCopies = useCallback(
+    (copies: CmmnElement[]) => {
+      if (!caseModel || copies.length === 0) return;
+      commit({ ...caseModel, elements: [...caseModel.elements, ...copies] });
+      setSelectedIds(copies.map((element) => element.planItemId));
+    },
+    [caseModel, commit],
+  );
+
+  const paste = useCallback(() => {
+    if (clipboard.current.length === 0 || !caseModel) return;
+    // Offset from the clipboard's own position each time, so pasting twice does not stack
+    // the second copy exactly on the first.
+    addCopies(cloneElements(
+      { ...caseModel, elements: clipboard.current },
+      clipboard.current.map((element) => element.planItemId),
+      PASTE_OFFSET,
+    ));
+  }, [caseModel, addCopies]);
+
+  const duplicateSelection = useCallback(() => {
+    if (!caseModel) return;
+    const copyable = selectedIds.filter((id) => id !== caseModel.planModelId);
+    if (copyable.length === 0) return;
+    addCopies(cloneElements(caseModel, copyable, PASTE_OFFSET));
+  }, [caseModel, selectedIds, addCopies]);
+
+  /** Moves the selection, leaving the plan model where it is. */
+  const nudge = useCallback(
+    (direction: { x: number; y: number }, step: number) => {
+      if (!caseModel || selectedIds.length === 0) return;
+      const moving = new Set(selectedIds.filter((id) => id !== caseModel.planModelId));
+      if (moving.size === 0) return;
+
+      commit({
+        ...caseModel,
+        elements: caseModel.elements.map((element) =>
+          moving.has(element.planItemId)
+            ? {
+                ...element,
+                bounds: {
+                  ...element.bounds,
+                  x: element.bounds.x + direction.x * step,
+                  y: element.bounds.y + direction.y * step,
+                },
+              }
+            : element,
+        ),
+      });
+    },
+    [caseModel, selectedIds, commit],
+  );
+
   const deleteSelected = useCallback(() => {
     if (!caseModel || selectedIds.length === 0) return;
     // The case plan model is the diagram itself and cannot be deleted.
@@ -497,22 +570,43 @@ export function CmmnEditor({
       const target = event.target as HTMLElement | null;
       const typing =
         target && (target.tagName === "INPUT" || target.tagName === "TEXTAREA");
+      const accel = event.metaKey || event.ctrlKey;
 
-      if ((event.metaKey || event.ctrlKey) && event.key.toLowerCase() === "s") {
+      if (accel && event.key.toLowerCase() === "s") {
         event.preventDefault();
         void save();
-      } else if ((event.metaKey || event.ctrlKey) && event.key.toLowerCase() === "z") {
+      } else if (accel && event.key.toLowerCase() === "z") {
         event.preventDefault();
         if (event.shiftKey) redo();
         else undo();
+      } else if (!typing && accel && event.key.toLowerCase() === "c") {
+        copySelection();
+      } else if (!typing && accel && event.key.toLowerCase() === "x") {
+        copySelection();
+        deleteSelected();
+      } else if (!typing && accel && event.key.toLowerCase() === "v") {
+        event.preventDefault();
+        paste();
+      } else if (!typing && accel && event.key.toLowerCase() === "d") {
+        // Duplicate in place, without disturbing whatever is on the clipboard.
+        event.preventDefault();
+        duplicateSelection();
       } else if (!typing && (event.key === "Delete" || event.key === "Backspace")) {
         event.preventDefault();
         deleteSelected();
+      } else if (!typing && NUDGE[event.key]) {
+        /*
+         * Arrow keys move the selection. A shape landing one pixel off is invisible until
+         * two of them are side by side, so this moves by the grid the canvas snaps to —
+         * and by one pixel with Alt, for the case where the grid is the problem.
+         */
+        event.preventDefault();
+        nudge(NUDGE[event.key], event.altKey ? 1 : event.shiftKey ? GRID_STEP * 5 : GRID_STEP);
       }
     };
     document.addEventListener("keydown", onKeyDown);
     return () => document.removeEventListener("keydown", onKeyDown);
-  }, [save, undo, redo, deleteSelected, dialogOpen, sourceXml]);
+  }, [save, undo, redo, deleteSelected, dialogOpen, sourceXml, copySelection, paste, duplicateSelection, nudge]);
 
   const deploy = async () => {
     if (!caseModel) return;
@@ -1541,6 +1635,19 @@ function CriteriaSection({
  * these are the ones that are meaningful on the element types this editor can draw.
  */
 const STANDARD_EVENTS = ["complete", "terminate", "disable", "enable", "start", "occur"];
+
+/** Far enough that a pasted copy is visibly its own shape, near enough to be obviously related. */
+const PASTE_OFFSET = { x: 30, y: 30 };
+
+/** The canvas snaps to a 10px grid, so nudging by less than that fights it. */
+const GRID_STEP = 10;
+
+const NUDGE: Record<string, { x: number; y: number }> = {
+  ArrowLeft: { x: -1, y: 0 },
+  ArrowRight: { x: 1, y: 0 },
+  ArrowUp: { x: 0, y: -1 },
+  ArrowDown: { x: 0, y: 1 },
+};
 
 export { emptyCase };
 

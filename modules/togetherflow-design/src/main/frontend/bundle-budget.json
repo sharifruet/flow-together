@@ -7,6 +7,12 @@
     "Raising a budget is fine when the growth is deliberate — do it in the same",
     "commit as the change, so the increase is reviewed alongside what caused it."
   ],
+  "_cmmn_note": [
+    "assets/CmmnEditor went 12 -> 14 with the canvas work: auto-layout for cases",
+    "that arrive with no CMMNDI, in-place renaming, and clone-with-rewired-references",
+    "behind copy/paste/duplicate. All three are code rather than copy, and all three",
+    "are in the lazily loaded editor chunk, which is where they belong."
+  ],
   "_index_note": [
     "assets/index went 72 -> 78 when the CMMN panel gained the ~60 attribute and",
     "field labels the engine reads (P1). It is user-facing copy in the message",
@@ -19,7 +25,7 @@
     "assets/index": 78,
     "assets/BpmnEditor": 100,
     "assets/DmnEditor": 260,
-    "assets/CmmnEditor": 12,
+    "assets/CmmnEditor": 14,
     "assets/AppBuilder": 12,
     "assets/FormBuilder": 8,
     "assets/EventEditor": 8,

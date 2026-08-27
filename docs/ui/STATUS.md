@@ -24,11 +24,11 @@ are substantially built but **not verified end to end**; §5 is explicit about w
 | `togetherflow-work` | Task and case inbox | 84 |
 | `togetherflow-control` | Runtime operations | 71 |
 | `togetherflow-identity` | Users, groups, privileges | 41 |
-| `togetherflow-design` | Model authoring across six model types | 493 |
+| `togetherflow-design` | Model authoring across six model types | 524 |
 | `togetherflow-attachment-gateway` | Optional attachment storage (Java) | 38 |
 | `togetherflow-event-recorder` | Optional inbound event log (Java) | 36 |
 
-**923 frontend tests.** Lint, typecheck, production build and bundle
+**954 frontend tests.** Lint, typecheck, production build and bundle
 budget pass for every module; the component gallery builds. On the Java side, the
 model-validation resources add 9 REST tests against a real engine, and the attachment
 gateway went from 13 tests to 38; the new event recorder adds 36.
@@ -448,6 +448,62 @@ new labels are user-facing copy in the catalogue every app loads at startup.
 
 ---
 
+## 2g. CMMN: the canvas
+
+The authoring layer was finished in §2f; what was left was diagram ergonomics, and the gap
+is structural rather than oversight. The BPMN editor gets its editing behaviour free from
+`bpmn-js`'s Modeler — context pad, direct label editing, copy/paste, bendpoints,
+align/distribute, keyboard move, search. The CMMN canvas is hand-written SVG, because no
+maintained equivalent exists: `cmmn-js` was never finished. REQUIREMENTS §7.4.3 has called
+that the largest unknown in the document since it was written, and it still is.
+
+Four things closed here, chosen as the ones a person hits in the first minute:
+
+**Auto-layout for a case with no CMMNDI.** Diagram interchange is optional and hand-written
+`.cmmn` files routinely have none; every element then landed on the same coordinate — one
+visible shape with the rest underneath, which reads as an empty case rather than an undrawn
+one. OPERATIONS listed it as a known non-fault, which it was, and a dead end, which it should
+not have been. There is no flow to lay out — a plan model is a bag of plan items and its
+sentry graph is frequently cyclic — so this packs rows inside each container, sizing
+containers bottom-up to hold what is in them. Only when the document has **no** shapes at
+all: a partially drawn file keeps what its author placed.
+
+**Renaming in place.** Double-click a shape. Renaming was panel-only, which meant selecting
+a shape, crossing the screen, and coming back, for the most common edit there is.
+
+**Copy, cut, paste and duplicate.** The risk here is not the shape failing to appear, it is
+the copy being subtly wrong: `id` is `xsd:ID`, so a repeat makes the document unparseable; a
+sentry copied with a reference to the *original* turns the copy into a remote control for
+what it was copied from, which deploys perfectly and behaves absurdly; and a criterion left
+with no on-parts guards something unreachable. Ids are regenerated throughout, references
+inside the copied set are rewired to the copies, and references leaving it are dropped rather
+than left aimed at the original. A copied stage brings its contents, since a stage without
+them is a different shape.
+
+**Arrow-key nudge**, by the grid the canvas snaps to — Shift for five steps, Alt for one
+pixel, for the case where the grid is the problem.
+
+**A bug the tests found:** a click that moved nothing still committed, so every click on a
+shape pushed an identical model onto the undo stack. Looking at ten elements cost ten presses
+of Cmd-Z before undoing anything real — the exact opposite of what the code comment beside it
+claimed to protect.
+
+**Still open on the canvas**, in rough order of what a person notices: a context pad (hover a
+shape, add a connected element — the single biggest speed difference against bpmn-js),
+align/distribute for multi-selection, changing an element's type without deleting and
+redrawing it, a minimap (BPMN has one), CMMNEdge output for connections drawn here (they
+carry no DI, so another tool will not draw the line), and bendpoints.
+
+**Also missing, and wider than CMMN:** Design registers nothing with the shared shortcut
+system — both editors use raw `keydown` handlers — so it has no shortcut help anywhere, and
+the bindings above are only discoverable by convention. That is a Design-wide item, not a
+CMMN one.
+
+493 tests to 524. `assets/CmmnEditor` budget 12 → 14 kB, which is code rather than copy and
+sits in the lazily loaded chunk where it belongs.
+
+---
+
 ## 3. Verification status — read this before trusting anything
 
 **Verified locally**: lint, typecheck, unit and component tests, production builds, bundle
@@ -507,9 +563,8 @@ Schema, parser and `CaseValidator`, all three.
 - **Boundary events other than timers** get the interrupting toggle but no expression
   editor; error/signal/message reference a process-level definition, which is separate
   scope.
-- **CMMN**: draggable sentry placement, align, copy-paste, and auto-layout for models
-  arriving without CMMNDI. The authoring gap is closed (§2f); what is left here is diagram
-  ergonomics.
+- **CMMN canvas**: context pad, align/distribute, type morphing, minimap, CMMNEdge output
+  and bendpoints — see §2g, which also records what was closed and why the gap exists.
 - **CMMN text annotations, associations and the case file model** — *not* a backlog item.
   The first two are in no content model in the CMMN 1.1 schema and cannot be deployed; the
   third is schema-valid but Flowable implements none of it. Both are recorded in §2f so
