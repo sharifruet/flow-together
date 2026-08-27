@@ -181,6 +181,51 @@ export class TaskApi {
     });
   }
 
+  /**
+   * Creates a task that belongs to no process (W2.2, "New → Task").
+   *
+   * `TaskCollectionResource` has supported this all along and nothing in the UI used it —
+   * which is the whole of the gap the plan records. A standalone task is how someone
+   * captures work that has no model behind it yet.
+   */
+  create(request: TaskUpdate, signal?: AbortSignal): Promise<TaskResponse> {
+    const tenantId = this.client.tenantId;
+    return this.client.request("/runtime/tasks", {
+      method: "POST",
+      body: tenantId ? { ...request, tenantId } : request,
+      signal,
+    });
+  }
+
+  /**
+   * Updates a task's own fields — the editable due date W2.2 asks for, and the rest.
+   *
+   * `dueDate: null` clears it. The engine distinguishes "not sent" from "sent as null"
+   * through its `duedateSet` flag, so an explicit null is the only way to remove a due
+   * date; omitting the key leaves it alone.
+   */
+  update(taskId: string, changes: TaskUpdate): Promise<TaskResponse> {
+    return this.client.request(`/runtime/tasks/${encodeURIComponent(taskId)}`, {
+      method: "PUT",
+      body: changes,
+    });
+  }
+
+  /**
+   * Persists form data without completing the task (W2.2).
+   *
+   * The plan calls this "the most-missed everyday affordance in the list", and it is not
+   * an engine action — there is no "save" verb. It is a variable write against the task,
+   * which is exactly what completing would do minus the completion. `PUT /variables`
+   * create-or-updates each named variable and leaves the others alone.
+   */
+  saveVariables(taskId: string, variables: RestVariable[]): Promise<RestVariable[]> {
+    return this.client.request(`/runtime/tasks/${encodeURIComponent(taskId)}/variables`, {
+      method: "PUT",
+      body: variables.map((variable) => ({ ...variable, scope: variable.scope ?? "local" })),
+    });
+  }
+
   listAttachments(taskId: string, signal?: AbortSignal): Promise<AttachmentResponse[]> {
     return this.client.request(`/runtime/tasks/${encodeURIComponent(taskId)}/attachments`, {
       signal,
@@ -301,6 +346,23 @@ export class TaskApi {
       `/runtime/tasks/${encodeURIComponent(taskId)}/attachments/${encodeURIComponent(attachmentId)}/content`,
     );
   }
+}
+
+/**
+ * The fields `TaskRequest` accepts on create and update. Deliberately not the whole of
+ * `TaskResponse`: most of what a task carries is engine-owned and read-only.
+ */
+export interface TaskUpdate {
+  name?: string;
+  description?: string;
+  assignee?: string | null;
+  owner?: string | null;
+  /** ISO instant, or null to clear. See `update` for why null is meaningful. */
+  dueDate?: string | null;
+  priority?: number;
+  category?: string;
+  parentTaskId?: string;
+  formKey?: string;
 }
 
 export class HistoryApi {

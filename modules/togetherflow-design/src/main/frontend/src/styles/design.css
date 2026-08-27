@@ -964,3 +964,150 @@
   gap: 8px;
   margin: 0 0 8px;
 }
+
+/* ── W2.3: palette groups, field grid, relations, library IA ─────────────── */
+
+.tf-palette__group + .tf-palette__group {
+  margin-top: var(--tf-space-4);
+}
+.tf-palette__group-title {
+  margin: 0 0 var(--tf-space-1);
+  font-size: var(--tf-text-xs);
+  font-weight: var(--tf-weight-semibold);
+  text-transform: uppercase;
+  letter-spacing: var(--tf-tracking-wide);
+  color: var(--tf-text-muted);
+}
+.tf-palette__item[draggable="true"] {
+  cursor: grab;
+}
+.tf-palette__item[draggable="true"]:active {
+  cursor: grabbing;
+}
+
+/* The insertion marker during a drag. A line, not a highlight: it says *between*. */
+.tf-form-fields__row--drop {
+  box-shadow: inset 0 2px 0 var(--tf-accent);
+}
+.tf-form-fields__meta {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--tf-space-2);
+}
+.tf-form-fields__reorder {
+  display: inline-flex;
+  flex-direction: column;
+}
+.tf-icon-button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 20px;
+  height: 16px;
+  padding: 0;
+  border: none;
+  background: none;
+  color: var(--tf-text-muted);
+  cursor: pointer;
+}
+.tf-icon-button:hover:not(:disabled) {
+  color: var(--tf-accent);
+}
+.tf-icon-button:disabled {
+  opacity: 0.35;
+  cursor: not-allowed;
+}
+
+.tf-relations + .tf-relations {
+  margin-top: var(--tf-space-5);
+}
+.tf-relations__list {
+  list-style: none;
+  margin: var(--tf-space-2) 0 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: var(--tf-space-1);
+}
+.tf-relations__item {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--tf-space-3);
+  width: 100%;
+  padding: var(--tf-space-2) var(--tf-space-3);
+  border: var(--tf-border-width) solid var(--tf-border);
+  border-radius: var(--tf-radius);
+  background: var(--tf-bg-raised);
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+.tf-relations__item:hover {
+  border-color: var(--tf-accent);
+}
+.tf-relations__unresolved {
+  list-style: none;
+  margin: var(--tf-space-2) 0 0;
+  padding: 0;
+  font-size: var(--tf-text-sm);
+  color: var(--tf-warning);
+}
+.tf-relations__unresolved li {
+  display: flex;
+  align-items: center;
+  gap: var(--tf-space-2);
+}
+.tf-relations__caveat {
+  margin-top: var(--tf-space-5);
+  font-size: var(--tf-text-sm);
+}
+
+.tf-library-toolbar {
+  display: flex;
+  align-items: center;
+  gap: var(--tf-space-4);
+  flex-wrap: wrap;
+  padding: var(--tf-space-2) var(--tf-space-4) 0;
+}
+
+.tf-model-cards {
+  padding: var(--tf-space-4);
+}
+.tf-model-card {
+  padding: var(--tf-space-3);
+  gap: var(--tf-space-2);
+}
+.tf-model-card__head {
+  display: flex;
+  align-items: center;
+  gap: var(--tf-space-2);
+}
+/* The overflow menu pushes to the trailing edge without a wrapper. */
+.tf-model-card__menu {
+  margin-left: auto;
+}
+/* The card body is the open target; the menu sits outside it so a click on one is never
+   a click on the other. */
+.tf-model-card__open {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  width: 100%;
+  padding: 0;
+  border: none;
+  background: none;
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+  color: inherit;
+}
+.tf-model-card__description {
+  font-size: var(--tf-text-sm);
+  color: var(--tf-text-muted);
+}
+.tf-model-card__tags {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--tf-space-1);
+}

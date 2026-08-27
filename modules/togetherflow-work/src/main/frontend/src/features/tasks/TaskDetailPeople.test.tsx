@@ -60,6 +60,16 @@ function renderDetail(api: TaskApi, userId = "alice") {
   return { onChanged };
 }
 
+/**
+ * People and Subtasks moved behind tabs in W2.2, matching Flowable Work's own task
+ * detail. Opening the tab is now part of reaching them — which is the change, not an
+ * inconvenience to route around.
+ */
+async function openTab(name: RegExp) {
+  const user = userEvent.setup();
+  await user.click(await screen.findByRole("tab", { name }));
+}
+
 describe("TaskDetail — people and sub-tasks", () => {
   it("lists who is involved and how", async () => {
     renderDetail(
@@ -70,12 +80,16 @@ describe("TaskDetail — people and sub-tasks", () => {
         ]),
       }),
     );
+    await openTab(/people/i);
 
-    expect(await screen.findByText("alice")).toBeInTheDocument();
-    expect(screen.getByText("assignee")).toBeInTheDocument();
-    expect(screen.getByText("finance")).toBeInTheDocument();
+    // Scoped to the panel: the header carries its own assignee chip since W2.2, so an
+    // unscoped query for "alice" now legitimately matches twice.
+    const panel = await screen.findByRole("tabpanel");
+    expect(within(panel).getByText("alice")).toBeInTheDocument();
+    expect(within(panel).getByText("assignee")).toBeInTheDocument();
+    expect(within(panel).getByText("finance")).toBeInTheDocument();
     // A group link is labelled as such — "candidate" alone would read as a person.
-    expect(screen.getByText("candidate (group)")).toBeInTheDocument();
+    expect(within(panel).getByText("candidate (group)")).toBeInTheDocument();
   });
 
   it("omits the People section entirely when there are no links", async () => {
@@ -92,6 +106,7 @@ describe("TaskDetail — people and sub-tasks", () => {
           .mockResolvedValue([{ id: "s1", name: "Check VAT", assignee: "bob" }]),
       }),
     );
+    await openTab(/subtasks/i);
 
     expect(await screen.findByRole("heading", { name: /Sub-tasks \(1\)/ })).toBeInTheDocument();
     expect(screen.getByText("Check VAT")).toBeInTheDocument();

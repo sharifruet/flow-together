@@ -1,4 +1,4 @@
-import { useCallback, useMemo } from "react";
+import { useCallback, useMemo, useState } from "react";
 import {
   AsyncBoundary,
   Badge,
@@ -22,14 +22,29 @@ import {
   useRegisterShortcuts,
   useSavedViews,
   type Column,
+  type HistoricTaskInstanceQueryRequest,
+  type HistoryApi,
   type ProcessApi,
   type TaskApi,
   type TaskQueryRequest,
   type Shortcut,
   type TaskResponse,
 } from "@togetherflow/common";
+import { NewTaskDialog } from "./NewTaskDialog";
 
-export type InboxFilter = "mine" | "claimable" | "involved";
+/**
+ * The five filters Flowable Work offers (W2.2). Three existed; `completed` and `all` are
+ * new — and they are the reason this screen queries two different resources.
+ *
+ * `mine`, `claimable` and `involved` are runtime queries: a runtime task is by definition
+ * still open. `completed` and `all` are *historic* queries, because a finished task has no
+ * runtime row at all. That is a real structural difference and the inbox switches rather
+ * than pretending one resource answers both.
+ */
+export type InboxFilter = "mine" | "claimable" | "involved" | "completed" | "all";
+
+/** Filters served by `/query/historic-task-instances` rather than the runtime resource. */
+export const HISTORIC_FILTERS: InboxFilter[] = ["completed", "all"];
 
 /** §7.1 asks for a due-date filter; these are the bands an inbox is actually triaged by. */
 export type DueFilter = "any" | "overdue" | "today" | "week" | "none";
@@ -37,7 +52,7 @@ export type DueFilter = "any" | "overdue" | "today" | "week" | "none";
 /** Matches the bands `priorityLabel` reports, so the filter and the column agree. */
 export type PriorityFilter = "any" | "high" | "normal" | "low";
 
-const FILTERS: InboxFilter[] = ["mine", "claimable", "involved"];
+const FILTERS: InboxFilter[] = ["mine", "claimable", "involved", "completed", "all"];
 const DUE_FILTERS: DueFilter[] = ["any", "overdue", "today", "week", "none"];
 const PRIORITY_FILTERS: PriorityFilter[] = ["any", "high", "normal", "low"];
 
@@ -67,6 +82,11 @@ const DEFAULT_VIEW: InboxView = {
 
 export interface TaskInboxProps {
   taskApi: TaskApi;
+  /**
+   * Serves W2.2's Completed and All filters, which query the *historic* task resource —
+   * a finished task has no runtime row. Omitted, those two filters are not offered.
+   */
+  historyApi?: HistoryApi;
   /** Populates the definition filter (§7.1). Omitted, the filter is simply not offered. */
   processApi?: ProcessApi;
   userId: string;
@@ -79,6 +99,7 @@ export interface TaskInboxProps {
 
 export function TaskInbox({
   taskApi,
+  historyApi,
   processApi,
   userId,
   selectedTaskId,
@@ -99,6 +120,7 @@ export function TaskInbox({
   const view = list.filters;
   const { setStart } = list;
   const savedViews = useSavedViews<InboxView>("work.inbox");
+  const [creatingTask, setCreatingTask] = useState(false);
 
   // Type-ahead filtering rather than submit-and-wait (§14.4).
   const debouncedSearch = useDebouncedValue(view.search.trim(), 250);
@@ -114,6 +136,9 @@ export function TaskInbox({
     [processApi],
   );
 
+  const historic = HISTORIC_FILTERS.includes(view.filter);
+
+  /** The runtime query — the three filters whose tasks are still open. */
   const request = useMemo<TaskQueryRequest>(() => {
     const base: TaskQueryRequest = {
       start: list.start,
@@ -142,9 +167,83 @@ export function TaskInbox({
     userId,
   ]);
 
+  /**
+   * The historic query, for Completed and All (W2.2).
+   *
+   * Its field names are the historic resource's own and do *not* mirror the runtime
+   * query's — `dueDateAfter` rather than `dueAfter`, `withoutDueDate` rather than
+   * `taskWithoutDueDate`, `taskNameLikeIgnoreCase` rather than `nameLikeIgnoreCase`. The
+   * bands are translated rather than reused, because reusing them would compile and
+   * silently filter nothing.
+   *
+   * Completed tasks sort by completion date descending — the most recently finished
+   * first, which is what "what did I just do" means. Anything else is due-date ascending.
+   */
+  const historicRequest = useMemo<HistoricTaskInstanceQueryRequest>(() => {
+    const due = dueQuery(view.due);
+    const priority = priorityQuery(view.priority);
+    return {
+      start: list.start,
+      size: list.size,
+      sort: list.sort?.key === "dueDate" && view.filter === "completed" ? "endTime" : (list.sort?.key ?? "endTime"),
+      order: list.sort?.order ?? "desc",
+      ...(view.filter === "completed" ? { finished: true } : {}),
+      taskAssignee: userId,
+      ...(debouncedSearch ? { taskNameLikeIgnoreCase: `%${debouncedSearch}%` } : {}),
+      ...(view.definitionKey ? { processDefinitionKey: view.definitionKey } : {}),
+      ...(due.dueAfter ? { dueDateAfter: due.dueAfter } : {}),
+      ...(due.dueBefore ? { dueDateBefore: due.dueBefore } : {}),
+      ...(due.withoutDueDate ? { withoutDueDate: true } : {}),
+      ...(priority.minimumPriority !== undefined ? { taskMinPriority: priority.minimumPriority } : {}),
+      ...(priority.maximumPriority !== undefined ? { taskMaxPriority: priority.maximumPriority } : {}),
+    };
+  }, [
+    view.filter,
+    view.definitionKey,
+    view.due,
+    view.priority,
+    debouncedSearch,
+    list.start,
+    list.size,
+    list.sort,
+    userId,
+  ]);
+
   const { data, error, loading, refetch } = useAsync(
-    (signal) => taskApi.query(request, signal),
-    [taskApi, request, refreshToken],
+    async (signal) => {
+      if (!historic) return await taskApi.query(request, signal);
+      if (!historyApi) {
+        // Completed/All are offered only when a HistoryApi was supplied; this is the
+        // belt-and-braces path rather than a state a user can reach.
+        return { data: [], total: 0, start: 0, size: list.size };
+      }
+      const page = await historyApi.queryTasks(historicRequest, signal);
+      // Historic rows carry the same fields the table reads, plus `endTime`. Mapped to
+      // TaskResponse so the columns stay one definition rather than two.
+      return {
+        ...page,
+        data: page.data.map(
+          (task): TaskResponse => ({
+            id: task.id,
+            name: task.name,
+            description: task.description,
+            assignee: task.assignee,
+            owner: task.owner,
+            // Historic rows leave these nullable where a runtime task does not; the
+            // nulls are normalised here rather than loosening TaskResponse for everyone.
+            priority: task.priority ?? 50,
+            dueDate: task.dueDate ?? undefined,
+            createTime: task.startTime ?? undefined,
+            processInstanceId: task.processInstanceId,
+            processDefinitionId: task.processDefinitionId,
+            suspended: false,
+            // Not on TaskResponse; carried so the table can badge a finished task.
+            endTime: task.endTime,
+          }),
+        ),
+      };
+    },
+    [taskApi, historyApi, historic, request, historicRequest, list.size, refreshToken],
   );
 
   const columns = useMemo<Column<TaskResponse>[]>(
@@ -195,6 +294,20 @@ export function TaskInbox({
             </span>
           );
         },
+      },
+      {
+        key: "status",
+        header: t("inbox.column.status"),
+        width: "120px",
+        // Only meaningful on the historic filters; a runtime task is always open.
+        render: (task) =>
+          task.endTime ? (
+            <Badge tone="neutral">{t("inbox.status.completed")}</Badge>
+          ) : (
+            <Badge tone="success" dot>
+              {t("inbox.status.open")}
+            </Badge>
+          ),
       },
       {
         key: "priority",
@@ -262,15 +375,25 @@ export function TaskInbox({
           ) : undefined
         }
         actions={
-          <Button onClick={onStartWork}>
-            <Icon name="add" size={16} />
-            {t("inbox.startWork")}
-          </Button>
+          <>
+            {/* W2.2: a task with no process behind it. The engine has always supported
+                this; nothing in the UI did. */}
+            <Button variant="secondary" onClick={() => setCreatingTask(true)}>
+              <Icon name="add" size={16} />
+              {t("inbox.newTask")}
+            </Button>
+            <Button onClick={onStartWork}>
+              <Icon name="play" size={16} />
+              {t("inbox.startWork")}
+            </Button>
+          </>
         }
       >
       <header className="tf-inbox__header">
         <div className="tf-inbox__filters" role="tablist" aria-label={t("inbox.filterLabel")}>
-          {FILTERS.map((key) => (
+          {FILTERS.filter(
+            (key) => historyApi !== undefined || !HISTORIC_FILTERS.includes(key),
+          ).map((key) => (
             <button
               key={key}
               type="button"
@@ -410,6 +533,14 @@ export function TaskInbox({
           </>
         )}
       </AsyncBoundary>
+      {creatingTask ? (
+        <NewTaskDialog
+          taskApi={taskApi}
+          userId={userId}
+          onClose={() => setCreatingTask(false)}
+          onCreated={(task) => onSelectTask(task)}
+        />
+      ) : null}
     </section>
   );
 }

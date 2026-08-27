@@ -26,6 +26,7 @@ import {
   Button,
   ConfirmDialog,
   Skeleton,
+  UserChip,
   availablePlanItemActions,
   formatDateTime,
   useAsync,
@@ -202,7 +203,14 @@ export function CaseDetail({
               ? `${t("cases.ref", { businessKey: instance.businessKey })} · `
               : ""}
             {t("case.meta.started", { when: formatDateTime(instance.startTime, locale) })}
-            {instance.startUserId ? t("case.meta.by", { userId: instance.startUserId }) : ""}
+            {instance.startUserId ? (
+              <>
+                {t("case.meta.by", { userId: "" })}
+                <UserChip userId={instance.startUserId} />
+              </>
+            ) : (
+              ""
+            )}
             {ended
               ? ` · ${t("case.meta.ended", {
                   when: formatDateTime(instance.endTime ?? undefined, locale),

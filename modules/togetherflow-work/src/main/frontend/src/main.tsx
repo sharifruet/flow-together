@@ -17,6 +17,7 @@ try {
           apps={config.apps}
           baseUrl={config.apiBase}
           cmmnBase={config.cmmnBase}
+          idmBase={config.idmBase}
           attachmentGateway={config.attachmentGateway}
         />
       </AppRoot>

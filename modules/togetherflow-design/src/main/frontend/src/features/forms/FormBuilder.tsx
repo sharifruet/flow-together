@@ -16,6 +16,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   Badge,
+  Icon,
   ApiError,
   Button,
   ConfirmDialog,
@@ -38,8 +39,10 @@ import {
   type VisibilityOperator,
 } from "@togetherflow/common";
 import { useConflictPrompt } from "../editors/ConflictPrompt";
+import { EditorMenuBar } from "../editors/EditorMenuBar";
+import { FieldProperties } from "./FieldProperties";
 import {
-  FIELD_TYPES,
+  PALETTE,
   OPTION_TYPES,
   isPresentational,
   newField,
@@ -47,6 +50,14 @@ import {
 } from "./formDraft";
 
 const AUTOSAVE_IDLE_MS = 4000;
+
+/*
+ * Drag payload keys (I3). Two distinct types rather than one with a discriminator inside
+ * it: `dataTransfer.types` is readable during `dragover` while the *data* is not, so
+ * separate keys are what lets a drop target tell an insert from a reorder before the drop.
+ */
+const DRAG_NEW_FIELD = "application/x-togetherflow-field-type";
+const DRAG_MOVE_FIELD = "application/x-togetherflow-field-index";
 
 /** Namespaces the preview's field ids, keeping them clear of the builder's own controls. */
 const PREVIEW_FORM_ID = "tf-form-preview";
@@ -89,6 +100,8 @@ export function FormBuilder({
   const form = edits && edits.modelId === model.id ? edits.form : parsed;
 
   const [selected, setSelected] = useState<number | null>(null);
+  /** Row the pointer is currently over during a drag, for the insertion marker. */
+  const [dropIndex, setDropIndex] = useState<number | null>(null);
   const [dirty, setDirty] = useState(false);
   const [saving, setSaving] = useState(false);
   const [confirmLeave, setConfirmLeave] = useState(false);
@@ -107,6 +120,40 @@ export function FormBuilder({
   const addField = (type: FormFieldType) => {
     update({ fields: [...fields, newField(type, fields)] });
     setSelected(fields.length);
+  };
+
+  /**
+   * Reorders a field (I3). Selection follows the field rather than the position, or
+   * moving the selected row would silently switch the properties panel to its neighbour.
+   */
+  const moveField = (from: number, to: number) => {
+    if (to < 0 || to >= fields.length || from === to) return;
+    const next = [...fields];
+    const [moved] = next.splice(from, 1);
+    next.splice(to, 0, moved);
+    update({ fields: next });
+    setSelected(to);
+  };
+
+  /** Handles both drop kinds: a new type from the palette, and a row being reordered. */
+  const onDropAt = (event: React.DragEvent, index: number) => {
+    event.preventDefault();
+    setDropIndex(null);
+    const newType = event.dataTransfer.getData(DRAG_NEW_FIELD);
+    if (newType) {
+      const created = newField(newType as FormFieldType, fields);
+      const next = [...fields];
+      next.splice(index, 0, created);
+      update({ fields: next });
+      setSelected(index);
+      return;
+    }
+    const moveFrom = event.dataTransfer.getData(DRAG_MOVE_FIELD);
+    if (moveFrom !== "") {
+      const from = Number(moveFrom);
+      // Dropping below the origin shifts the target up by one once the row is lifted.
+      moveField(from, from < index ? index - 1 : index);
+    }
   };
 
   const updateField = (index: number, changes: Partial<FormField>) =>
@@ -227,25 +274,15 @@ export function FormBuilder({
 
   return (
     <section className="tf-panel" aria-label={t("editor.editing", { name: model.name || model.id })}>
-      <button
-        type="button"
-        className="tf-back"
-        onClick={() => (dirty ? setConfirmLeave(true) : onBack())}
-      >
-        {t("editor.back")}
-      </button>
-
-      <header className="tf-panel__header">
-        <div>
-          <h1 className="tf-panel__title">{form.name || model.id}</h1>
-          <p className="tf-panel__meta" aria-live="polite">
-            {dirty ? t("editor.unsaved") : t("form.definition")}
-          </p>
-        </div>
-        <Button variant="secondary" loading={saving} onClick={() => void save()}>
-          {t("action.save")}
-        </Button>
-      </header>
+      {/* W2.3 (I8): the form builder had no toolbar at all, so "save" lived somewhere
+          different from every canvas editor. Now it is the same bar. */}
+      <EditorMenuBar
+        title={form.name || model.id}
+        status={dirty ? t("editor.unsaved") : t("form.definition")}
+        onBack={() => (dirty ? setConfirmLeave(true) : onBack())}
+        onSave={() => void save()}
+        saving={saving}
+      />
 
       <p className="tf-banner" role="note">
         {t("form.deployNote")}
@@ -258,18 +295,36 @@ export function FormBuilder({
       ) : null}
 
       <div className="tf-form-builder">
+        {/*
+          W2.3 (I2, I3): all nineteen renderable types, grouped, and draggable onto the
+          canvas. Before this the palette offered eleven and clicking appended to the end
+          with no way to reorder — so a form's field order was the order you thought of
+          them in.
+        */}
         <nav className="tf-palette" aria-label={t("form.palette")}>
           <h2 className="tf-palette__title">{t("form.addField")}</h2>
-          {FIELD_TYPES.map(({ type, label }) => (
-            <button
-              key={type}
-              type="button"
-              className="tf-palette__item"
-              disabled={saving}
-              onClick={() => addField(type)}
-            >
-              {label}
-            </button>
+          {PALETTE.map((group) => (
+            <div className="tf-palette__group" key={group.id}>
+              <h3 className="tf-palette__group-title">{t(`form.palette.${group.id}`)}</h3>
+              {group.types.map(({ type, label }) => (
+                <button
+                  key={type}
+                  type="button"
+                  className="tf-palette__item"
+                  disabled={saving}
+                  draggable={!saving}
+                  onDragStart={(event) => {
+                    event.dataTransfer.setData(DRAG_NEW_FIELD, type);
+                    event.dataTransfer.effectAllowed = "copy";
+                  }}
+                  // Click still adds to the end. Drag is an addition, not a replacement:
+                  // it is unavailable to a keyboard user, so the click path has to stay.
+                  onClick={() => addField(type)}
+                >
+                  {label}
+                </button>
+              ))}
+            </div>
           ))}
         </nav>
 
@@ -357,9 +412,28 @@ export function FormBuilder({
           ) : fields.length === 0 ? (
             <p className="tf-muted">{t("form.noFields")}</p>
           ) : (
-            <ul className="tf-form-fields">
+            <ul
+              className="tf-form-fields"
+              // Dropping past the last row appends, which is what "drop at the bottom"
+              // means and is otherwise unreachable — the row handlers only cover rows.
+              onDragOver={(event) => event.preventDefault()}
+              onDrop={(event) => onDropAt(event, fields.length)}
+            >
               {fields.map((field, index) => (
-                <li key={field.id}>
+                <li
+                  key={field.id}
+                  draggable={!saving}
+                  onDragStart={(event) => {
+                    event.dataTransfer.setData(DRAG_MOVE_FIELD, String(index));
+                    event.dataTransfer.effectAllowed = "move";
+                  }}
+                  onDragOver={(event) => {
+                    event.preventDefault();
+                    setDropIndex(index);
+                  }}
+                  onDrop={(event) => onDropAt(event, index)}
+                  className={dropIndex === index ? "tf-form-fields__row--drop" : undefined}
+                >
                   <button
                     type="button"
                     className={[
@@ -374,8 +448,41 @@ export function FormBuilder({
                       {field.name || field.id}
                       {field.required ? " *" : ""}
                     </span>
-                    <Badge tone="info">{field.type}</Badge>
+                    <span className="tf-form-fields__meta">
+                      {/* The row grid, visible on the field list — otherwise a colspan is
+                          invisible until the preview. */}
+                      {field.layout?.colspan && field.layout.colspan !== 12 ? (
+                        <Badge tone="neutral" subtle>
+                          {t(`form.field.width.${field.layout.colspan}`)}
+                        </Badge>
+                      ) : null}
+                      <Badge tone="info">{field.type}</Badge>
+                    </span>
                   </button>
+                  {/*
+                    Keyboard reordering, because drag-and-drop is unavailable to a keyboard
+                    user and "reorder your form" must not be a pointer-only capability.
+                  */}
+                  <span className="tf-form-fields__reorder">
+                    <button
+                      type="button"
+                      className="tf-icon-button"
+                      aria-label={t("form.field.moveUp", { name: field.name || field.id })}
+                      disabled={saving || index === 0}
+                      onClick={() => moveField(index, index - 1)}
+                    >
+                      <Icon name="chevron-up" size={14} />
+                    </button>
+                    <button
+                      type="button"
+                      className="tf-icon-button"
+                      aria-label={t("form.field.moveDown", { name: field.name || field.id })}
+                      disabled={saving || index === fields.length - 1}
+                      onClick={() => moveField(index, index + 1)}
+                    >
+                      <Icon name="chevron-down" size={14} />
+                    </button>
+                  </span>
                 </li>
               ))}
             </ul>
@@ -481,6 +588,13 @@ export function FormBuilder({
                   </label>
                 </>
               ) : null}
+
+              {/* W2.3 (I2): every constraint the renderer already honours. */}
+              <FieldProperties
+                field={current}
+                disabled={saving}
+                onChange={(patch) => updateField(selected, patch)}
+              />
 
               {OPTION_TYPES.has(current.type) ? (
                 <section className="tf-properties__section">

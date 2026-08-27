@@ -16,7 +16,6 @@ import "dmn-js/dist/assets/dmn-js-decision-table-controls.css";
 import "dmn-js/dist/assets/dmn-font/css/dmn.css";
 import {
   ApiError,
-  Button,
   ConfirmDialog,
   ErrorState,
   Skeleton,
@@ -26,6 +25,7 @@ import {
   type ModelResponse,
 } from "@togetherflow/common";
 import { useConflictPrompt } from "../editors/ConflictPrompt";
+import { EditorMenuBar } from "../editors/EditorMenuBar";
 
 const AUTOSAVE_IDLE_MS = 4000;
 
@@ -231,41 +231,27 @@ export function DmnEditor({
 
   return (
     <section className="tf-editor" aria-label={t("editor.editing", { name: model.name || model.id })}>
-      <header className="tf-editor__header">
-        <div className="tf-editor__identity">
-          <button
-            type="button"
-            className="tf-back"
-            onClick={() => (dirty ? setConfirmLeave(true) : onBack())}
-          >
-            ← Back to models
-          </button>
-          <h1 className="tf-editor__title">{model.name || model.key || model.id}</h1>
-          <p className="tf-editor__meta" aria-live="polite">
-            {dirty
-              ? t("editor.unsaved")
-              : lastSavedAt
-                ? t("editor.saved", { time: lastSavedAt.toLocaleTimeString(locale) })
-                : t("editor.noChanges")}
-          </p>
-        </div>
-        <div className="tf-editor__actions">
-          <Button variant="secondary" loading={saving} disabled={!ready} onClick={() => void save()}>
-            {t("action.save")}
-          </Button>
-          <Button
-            variant="secondary"
-            loading={saving}
-            disabled={!ready}
-            onClick={() => void saveVersion()}
-          >
-            {t("editor.saveVersion")}
-          </Button>
-          <Button loading={deploying} disabled={!ready} onClick={() => setConfirmDeploy(true)}>
-            {t("action.deploy")}
-          </Button>
-        </div>
-      </header>
+      {/* W2.3 (I8): one menu bar, shared by all six editors. */}
+      <EditorMenuBar
+        title={model.name || model.key || model.id}
+        status={
+          dirty
+            ? t("editor.unsaved")
+            : lastSavedAt
+              ? t("editor.saved", { time: lastSavedAt.toLocaleTimeString(locale) })
+              : t("editor.noChanges")
+        }
+        onBack={() => (dirty ? setConfirmLeave(true) : onBack())}
+        onSave={() => void save()}
+        saving={saving}
+        ready={ready}
+        onSaveVersion={() => void saveVersion()}
+        primary={{
+          label: t("action.deploy"),
+          run: () => setConfirmDeploy(true),
+          busy: deploying,
+        }}
+      />
 
       {loadError ? <ErrorState error={new Error(loadError)} /> : null}
       {error ? <ErrorState error={new Error(error)} /> : null}

@@ -540,3 +540,128 @@
 .tf-tasklog__who {
   color: var(--tf-text-muted);
 }
+
+/* ── W2.2: status ribbon, tabs, people, overview tiles ───────────────────── */
+
+/*
+ * The status ribbon. Colour carries the urgency and the sentence carries the meaning —
+ * never colour alone (WCAG 1.4.1), which is why every tone has visible text beside it.
+ */
+.tf-ribbon {
+  display: flex;
+  align-items: center;
+  gap: var(--tf-space-2);
+  margin: 0 0 var(--tf-space-3);
+  padding: var(--tf-space-2) var(--tf-space-3);
+  border-radius: var(--tf-radius);
+  border-left: 4px solid var(--tf-neutral);
+  background: var(--tf-neutral-bg);
+  font-size: var(--tf-text-sm);
+  font-weight: var(--tf-weight-medium);
+}
+.tf-ribbon--warning {
+  border-left-color: var(--tf-warning);
+  background: var(--tf-warning-bg);
+}
+.tf-ribbon--danger {
+  border-left-color: var(--tf-danger);
+  background: var(--tf-danger-bg);
+}
+
+.tf-due-editor {
+  max-width: 12rem;
+}
+.tf-due-editor .tf-field {
+  margin-bottom: 0;
+}
+
+.tf-people-tab__add {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(10rem, 1fr));
+  gap: var(--tf-space-2);
+  align-items: end;
+  margin-top: var(--tf-space-4);
+  padding-top: var(--tf-space-4);
+  border-top: var(--tf-border-width) solid var(--tf-border);
+}
+.tf-people-tab__add .tf-field {
+  margin-bottom: 0;
+}
+.tf-people-tab__matches {
+  grid-column: 1 / -1;
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--tf-space-2);
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+.tf-people__group {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--tf-space-2);
+}
+
+/*
+ * A tile is a link, not a card with a link inside it: the whole thing is one target, and
+ * a nested interactive element would give a keyboard user two stops for one destination.
+ */
+.tf-tile {
+  display: grid;
+  grid-template-areas:
+    "icon count"
+    "icon label"
+    "icon badge";
+  grid-template-columns: auto minmax(0, 1fr);
+  column-gap: var(--tf-space-3);
+  align-content: start;
+  padding: var(--tf-space-4);
+  background: var(--tf-bg-raised);
+  border: var(--tf-border-width) solid var(--tf-border);
+  border-radius: var(--tf-radius-lg);
+  box-shadow: var(--tf-shadow-sm);
+  color: inherit;
+  text-decoration: none;
+  transition: border-color var(--tf-duration-fast) var(--tf-ease),
+    box-shadow var(--tf-duration-fast) var(--tf-ease);
+}
+.tf-tile:hover {
+  border-color: var(--tf-accent);
+  box-shadow: var(--tf-shadow);
+}
+.tf-tile__icon {
+  grid-area: icon;
+  align-self: start;
+  display: inline-flex;
+  padding: var(--tf-space-2);
+  border-radius: var(--tf-radius);
+  background: var(--tf-bg-subtle);
+  color: var(--tf-text-muted);
+}
+.tf-tile__count {
+  grid-area: count;
+  font-size: var(--tf-text-3xl);
+  font-weight: var(--tf-weight-semibold);
+  line-height: var(--tf-leading-tight);
+  font-variant-numeric: tabular-nums;
+}
+.tf-tile__label {
+  grid-area: label;
+  color: var(--tf-text-muted);
+}
+.tf-tile .tf-badge {
+  grid-area: badge;
+  justify-self: start;
+  margin-top: var(--tf-space-2);
+}
+
+.tf-reports {
+  height: 100%;
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+}
+.tf-reports__note {
+  max-width: 68ch;
+  font-size: var(--tf-text-sm);
+}

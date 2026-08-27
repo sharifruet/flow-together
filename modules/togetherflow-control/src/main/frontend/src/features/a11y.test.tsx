@@ -15,6 +15,7 @@ import {
   ToastProvider,
   type DataResponse,
   type InstanceApi,
+  type RepositoryApi,
   type JobApi,
 } from "@togetherflow/common";
 import { Jobs } from "./jobs/Jobs";
@@ -23,6 +24,11 @@ import { Instances } from "./instances/Instances";
 function page<T>(rows: T[]): DataResponse<T> {
   return { data: rows, total: rows.length, start: 0, size: 25 };
 }
+
+const REPOSITORY = {
+  listProcessDefinitions: vi.fn().mockResolvedValue(page([])),
+  listActivityIdsFor: vi.fn().mockResolvedValue([]),
+} as unknown as RepositoryApi;
 
 describe("Control screens meet WCAG 2.1 AA", () => {
   it("the job queue, populated and selectable", async () => {
@@ -71,7 +77,7 @@ describe("Control screens meet WCAG 2.1 AA", () => {
     const { container } = render(
       <RouterProvider>
         <ToastProvider>
-          <Instances instanceApi={instanceApi} />
+          <Instances instanceApi={instanceApi} repositoryApi={REPOSITORY} />
         </ToastProvider>
       </RouterProvider>,
     );

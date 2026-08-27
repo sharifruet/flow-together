@@ -9,20 +9,78 @@
 
 import type { FormField, FormFieldType, FormModelResponse, ModelResponse } from "@togetherflow/common";
 
-/** Field types the builder offers, in the order they appear in the palette. */
-export const FIELD_TYPES: { type: FormFieldType; label: string }[] = [
-  { type: "text", label: "Text" },
-  { type: "multi-line-text", label: "Multi-line text" },
-  { type: "integer", label: "Whole number" },
-  { type: "decimal", label: "Decimal" },
-  { type: "amount", label: "Amount" },
-  { type: "date", label: "Date" },
-  { type: "boolean", label: "Checkbox" },
-  { type: "dropdown", label: "Dropdown" },
-  { type: "radio-buttons", label: "Radio buttons" },
-  { type: "headline", label: "Heading" },
-  { type: "horizontal-line", label: "Divider" },
+/**
+ * Palette groups (W2.3, UI_POLISH_BACKLOG.md I2).
+ *
+ * The renderer handles nineteen field types; the palette offered eleven, so eight things
+ * a form could *display* could not be *authored* — the exact gap I2 records. All nineteen
+ * are here now, grouped the way Flowable Design groups them: Data entry / Selection /
+ * People / Display / Container.
+ *
+ * Grouping is not decoration. A flat list of nineteen is a wall, and the four groups map
+ * onto the question a builder is actually asking: am I collecting a value, offering a
+ * choice, naming a person, or laying the form out?
+ */
+export interface PaletteGroup {
+  id: string;
+  label: string;
+  types: { type: FormFieldType; label: string }[];
+}
+
+export const PALETTE: PaletteGroup[] = [
+  {
+    id: "entry",
+    label: "Data entry",
+    types: [
+      { type: "text", label: "Text" },
+      { type: "multi-line-text", label: "Multi-line text" },
+      { type: "integer", label: "Whole number" },
+      { type: "decimal", label: "Decimal" },
+      { type: "amount", label: "Amount" },
+      { type: "date", label: "Date" },
+      { type: "upload", label: "File upload" },
+    ],
+  },
+  {
+    id: "selection",
+    label: "Selection",
+    types: [
+      { type: "boolean", label: "Checkbox" },
+      { type: "dropdown", label: "Dropdown" },
+      { type: "radio-buttons", label: "Radio buttons" },
+    ],
+  },
+  {
+    id: "people",
+    label: "People",
+    types: [
+      { type: "people", label: "Person" },
+      { type: "functional-group", label: "Group" },
+    ],
+  },
+  {
+    id: "display",
+    label: "Display",
+    types: [
+      { type: "headline", label: "Heading" },
+      { type: "headline-with-line", label: "Heading with rule" },
+      { type: "horizontal-line", label: "Divider" },
+      { type: "spacer", label: "Spacer" },
+      { type: "hyperlink", label: "Link" },
+      { type: "expression", label: "Expression" },
+    ],
+  },
+  {
+    id: "container",
+    label: "Container",
+    types: [{ type: "container", label: "Column container" }],
+  },
 ];
+
+/** Flat view of the palette, for lookups that do not care about grouping. */
+export const FIELD_TYPES: { type: FormFieldType; label: string }[] = PALETTE.flatMap(
+  (group) => group.types,
+);
 
 export const OPTION_TYPES: ReadonlySet<string> = new Set(["dropdown", "radio-buttons"]);
 
@@ -32,7 +90,24 @@ export function labelFor(type: FormFieldType): string {
 
 /** Presentational fields carry no value, so they have no placeholder or required flag. */
 export function isPresentational(type: string): boolean {
-  return type === "headline" || type === "horizontal-line" || type === "spacer";
+  return (
+    type === "headline" ||
+    type === "headline-with-line" ||
+    type === "horizontal-line" ||
+    type === "spacer" ||
+    type === "hyperlink" ||
+    type === "container"
+  );
+}
+
+/** Types whose value is a number, and so accept min/max rather than length limits. */
+export function isNumericType(type: string): boolean {
+  return type === "integer" || type === "decimal" || type === "amount";
+}
+
+/** Types whose value is free text, and so accept length and pattern limits. */
+export function isTextualType(type: string): boolean {
+  return type === "text" || type === "multi-line-text";
 }
 
 export function emptyFormModel(key: string, name: string): FormModelResponse {

@@ -3,6 +3,7 @@ import {
   ApiClient,
   CaseApi,
   HistoryApi,
+  IdmApi,
   LoginScreen,
   ProcessApi,
   TaskApi,
@@ -24,6 +25,7 @@ import { TaskDetail } from "./features/tasks/TaskDetail";
 import { StartWork } from "./features/start/StartWork";
 import { MyHistory } from "./features/history/MyHistory";
 import { MyCases } from "./features/cases/MyCases";
+import { Reports } from "./features/reports/Reports";
 import { CaseDetail } from "./features/cases/CaseDetail";
 
 export interface AppProps {
@@ -32,6 +34,12 @@ export interface AppProps {
   baseUrl: string;
   /** CMMN runs on its own servlet, so case work needs a second base URL. */
   cmmnBase: string;
+  /**
+   * IDM REST base, used only by the People tab's search (W2.2). Optional: without it the
+   * picker takes a typed id, which is the right fallback anyway — an assignee is often an
+   * id IDM has never heard of.
+   */
+  idmBase?: string;
   /** Attachment gateway base URL; empty for the default `db` provider (§7.6). */
   attachmentGateway?: string;
   fetchImpl?: typeof fetch;
@@ -41,6 +49,7 @@ export function App({
   apps,
   baseUrl,
   cmmnBase,
+  idmBase,
   attachmentGateway,
   fetchImpl,
 }: AppProps) {
@@ -100,6 +109,10 @@ export function App({
   const processApi = useMemo(() => new ProcessApi(client), [client]);
   const historyApi = useMemo(() => new HistoryApi(client), [client]);
   const caseApi = useMemo(() => new CaseApi(cmmnClient), [cmmnClient]);
+  const idmApi = useMemo(
+    () => (idmBase ? new IdmApi(makeClient(idmBase)) : null),
+    [makeClient, idmBase],
+  );
 
   const refresh = useCallback(() => setRefreshToken((token) => token + 1), []);
   /**
@@ -192,6 +205,7 @@ export function App({
         <div className="tf-work-layout">
           <TaskInbox
             taskApi={taskApi}
+            historyApi={historyApi}
             processApi={processApi}
             userId={session.userId}
             selectedTaskId={selectedTaskId}
@@ -201,6 +215,7 @@ export function App({
           />
           <TaskDetail
             taskApi={taskApi}
+            idmApi={idmApi}
             taskId={selectedTaskId}
             userId={session.userId}
             onCompleted={onTaskCompleted}
@@ -237,6 +252,8 @@ export function App({
             setView(kind === "case" ? "cases" : "inbox");
           }}
         />
+      ) : view === "reports" ? (
+        <Reports taskApi={taskApi} historyApi={historyApi} userId={session.userId} />
       ) : (
         <MyHistory historyApi={historyApi} caseApi={caseApi} userId={session.userId} />
       )}

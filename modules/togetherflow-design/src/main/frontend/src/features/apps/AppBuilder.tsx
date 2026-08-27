@@ -18,6 +18,7 @@ import {
   ApiError,
   AsyncBoundary,
   Button,
+  Icon,
   ConfirmDialog,
   TextInput,
   bundleFileName,
@@ -30,6 +31,8 @@ import {
   type ModelResponse,
 } from "@togetherflow/common";
 import { useConflictPrompt } from "../editors/ConflictPrompt";
+import { exportApp } from "./appPackage";
+import { EditorMenuBar } from "../editors/EditorMenuBar";
 import { parseAppDraft, type AppDraft } from "./appDraft";
 
 export interface AppBuilderProps {
@@ -112,6 +115,51 @@ export function AppBuilder({
         ? draft.modelIds.filter((id) => id !== modelId)
         : [...draft.modelIds, modelId],
     });
+
+  /**
+   * W2.3 (I6): hands the app and everything it bundles to the user as one archive.
+   *
+   * Deliberately not the engine's deployment bundle — that one is shaped for the app
+   * engine and carries no keys, versions or draft metadata, so a round trip through it
+   * would lose what an author cares about. See `appPackage.ts`.
+   */
+  const [exporting, setExporting] = useState(false);
+  const exportPackage = useCallback(async () => {
+    setExporting(true);
+    try {
+      const bundled = (models.data ?? []).filter((candidate) =>
+        draft.modelIds.includes(candidate.id),
+      );
+      const withSources = await Promise.all(
+        bundled.map(async (bundledModel) => ({
+          model: bundledModel,
+          source: await modelApi.getSource(bundledModel.id),
+        })),
+      );
+      const bytes = exportApp({
+        app: model,
+        appSource: JSON.stringify(draft, null, 2),
+        // A model whose source failed to load is omitted rather than packaged empty —
+        // an archive containing a blank process is worse than one missing it.
+        models: withSources.filter(
+          (entry): entry is { model: ModelResponse; source: string } => entry.source !== null,
+        ),
+      });
+      const blob = new Blob([bytes as BlobPart], { type: "application/zip" });
+      const url = URL.createObjectURL(blob);
+      const link = document.createElement("a");
+      link.href = url;
+      link.download = `${draft.key || model.id}.tfapp.zip`;
+      link.click();
+      URL.revokeObjectURL(url);
+      push({ tone: "success", message: t("app.exported", { name: draft.name || model.id }) });
+    } catch (cause) {
+      const apiError = cause instanceof ApiError ? cause : undefined;
+      push({ tone: "error", message: apiError?.message ?? t("app.exportFailed") });
+    } finally {
+      setExporting(false);
+    }
+  }, [models.data, draft, model, modelApi, push, t]);
 
   const save = useCallback(async () => {
     setSaving(true);
@@ -215,34 +263,26 @@ export function AppBuilder({
 
   return (
     <section className="tf-panel" aria-label={t("editor.editing", { name: model.name || model.id })}>
-      <button
-        type="button"
-        className="tf-back"
-        onClick={() => (dirty ? setConfirmLeave(true) : onBack())}
-      >
-        ← Back to models
-      </button>
-
-      <header className="tf-panel__header">
-        <div>
-          <h1 className="tf-panel__title">{draft.name || model.id}</h1>
-          <p className="tf-panel__meta" aria-live="polite">
-            {dirty ? t("editor.unsaved") : t("app.definition")}
-          </p>
-        </div>
-        <div className="tf-row-actions">
-          <Button variant="secondary" loading={saving} onClick={() => void save()}>
-            {t("action.save")}
+      {/* W2.3 (I8): one menu bar, shared by all six editors. */}
+      <EditorMenuBar
+        title={draft.name || model.id}
+        status={dirty ? t("editor.unsaved") : t("app.definition")}
+        onBack={() => (dirty ? setConfirmLeave(true) : onBack())}
+        onSave={() => void save()}
+        saving={saving}
+        ready={!keyError}
+        extra={
+          <Button variant="secondary" loading={exporting} onClick={() => void exportPackage()}>
+            <Icon name="download" size={16} />
+            {t("app.export")}
           </Button>
-          <Button
-            loading={publishing}
-            disabled={Boolean(keyError)}
-            onClick={() => setConfirmPublish(true)}
-          >
-            {t("action.publish")}
-          </Button>
-        </div>
-      </header>
+        }
+        primary={{
+          label: t("action.publish"),
+          run: () => setConfirmPublish(true),
+          busy: publishing,
+        }}
+      />
 
       {loadError ? (
         <p className="tf-detail__note tf-detail__note--error" role="alert">
@@ -279,6 +319,43 @@ export function AppBuilder({
             disabled={busy}
             hint={t("app.field.icon.hint")}
             onChange={(event) => update({ icon: event.target.value })}
+          />
+          {/* W2.3 (I7): theme, tags and display order — the depth Enterprise's app
+              editor has and ours did not. All three are draft-only: the engine's app
+              deployment reads none of them, so they describe the app here rather than
+              once deployed, and the hints say so. */}
+          <TextInput
+            label={t("app.field.theme")}
+            value={draft.theme ?? ""}
+            disabled={busy}
+            hint={t("app.field.theme.hint")}
+            onChange={(event) => update({ theme: event.target.value })}
+          />
+          <TextInput
+            label={t("app.field.tags")}
+            value={(draft.tags ?? []).join(", ")}
+            disabled={busy}
+            hint={t("app.field.tags.hint")}
+            onChange={(event) =>
+              update({
+                tags: event.target.value
+                  .split(",")
+                  .map((tag) => tag.trim())
+                  .filter(Boolean),
+              })
+            }
+          />
+          <TextInput
+            label={t("app.field.displayOrder")}
+            type="number"
+            value={draft.displayOrder ?? ""}
+            disabled={busy}
+            hint={t("app.field.displayOrder.hint")}
+            onChange={(event) =>
+              update({
+                displayOrder: event.target.value === "" ? undefined : Number(event.target.value),
+              })
+            }
           />
         </section>
 

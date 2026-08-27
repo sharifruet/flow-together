@@ -8,9 +8,9 @@
     "commit as the change, so the increase is reviewed alongside what caused it."
   ],
   "groups": {
-    "assets/index": 114
+    "assets/index": 120
   },
-  "totalKb": 118,
+  "totalKb": 124,
   "_w1_note": [
     "assets/index went 110 -> 114 with W1.1-W1.5. The growth is the router",
     "(ADR 0016), the eleven new shared primitives, the ~55-icon set (1.7 kB",
@@ -18,5 +18,10 @@
     "Smaller than the sum of those because it is partly offset: the 204 duplicated",
     "shell-CSS lines left every app stylesheet (F5), and the old bespoke table and",
     "dialog CSS was replaced rather than added to."
+  ],
+  "_w2_note": [
+    "assets/index went 114 -> 120 with W2.2. The growth is the four-tab task detail,",
+    "the People tab with its IDM search, ad-hoc task creation, the status ribbon and",
+    "the overview screen — five screens' worth of behaviour, not chrome."
   ]
 }

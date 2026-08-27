@@ -330,3 +330,170 @@
   font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
   font-size: 0.8125rem;
 }
+
+/* ── W2.1: migration mapping editor, change-state, variable filters ──────── */
+
+.tf-migration {
+  margin-top: var(--tf-space-4);
+}
+.tf-migration__title {
+  margin: 0 0 var(--tf-space-1);
+  font-size: var(--tf-text-base);
+  font-weight: var(--tf-weight-semibold);
+}
+.tf-migration__rows {
+  list-style: none;
+  margin: var(--tf-space-3) 0 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: var(--tf-space-2);
+}
+/* from → to, with the arrow between them carrying the direction. */
+.tf-migration__row {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto minmax(0, 1fr);
+  align-items: center;
+  gap: var(--tf-space-3);
+  padding: var(--tf-space-2);
+  border: var(--tf-border-width) solid var(--tf-border);
+  border-radius: var(--tf-radius);
+  background: var(--tf-bg-subtle);
+}
+.tf-migration__row .tf-field {
+  margin-bottom: 0;
+}
+.tf-migration__from {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+}
+.tf-migration__name {
+  font-weight: var(--tf-weight-medium);
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.tf-migration__meta {
+  font-size: var(--tf-text-xs);
+  color: var(--tf-text-muted);
+}
+.tf-migration__prompt {
+  margin-top: var(--tf-space-4);
+}
+.tf-migration__validation {
+  margin-top: var(--tf-space-4);
+  padding: var(--tf-space-3);
+  border-radius: var(--tf-radius);
+  border-left: 4px solid var(--tf-success);
+  background: var(--tf-success-bg);
+}
+.tf-migration__validation--failed {
+  border-left-color: var(--tf-danger);
+  background: var(--tf-danger-bg);
+}
+.tf-migration__messages {
+  margin: var(--tf-space-2) 0 0;
+  padding-left: var(--tf-space-5);
+  font-size: var(--tf-text-sm);
+}
+
+.tf-change-state + .tf-change-state {
+  margin-top: var(--tf-space-5);
+}
+
+.tf-filter-bar__variables {
+  flex-basis: 100%;
+  display: flex;
+  flex-direction: column;
+  gap: var(--tf-space-2);
+  align-items: flex-start;
+}
+.tf-variable-filters {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: var(--tf-space-2);
+  width: 100%;
+}
+/* name · comparison · value · remove */
+.tf-variable-filters__row {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 12rem) minmax(0, 1fr) auto;
+  gap: var(--tf-space-2);
+  align-items: center;
+}
+.tf-variable-filters__row .tf-field {
+  margin-bottom: 0;
+}
+@media (max-width: 768px) {
+  .tf-migration__row,
+  .tf-variable-filters__row {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}
+
+.tf-variables__empty {
+  padding: var(--tf-space-4);
+}
+
+/* ── W2.1: overview tiles ────────────────────────────────────────────────── */
+
+/*
+ * A tile is a link, not a card with a link inside it: the whole thing is one target, and
+ * a nested interactive element would give a keyboard user two stops for one destination.
+ */
+.tf-tile {
+  display: grid;
+  grid-template-areas:
+    "icon count"
+    "icon label"
+    "icon badge";
+  grid-template-columns: auto minmax(0, 1fr);
+  column-gap: var(--tf-space-3);
+  align-content: start;
+  padding: var(--tf-space-4);
+  background: var(--tf-bg-raised);
+  border: var(--tf-border-width) solid var(--tf-border);
+  border-radius: var(--tf-radius-lg);
+  box-shadow: var(--tf-shadow-sm);
+  color: inherit;
+  text-decoration: none;
+  transition: border-color var(--tf-duration-fast) var(--tf-ease),
+    box-shadow var(--tf-duration-fast) var(--tf-ease);
+}
+.tf-tile:hover {
+  border-color: var(--tf-accent);
+  box-shadow: var(--tf-shadow);
+}
+.tf-tile__icon {
+  grid-area: icon;
+  align-self: start;
+  display: inline-flex;
+  padding: var(--tf-space-2);
+  border-radius: var(--tf-radius);
+  background: var(--tf-bg-subtle);
+  color: var(--tf-text-muted);
+}
+.tf-tile__count {
+  grid-area: count;
+  font-size: var(--tf-text-3xl);
+  font-weight: var(--tf-weight-semibold);
+  line-height: var(--tf-leading-tight);
+  font-variant-numeric: tabular-nums;
+}
+.tf-tile__label {
+  grid-area: label;
+  color: var(--tf-text-muted);
+}
+.tf-tile .tf-badge {
+  grid-area: badge;
+  justify-self: start;
+  margin-top: var(--tf-space-2);
+}
+
+.tf-dashboard__note {
+  max-width: 68ch;
+  font-size: var(--tf-text-sm);
+}

@@ -23,13 +23,13 @@ are substantially built but **not verified end to end**; §5 is explicit about w
 |---|---|---|
 | `togetherflow-common` | API clients, auth, design system, routing, i18n, shell, observability | 403 |
 | `togetherflow-work` | Task and case inbox | 85 |
-| `togetherflow-control` | Runtime operations | 71 |
+| `togetherflow-control` | Runtime operations | 80 |
 | `togetherflow-identity` | Users, groups, privileges | 41 |
-| `togetherflow-design` | Model authoring across six model types | 531 |
+| `togetherflow-design` | Model authoring across six model types | 560 |
 | `togetherflow-attachment-gateway` | Optional attachment storage (Java) | 38 |
 | `togetherflow-event-recorder` | Optional inbound event log (Java) | 36 |
 
-**1,131 frontend tests** (was 954 before Wave 1). Lint, typecheck, production build and
+**1,169 frontend tests** (954 before Wave 1, 1,131 after it). Lint, typecheck, production build and
 bundle budget pass for every module; the component gallery builds. On the Java side, the
 model-validation resources add 9 REST tests against a real engine, and the attachment
 gateway went from 13 tests to 38; the new event recorder adds 36.
@@ -76,6 +76,39 @@ rather than left to report false regressions against a UI they no longer resembl
 `modules/togetherflow-work/src/main/frontend/e2e/visual/README.md`. Until then the `visual`
 CI job stays `continue-on-error`, which means it cannot fail, which means it is not yet a
 check.
+
+### Wave 2 of the enterprise-parity plan (2026-08-27)
+
+W2.1–W2.3, the product-depth chunk. [UI_POLISH_BACKLOG.md §K](UI_POLISH_BACKLOG.md) is the
+item-by-item record and [WAVE2_DISCOVERY.md](WAVE2_DISCOVERY.md) holds the two discovery
+steps' findings. In summary:
+
+- **Control** gained instance migration with a mapping editor (validate-then-migrate,
+  never collapsed), editable instance variables, execution moves, business-key/date-range/
+  variable-value filters that reach the URL, transactional bulk delete, an overview screen,
+  and read-only degradation for non-admins.
+- **Work** gained a four-tab task detail, save-without-complete, a status ribbon, the two
+  missing filters (which query the historic resource, since a finished task has no runtime
+  row), an editable due date, ad-hoc task creation, a People tab, and user chips in place of
+  raw ids.
+- **Design** gained all 19 renderable field types in a grouped palette with every
+  constraint the renderer honours, one shared editor menu bar across all six editors,
+  model relations, templates, app ZIP export with clash handling, app editor depth, and a
+  card-view library.
+
+**Two things Wave 2 could not do, and did not fake:**
+
+- **Flowable Work's three-level task sort.** `TaskBaseResource` exposes a single `sort`
+  property with no secondary key. Sorting the fetched page in the browser was rejected —
+  it reorders 25 rows and says nothing true about the other 4,000, and puts the wrong 25 on
+  page one. Work ships the single-column server sort; closing this properly is engine work.
+- **One-to-many and many-to-one migration mappings**, and the pre/post-upgrade script
+  hooks. The first needs a diagram-level editor to be comprehensible; the second executes
+  arbitrary code server-side and does not belong behind a free-text box in an operations
+  console. Both are recorded in the discovery doc rather than left as silent omissions.
+
+Two bundle budgets were raised (Work and Control, 114/112 → 120 kB gzipped), each with the
+growth accounted for in its `bundle-budget.json`.
 
 ### The earlier cross-cutting pass
 

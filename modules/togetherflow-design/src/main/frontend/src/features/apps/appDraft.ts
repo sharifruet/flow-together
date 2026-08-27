@@ -15,6 +15,14 @@ export interface AppDraft {
   icon?: string;
   /** Model ids this app bundles. */
   modelIds: string[];
+  /**
+   * W2.3 (I7): tags and display order, which Enterprise's app editor carries and ours
+   * did not. Both are draft-only — the engine's app deployment reads neither — so they
+   * describe the app *here*, in the library and the switcher, not once deployed.
+   */
+  tags?: string[];
+  /** Lower sorts first in the library. Unset sorts after everything numbered. */
+  displayOrder?: number;
 }
 
 export function emptyAppDraft(key: string, name: string): AppDraft {
@@ -32,6 +40,13 @@ export function parseAppDraft(source: string | null, fallback: ModelResponse): A
         theme: parsed.theme,
         icon: parsed.icon,
         modelIds: Array.isArray(parsed.modelIds) ? parsed.modelIds : [],
+        tags: Array.isArray(parsed.tags)
+          ? parsed.tags.filter((tag): tag is string => typeof tag === "string")
+          : undefined,
+        displayOrder:
+          typeof parsed.displayOrder === "number" && Number.isFinite(parsed.displayOrder)
+            ? parsed.displayOrder
+            : undefined,
       };
     } catch {
       // A malformed draft should not block editing; fall through to a fresh one.

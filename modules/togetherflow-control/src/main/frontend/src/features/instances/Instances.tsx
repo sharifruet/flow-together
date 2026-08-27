@@ -7,11 +7,11 @@ import {
   ConfirmDialog,
   DataTable,
   EmptyState,
+  Icon,
   NoResultsState,
   PageHeader,
   Pagination,
   SavedViews,
-  displayValue,
   formatDateTime,
   toneForState,
   useAsync,
@@ -24,10 +24,19 @@ import {
   type Column,
   type InstanceApi,
   type ProcessInstanceResponse,
+  type RepositoryApi,
 } from "@togetherflow/common";
+import { ChangeStateDialog } from "./ChangeStateDialog";
+import { InstanceFilters, decodeFilters, encodeFilters } from "./InstanceFilters";
+import { MigrationDialog } from "./MigrationDialog";
+import { VariableEditor } from "./VariableEditor";
 
 export interface InstancesProps {
   instanceApi: InstanceApi;
+  /** W2.1 needs definitions for migration targets and change-state activity lists. */
+  repositoryApi: RepositoryApi;
+  /** Degrades the screen to read-only rather than offering rejected actions (§13.1). */
+  readOnly?: boolean;
   /**
    * Id from `/instances/:instanceId`. This is the URL F1 argues for most in this app:
    * "support and ops cannot paste 'look at this instance' into a ticket."
@@ -45,11 +54,29 @@ export interface InstancesView {
   [key: string]: string;
   search: string;
   suspendedOnly: string;
+  /** W2.1's rich filters. `vars` is the encoded variable-filter list — see InstanceFilters. */
+  businessKey: string;
+  startedAfter: string;
+  startedBefore: string;
+  vars: string;
 }
 
-const DEFAULT_VIEW: InstancesView = { search: "", suspendedOnly: "" };
+const DEFAULT_VIEW: InstancesView = {
+  search: "",
+  suspendedOnly: "",
+  businessKey: "",
+  startedAfter: "",
+  startedBefore: "",
+  vars: "",
+};
 
-export function Instances({ instanceApi, selectedId, onSelect }: InstancesProps) {
+export function Instances({
+  instanceApi,
+  repositoryApi,
+  readOnly = false,
+  selectedId,
+  onSelect,
+}: InstancesProps) {
   const { t, locale } = useI18n();
   const list = useListState<InstancesView>({
     defaults: DEFAULT_VIEW,
@@ -60,10 +87,21 @@ export function Instances({ instanceApi, selectedId, onSelect }: InstancesProps)
   const setStart = list.setStart;
   const debounced = useDebouncedValue(view.search).trim();
   const [reloadToken, setReloadToken] = useState(0);
+  /*
+   * W2.1: "bulk actions beyond dead-letter jobs". W1.5's DataTable makes this a wiring
+   * job rather than a rebuild — the checkbox column, select-all and bulk bar are the
+   * component's.
+   */
+  const [selected, setSelected] = useState<Set<string>>(new Set());
+  const [confirmBulkDelete, setConfirmBulkDelete] = useState(false);
+  const [bulkBusy, setBulkBusy] = useState(false);
+  const { push } = useToast();
   const savedViews = useSavedViews<InstancesView>("control.instances");
 
   const update = list.setFilters;
   const applyView = list.replaceFilters;
+
+  const variableFilters = useMemo(() => decodeFilters(view.vars), [view.vars]);
 
   const query = useMemo(
     () => ({
@@ -73,8 +111,31 @@ export function Instances({ instanceApi, selectedId, onSelect }: InstancesProps)
       order: list.sort?.order,
       ...(debounced ? { processInstanceNameLikeIgnoreCase: `%${debounced}%` } : {}),
       ...(view.suspendedOnly ? { suspended: true } : {}),
+      ...(view.businessKey ? { processBusinessKeyLike: `%${view.businessKey}%` } : {}),
+      /*
+       * The date inputs are days; the engine takes instants. Widened to the day's bounds
+       * so "started before the 5th" includes everything that happened on the 4th, which is
+       * what the words mean.
+       */
+      ...(view.startedAfter ? { startedAfter: `${view.startedAfter}T00:00:00.000Z` } : {}),
+      ...(view.startedBefore ? { startedBefore: `${view.startedBefore}T23:59:59.999Z` } : {}),
+      // Incomplete rows are dropped rather than sent: a filter with no name matches
+      // nothing server-side and would silently empty the list while being typed.
+      ...(variableFilters.length > 0
+        ? { variables: variableFilters.filter((filter) => filter.name.trim() !== "") }
+        : {}),
     }),
-    [list.start, list.size, list.sort, debounced, view.suspendedOnly],
+    [
+      list.start,
+      list.size,
+      list.sort,
+      debounced,
+      view.suspendedOnly,
+      view.businessKey,
+      view.startedAfter,
+      view.startedBefore,
+      variableFilters,
+    ],
   );
 
   const { data, error, loading, refetch } = useAsync(
@@ -132,6 +193,8 @@ export function Instances({ instanceApi, selectedId, onSelect }: InstancesProps)
     return (
       <InstanceDetail
         instanceApi={instanceApi}
+        repositoryApi={repositoryApi}
+        readOnly={readOnly}
         instanceId={selectedId}
         onBack={() => onSelect?.(undefined)}
         onChanged={() => setReloadToken((t) => t + 1)}
@@ -192,9 +255,57 @@ export function Instances({ instanceApi, selectedId, onSelect }: InstancesProps)
           onRemove={savedViews.remove}
         />
       </div>
+
+      {/* W2.1: business key, date range and variable-value filters — all supported by the
+          engine's query resource and none of them previously sent. */}
+      <InstanceFilters
+        businessKey={view.businessKey}
+        startedAfter={view.startedAfter}
+        startedBefore={view.startedBefore}
+        variables={variableFilters}
+        onChange={(patch) =>
+          update({
+            ...(patch.businessKey !== undefined ? { businessKey: patch.businessKey } : {}),
+            ...(patch.startedAfter !== undefined ? { startedAfter: patch.startedAfter } : {}),
+            ...(patch.startedBefore !== undefined ? { startedBefore: patch.startedBefore } : {}),
+            ...(patch.variables !== undefined ? { vars: encodeFilters(patch.variables) } : {}),
+          })
+        }
+      />
       {savedViews.views.length > 0 ? (
         <p className="tf-filter-bar__note">{t("savedViews.note")}</p>
       ) : null}
+
+      <ConfirmDialog
+        open={confirmBulkDelete}
+        title={t("instances.bulkDelete.title", { count: selected.size })}
+        description={t("instances.bulkDelete.description", { count: selected.size })}
+        confirmLabel={t("instances.bulkDelete.confirm")}
+        destructive
+        busy={bulkBusy}
+        onCancel={() => setConfirmBulkDelete(false)}
+        onConfirm={() => {
+          const ids = [...selected];
+          setConfirmBulkDelete(false);
+          setBulkBusy(true);
+          void instanceApi
+            .bulkDelete(ids, t("instances.deleteReason"))
+            .then(() => {
+              push({ tone: "success", message: t("instances.bulkDelete.done", { count: ids.length }) });
+              setSelected(new Set());
+              setReloadToken((token) => token + 1);
+            })
+            .catch((cause) => {
+              const apiError = cause instanceof ApiError ? cause : undefined;
+              push({
+                tone: "error",
+                message: apiError?.message ?? t("action.failed"),
+                reference: apiError?.correlationId,
+              });
+            })
+            .finally(() => setBulkBusy(false));
+        }}
+      />
 
       <AsyncBoundary
         loading={loading}
@@ -226,6 +337,18 @@ export function Instances({ instanceApi, selectedId, onSelect }: InstancesProps)
               sort={list.sort}
               onSortChange={list.setSort}
               busy={loading}
+              selection={readOnly ? undefined : selected}
+              onSelectionChange={readOnly ? undefined : setSelected}
+              selectionLabel={(instance) =>
+                t("instances.select", { name: instance.name || instance.id })
+              }
+              selectAllLabel={t("instances.selectAll")}
+              bulkActions={(ids) => (
+                <Button variant="danger" loading={bulkBusy} onClick={() => setConfirmBulkDelete(true)}>
+                  <Icon name="trash" size={16} />
+                  {t("instances.bulkDelete.action", { count: ids.length })}
+                </Button>
+              )}
             />
             <Pagination
               start={page.start}
@@ -243,19 +366,33 @@ export function Instances({ instanceApi, selectedId, onSelect }: InstancesProps)
 
 interface DetailProps {
   instanceApi: InstanceApi;
+  /** Needed for W2.1's migration targets and change-state activity list. */
+  repositoryApi: RepositoryApi;
   instanceId: string;
+  /** Hides every mutating action rather than offering one the server will reject (§13.1). */
+  readOnly?: boolean;
   onBack: () => void;
   onChanged: () => void;
   onDeleted: () => void;
 }
 
-function InstanceDetail({ instanceApi, instanceId, onBack, onChanged, onDeleted }: DetailProps) {
+function InstanceDetail({
+  instanceApi,
+  repositoryApi,
+  instanceId,
+  readOnly = false,
+  onBack,
+  onChanged,
+  onDeleted,
+}: DetailProps) {
   const { t, locale } = useI18n();
   const { push } = useToast();
   const [busy, setBusy] = useState(false);
   const [reloadToken, setReloadToken] = useState(0);
   const [confirmDelete, setConfirmDelete] = useState(false);
   const [diagramFailed, setDiagramFailed] = useState(false);
+  const [migrating, setMigrating] = useState(false);
+  const [changingState, setChangingState] = useState(false);
 
   const detail = useAsync(
     async (signal) => {
@@ -319,31 +456,41 @@ function InstanceDetail({ instanceApi, instanceId, onBack, onChanged, onDeleted 
                   {instance.suspended ? " · suspended" : ""}
                 </p>
               </div>
-              <div className="tf-row-actions">
-                <Button
-                  variant="secondary"
-                  loading={busy}
-                  onClick={() =>
-                    void run(
-                      instance.suspended
-                        ? t("instances.activated")
-                        : t("instances.suspended"),
-                      () => instanceApi.setSuspended(instance.id, !instance.suspended),
-                      () => {
-                        setReloadToken((t) => t + 1);
-                        onChanged();
-                      },
-                    )
-                  }
-                >
-                  {instance.suspended
-                    ? t("instances.action.activate")
-                    : t("instances.action.suspend")}
-                </Button>
-                <Button variant="danger" loading={busy} onClick={() => setConfirmDelete(true)}>
-                  {t("action.delete")}
-                </Button>
-              </div>
+              {readOnly ? null : (
+                <div className="tf-row-actions">
+                  <Button variant="secondary" onClick={() => setMigrating(true)}>
+                    <Icon name="refresh" size={16} />
+                    {t("instances.action.migrate")}
+                  </Button>
+                  <Button variant="secondary" onClick={() => setChangingState(true)}>
+                    <Icon name="play" size={16} />
+                    {t("instances.action.changeState")}
+                  </Button>
+                  <Button
+                    variant="secondary"
+                    loading={busy}
+                    onClick={() =>
+                      void run(
+                        instance.suspended
+                          ? t("instances.activated")
+                          : t("instances.suspended"),
+                        () => instanceApi.setSuspended(instance.id, !instance.suspended),
+                        () => {
+                          setReloadToken((t) => t + 1);
+                          onChanged();
+                        },
+                      )
+                    }
+                  >
+                    {instance.suspended
+                      ? t("instances.action.activate")
+                      : t("instances.action.suspend")}
+                  </Button>
+                  <Button variant="danger" loading={busy} onClick={() => setConfirmDelete(true)}>
+                    {t("action.delete")}
+                  </Button>
+                </div>
+              )}
             </header>
 
             <dl className="tf-facts">
@@ -402,34 +549,48 @@ function InstanceDetail({ instanceApi, instanceId, onBack, onChanged, onDeleted 
               )}
             </section>
 
+            {/* W2.1: read-only before, editable now — a stuck instance is very often one
+                variable away from moving. */}
             <section className="tf-panel__section">
-              <h2 className="tf-panel__section-title">Variables ({variables.length})</h2>
-              {variables.length === 0 ? (
-                <p className="tf-muted">{t("instances.variables.none")}</p>
-              ) : (
-                <table className="tf-table">
-                  <caption className="tf-visually-hidden">
-                    {t("instances.variables.caption")}
-                  </caption>
-                  <thead>
-                    <tr>
-                      <th scope="col">{t("instances.variables.name")}</th>
-                      <th scope="col">{t("instances.variables.type")}</th>
-                      <th scope="col">{t("instances.variables.value")}</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {variables.map((variable) => (
-                      <tr key={variable.name}>
-                        <td>{variable.name}</td>
-                        <td className="tf-muted">{variable.type ?? "—"}</td>
-                        <td>{displayValue(variable)}</td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
-              )}
+              <VariableEditor
+                instanceApi={instanceApi}
+                instanceId={instance.id}
+                variables={variables}
+                readOnly={readOnly}
+                onChanged={() => {
+                  setReloadToken((token) => token + 1);
+                  onChanged();
+                }}
+              />
             </section>
+
+            {migrating ? (
+              <MigrationDialog
+                instanceApi={instanceApi}
+                repositoryApi={repositoryApi}
+                instance={instance}
+                activities={activities}
+                onClose={() => setMigrating(false)}
+                onMigrated={() => {
+                  setReloadToken((token) => token + 1);
+                  onChanged();
+                }}
+              />
+            ) : null}
+
+            {changingState ? (
+              <ChangeStateDialog
+                instanceApi={instanceApi}
+                repositoryApi={repositoryApi}
+                instance={instance}
+                activities={activities}
+                onClose={() => setChangingState(false)}
+                onChanged={() => {
+                  setReloadToken((token) => token + 1);
+                  onChanged();
+                }}
+              />
+            ) : null}
 
             <ConfirmDialog
               open={confirmDelete}

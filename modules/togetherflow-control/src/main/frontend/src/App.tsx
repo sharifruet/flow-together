@@ -13,8 +13,10 @@ import {
   RepositoryApi,
   SystemApi,
   UserProfileApi,
+  IdmApi,
   useAuth,
   useNavigate,
+  usePermissions,
   useRegisterShortcuts,
   useRoute,
   useT,
@@ -32,6 +34,7 @@ import {
   pathFor,
   type ControlView,
 } from "./routes";
+import { Dashboard } from "./features/dashboard/Dashboard";
 import { Instances } from "./features/instances/Instances";
 import { CaseInstances } from "./features/cases/CaseInstances";
 import { Definitions } from "./features/definitions/Definitions";
@@ -49,6 +52,12 @@ export interface AppProps {
   eventBase: string;
   externalJobBase: string;
   /**
+   * IDM REST base. Used only to read the signed-in user's privileges, which is what
+   * decides whether Control shows its mutating actions (W2.1, §13.1). Optional: a
+   * deployment without IDM keeps every action visible and lets the server decide.
+   */
+  idmBase?: string;
+  /**
    * Base URL of the optional inbound event recorder (§7.2, ADR 0015). Empty — the
    * default — means it is not deployed, and Control offers no received-events view.
    */
@@ -63,6 +72,7 @@ export function App({
   cmmnBase,
   eventBase,
   externalJobBase,
+  idmBase,
   eventRecorderBase,
   fetchImpl,
 }: AppProps) {
@@ -116,6 +126,9 @@ export function App({
       cmmn: make(cmmnBase),
       event: make(eventBase),
       externalJob: make(externalJobBase),
+      // Undefined rather than a client over an empty base: no IDM is a real deployment
+      // shape, and `usePermissions` fails open on it by design.
+      idm: idmBase ? make(idmBase) : undefined,
       // Undefined rather than a client over an empty base: an absent recorder must be
       // distinguishable from one that has recorded nothing.
       eventRecorder: eventRecorderBase ? make(eventRecorderBase) : undefined,
@@ -126,6 +139,7 @@ export function App({
     cmmnBase,
     eventBase,
     externalJobBase,
+    idmBase,
     eventRecorderBase,
     fetchImpl,
     getAuthHeaders,
@@ -133,6 +147,17 @@ export function App({
     signOut,
     t,
   ]);
+
+  /**
+   * W2.1: Control degrades to read-only for a user without the admin privilege, rather
+   * than offering actions the server will reject. A convenience, not a boundary — §13.1
+   * still requires the server to enforce it, and `usePermissions` says why it fails open.
+   */
+  const idmApi = useMemo(
+    () => (clients.idm ? new IdmApi(clients.idm) : null),
+    [clients.idm],
+  );
+  const permissions = usePermissions({ idm: idmApi });
 
   const apis = useMemo(
     () => ({
@@ -198,9 +223,19 @@ export function App({
 
   return (
     <AppShell view={view} counts={counts} apps={apps} onChangePassword={changePassword}>
+      {view === "overview" ? (
+        <Dashboard
+          instanceApi={apis.instances}
+          caseApi={apis.cases}
+          jobApi={apis.jobs}
+          repositoryApi={apis.repository}
+        />
+      ) : null}
       {view === "instances" ? (
         <Instances
           instanceApi={apis.instances}
+          repositoryApi={apis.repository}
+          readOnly={!permissions.canMutate}
           selectedId={route.params.instanceId}
           onSelect={(id) => navigate(id ? instancePath(id) : pathFor("instances"))}
         />

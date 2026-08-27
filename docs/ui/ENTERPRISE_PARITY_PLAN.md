@@ -1,8 +1,10 @@
 # TogetherFlow — Enterprise Parity Plan
 
-Status: Draft v3 · Written 2026-08-27
+Status: Draft v4 · Written 2026-08-27
 · v2 added [Execution chunks](#execution-chunks)
 · v3 records **Wave 1 as built** — see [Wave 1 — Foundation](#wave-1--foundation)
+· v4 records **Wave 2 as built**, with its discovery findings in
+[WAVE2_DISCOVERY.md](WAVE2_DISCOVERY.md)
 Companion to [REQUIREMENTS.md](REQUIREMENTS.md) (scope), [IMPLEMENTATION_PLAN.md](IMPLEMENTATION_PLAN.md)
 (how Phases 1–7 were sequenced), [STATUS.md](STATUS.md) (what is built) and
 [UI_POLISH_BACKLOG.md](UI_POLISH_BACKLOG.md) (the finish-quality and Enterprise-Design gap
@@ -432,6 +434,11 @@ than left to report false regressions against a UI they no longer resemble. One
 
 ### Wave 2 — Product depth
 
+**Built 2026-08-27.** W2.1–W2.3 are done. Both discovery steps ran first and their findings
+are in [WAVE2_DISCOVERY.md](WAVE2_DISCOVERY.md); [UI_POLISH_BACKLOG.md §K](UI_POLISH_BACKLOG.md)
+is the item-by-item record. One item in W2.2 turned out not to be buildable against this
+fork's REST layer and is documented as a gap rather than faked — see the ⚠️ note below.
+
 W2.1, W2.2 and W2.3 are independent of each other and can run in parallel, or in any order,
 once W1.5 lands. Each opens with its phase's discovery step, and a discovery result is
 allowed to cut that chunk's scope — that is what the step is for.
@@ -443,6 +450,13 @@ in bulk, edit a running instance's variable and filter by it, all from Control, 
 coverage per §8; every capability E2.0 found unsupported is written down as a gap rather
 than left unmentioned.
 *Depends on*: W1.5. *Size*: L. *Backend*: no.
+**✅ Done.** E2.0 found all four capabilities supported, so scope stood. Migration is
+validate-then-migrate with a one-to-one mapping editor; variables are editable through the
+single-variable resource; execution moves; business-key, date-range and variable-value
+filters all reach the URL; bulk delete uses the engine's own transactional endpoint; and
+Control degrades to read-only for a non-admin, failing *open* where privileges cannot be
+read. Two narrowings are recorded rather than silent: no one-to-many/many-to-one mappings,
+and no pre/post-upgrade script hooks.
 
 **W2.2 — Work parity.** *(Phase E3 in full; E3.0 discovery first.)* This chunk delivers D1
 user chips, which W2.1 consumes — if the two run concurrently, D1 lands here and Control
@@ -450,6 +464,12 @@ picks it up rather than building its own.
 *Exit*: as Phase E3 — golden path plus save-without-complete, ad-hoc task creation and the
 two missing filters, all e2e-covered; no screen in Work renders a raw user id.
 *Depends on*: W1.5. *Size*: L. *Backend*: no.
+**⚠️ Done, with one item documented as a gap.** Tabs, save-without-complete, the status
+ribbon, all five filters, the editable due date, ad-hoc task creation, the People tab and
+user chips are in. **Flowable Work's three-level sort is not, and cannot be**:
+`TaskBaseResource` exposes a single `sort` property with no secondary key. Sorting the
+fetched page client-side was rejected — it is a lie about the rows not on it — so Work
+ships the single-column server sort and closing the gap is engine work.
 
 **W2.3 — Design parity, part 1.** *(Phase E4 in full, its items 1–7 in the order stated
 there — the ordering is by cost-to-value and should not be reshuffled toward the visible
@@ -457,10 +477,17 @@ items.)*
 *Exit*: as Phase E4 — a citizen developer can author, from the UI alone, every form the
 renderer can render; no editor has a bespoke toolbar; deleting a referenced model warns.
 *Depends on*: W1.5, and W1.1 must already be in. *Size*: L. *Backend*: no.
+**✅ Done**, all seven items. The palette carries all 19 renderable types and every
+constraint the renderer honours; one menu bar replaces six bespoke toolbars; relations are
+derived from stored sources and a delete that would break a known reference names it.
 
 **Wave 2 is the last work in this plan that touches no Java.** If only part of the plan gets
 built, finishing at W2.3 is the honest place to stop: axes 1 and 2 are closed, all four apps
 read as finished products, and nothing is left half-converted.
+
+**That point has now been reached.** Two things remain outstanding from Waves 1–2 and
+neither is Wave 3: the visual-regression baselines (W1.5) and the multi-level task sort,
+which needs a query-resource change and therefore belongs with the backend chunks.
 
 ### Wave 3 — Structural
 
@@ -501,9 +528,9 @@ volumes (§13.5).
 | W1.3 | E1 | Routing and shell — F1, F5, B5 | W1.2 | L | no | ✅ done |
 | W1.4 | E1 | Component set — F2, F3, F4, F6, C3, C4 | W1.3 | L | no | ✅ done |
 | W1.5 | E1 | Tables and navigation — C1, C2, B1–B3, G1 | W1.4 | L | no | ⚠️ baselines outstanding |
-| W2.1 | E2 | Control parity | W1.5 | L | no | not started |
-| W2.2 | E3 | Work parity *(delivers D1)* | W1.5 | L | no | not started |
-| W2.3 | E4 | Design parity, part 1 | W1.5, W1.1 | L | no | not started |
+| W2.1 | E2 | Control parity | W1.5 | L | no | ✅ done |
+| W2.2 | E3 | Work parity *(delivers D1)* | W1.5 | L | no | ⚠️ sort gap documented |
+| W2.3 | E4 | Design parity, part 1 | W1.5, W1.1 | L | no | ✅ done |
 | W3.1 | E5 | Workspaces + permissions | E0.3, W2.3 | XL | **yes** | blocked on E0.3 |
 | W3.2 | E6 | Git connectivity | W3.1 | XL | **yes** | not started |
 | W3.3 | E7 | Data model, preview, translations | W2.3, W3.1 | L | some | not started |

@@ -8,11 +8,17 @@
     "commit as the change, so the increase is reviewed alongside what caused it."
   ],
   "groups": {
-    "assets/index": 112
+    "assets/index": 120
   },
-  "totalKb": 116,
+  "totalKb": 124,
   "_w1_note": [
     "assets/index went 108 -> 112 with W1.1-W1.5 — see the note in Work's",
     "bundle-budget.json; the growth is the same shared code."
+  ],
+  "_w2_note": [
+    "assets/index went 112 -> 120 with W2.1: the migration mapping editor, the",
+    "variable editor, the change-state dialog, the rich filter bar with its URL",
+    "codec, and the overview screen. The mapping editor is the largest single",
+    "piece and the one E2 exists for."
   ]
 }

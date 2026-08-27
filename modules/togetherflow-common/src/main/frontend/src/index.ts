@@ -10,6 +10,7 @@ export * from "./api/resources";
 export * from "./api/types";
 export * from "./api/variables";
 export * from "./auth/AuthContext";
+export * from "./auth/usePermissions";
 export * from "./auth/oidc";
 export * from "./config";
 export * from "./i18n/I18nContext";

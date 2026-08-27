@@ -26,6 +26,7 @@ import {
   type ModelValidationApi,
 } from "@togetherflow/common";
 import { useConflictPrompt } from "../editors/ConflictPrompt";
+import { EditorMenuBar } from "../editors/EditorMenuBar";
 import { useBpmnModeler } from "./useBpmnModeler";
 import type { IdentitySource } from "./useIdentities";
 import { canDeploy, issuesFromServer, validateBpmn, type ValidationIssue } from "./validateBpmn";
@@ -401,68 +402,34 @@ export function BpmnEditor({
 
   return (
     <section className="tf-editor" aria-label={t("editor.editing", { name: model.name || model.id })}>
-      <header className="tf-editor__header">
-        <div className="tf-editor__identity">
-          <button type="button" className="tf-back" onClick={leave}>
-            ← Back to models
-          </button>
-          <h1 className="tf-editor__title">{model.name || model.key || model.id}</h1>
-          <p className="tf-editor__meta" aria-live="polite">
-            {dirty
-              ? t("editor.unsaved")
-              : lastSavedAt
-                ? t("editor.saved", { time: lastSavedAt.toLocaleTimeString(locale) })
-                : t("editor.noChanges")}
-          </p>
-        </div>
-
-        <div className="tf-editor__actions">
-          <div className="tf-editor__group" role="group" aria-label={t("editor.history")}>
-            <Button variant="secondary" disabled={!canUndo || busy} onClick={undo}>
-              {t("action.undo")}
-            </Button>
-            <Button variant="secondary" disabled={!canRedo || busy} onClick={redo}>
-              {t("action.redo")}
-            </Button>
-          </div>
-          <div className="tf-editor__group" role="group" aria-label={t("editor.zoom")}>
-            <Button variant="secondary" onClick={zoomOut} aria-label={t("editor.zoomOut")}>
-              −
-            </Button>
-            <Button variant="secondary" onClick={zoomFit} aria-label={t("editor.zoomFit")}>
-              {t("action.fit")}
-            </Button>
-            <Button variant="secondary" onClick={zoomIn} aria-label={t("editor.zoomIn")}>
-              +
-            </Button>
-          </div>
-          <Button variant="secondary" disabled={!ready} onClick={() => void openSource()}>
-            {t("bpmn.xmlTitle")}
-          </Button>
-          <Button
-            variant="secondary"
-            loading={checking}
-            disabled={!ready}
-            onClick={() => void check()}
-          >
-            {t("action.check")}
-          </Button>
-          <Button variant="secondary" loading={saving} disabled={!ready} onClick={() => void save()}>
-            {t("action.save")}
-          </Button>
-          <Button
-            variant="secondary"
-            loading={saving}
-            disabled={!ready}
-            onClick={() => void saveVersion()}
-          >
-            {t("editor.saveVersion")}
-          </Button>
-          <Button loading={deploying || checking} disabled={!ready} onClick={() => void startDeploy()}>
-            {t("action.deploy")}
-          </Button>
-        </div>
-      </header>
+      {/* W2.3 (I8): one menu bar, shared by all six editors. */}
+      <EditorMenuBar
+        title={model.name || model.key || model.id}
+        status={
+          dirty
+            ? t("editor.unsaved")
+            : lastSavedAt
+              ? t("editor.saved", { time: lastSavedAt.toLocaleTimeString(locale) })
+              : t("editor.noChanges")
+        }
+        onBack={leave}
+        onSave={() => void save()}
+        saving={saving}
+        ready={ready}
+        onSaveVersion={() => void saveVersion()}
+        onValidate={() => void check()}
+        validating={checking}
+        undo={{ run: undo, can: canUndo && !busy }}
+        redo={{ run: redo, can: canRedo && !busy }}
+        zoom={{ in: zoomIn, out: zoomOut, fit: zoomFit }}
+        onExport={() => void openSource()}
+        exportLabel={t("bpmn.xmlTitle")}
+        primary={{
+          label: t("action.deploy"),
+          run: () => void startDeploy(),
+          busy: deploying || checking,
+        }}
+      />
 
       {issues && issues.length > 0 ? (
         <section className="tf-issues" aria-label={t("bpmn.checksLabel")}>

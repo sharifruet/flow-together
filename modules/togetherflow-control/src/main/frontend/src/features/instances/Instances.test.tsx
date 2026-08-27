@@ -10,6 +10,7 @@ import {
   useLocation,
   useNavigate,
   type InstanceApi,
+  type RepositoryApi,
   type ProcessInstanceResponse,
 } from "@togetherflow/common";
 import { Instances } from "./Instances";
@@ -59,6 +60,13 @@ function stubApi(overrides: Record<string, unknown> = {}): StubApi {
  * tests also cover W1.3's round trip: clicking a row puts the id in the URL, and the
  * detail view is rendered from the URL rather than from component state.
  */
+/** W2.1 needs definitions for migration targets and change-state; stubbed empty here. */
+const REPOSITORY = {
+  getProcessDefinition: vi.fn().mockResolvedValue({ id: "p:1", key: "invoice", version: 1 }),
+  listProcessDefinitions: vi.fn().mockResolvedValue({ data: [], total: 0, start: 0, size: 25 }),
+  listActivityIdsFor: vi.fn().mockResolvedValue([]),
+} as unknown as RepositoryApi;
+
 function Harness({ instanceApi }: { instanceApi: InstanceApi }) {
   const { path } = useLocation();
   const navigate = useNavigate();
@@ -66,6 +74,7 @@ function Harness({ instanceApi }: { instanceApi: InstanceApi }) {
   return (
     <Instances
       instanceApi={instanceApi}
+      repositoryApi={REPOSITORY}
       selectedId={selectedId}
       onSelect={(id) => navigate(id ? `/instances/${id}` : "/instances")}
     />
@@ -185,6 +194,8 @@ describe("Instances", () => {
     await openDetail();
 
     expect(screen.getByText(/no activity instances recorded/i)).toBeInTheDocument();
-    expect(screen.getByText(/no variables set/i)).toBeInTheDocument();
+    // The variable editor's own empty state since W2.1 — the section is editable now,
+    // so "no variables" is a state of the editor rather than of a read-only table.
+    expect(screen.getByText(/this instance has no variables/i)).toBeInTheDocument();
   });
 });

@@ -28,6 +28,7 @@ import {
   type ModelResponse,
 } from "@togetherflow/common";
 import { useConflictPrompt } from "../editors/ConflictPrompt";
+import { EditorMenuBar } from "../editors/EditorMenuBar";
 
 const AUTOSAVE_IDLE_MS = 4000;
 
@@ -178,34 +179,20 @@ export function EventEditor({
 
   return (
     <section className="tf-panel" aria-label={t("editor.editing", { name: model.name || model.id })}>
-      <button
-        type="button"
-        className="tf-back"
-        onClick={() => (dirty ? setConfirmLeave(true) : onBack())}
-      >
-        ← Back to models
-      </button>
-
-      <header className="tf-panel__header">
-        <div>
-          <h1 className="tf-panel__title">{model.name || model.id}</h1>
-          <p className="tf-panel__meta" aria-live="polite">
-            {dirty ? t("editor.unsaved") : t("event.definition")}
-          </p>
-        </div>
-        <div className="tf-row-actions">
-          <Button variant="secondary" loading={saving} onClick={() => void save()}>
-            {t("action.save")}
-          </Button>
-          <Button
-            loading={deploying}
-            disabled={!event && !channel}
-            onClick={() => setConfirmDeploy(true)}
-          >
-            {t("action.deploy")}
-          </Button>
-        </div>
-      </header>
+      {/* W2.3 (I8): one menu bar, shared by all six editors. */}
+      <EditorMenuBar
+        title={model.name || model.id}
+        status={dirty ? t("editor.unsaved") : t("event.definition")}
+        onBack={() => (dirty ? setConfirmLeave(true) : onBack())}
+        onSave={() => void save()}
+        saving={saving}
+        ready={Boolean(event || channel)}
+        primary={{
+          label: t("action.deploy"),
+          run: () => setConfirmDeploy(true),
+          busy: deploying,
+        }}
+      />
 
       {loadError ? (
         <p className="tf-detail__note tf-detail__note--error" role="alert">

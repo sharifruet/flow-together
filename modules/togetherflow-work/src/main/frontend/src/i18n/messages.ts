@@ -22,6 +22,21 @@ export const workEn = {
   "nav.cases": "Cases",
   "nav.start": "Start work",
   "nav.history": "My history",
+  "nav.reports": "Overview",
+
+  "reports.label": "Overview",
+  "reports.title": "Your work at a glance",
+  "reports.description":
+    "Counts taken when this screen loaded. Select any tile to open the inbox filtered the same way.",
+  "reports.mine": "Assigned to you",
+  "reports.overdue": "Overdue",
+  "reports.dueToday": "Due today",
+  "reports.claimable": "Available to claim",
+  "reports.completed": "Completed by you",
+  "reports.needsAttention": "Needs attention",
+  "reports.unavailable": "This count could not be read.",
+  "reports.note":
+    "Each tile is the total of one task query, not an aggregate \u2014 this engine exposes no analytics API, so there is no trend line and no average cycle time here rather than a guess at one.",
 
   // Inbox (§7.1)
   "inbox.label": "Task inbox",
@@ -30,6 +45,59 @@ export const workEn = {
   "inbox.countLabel.one": "{count} task",
   "inbox.countLabel.other": "{count} tasks",
   "inbox.startWork": "Start work",
+  "action.failed": "That didn't work. Nothing has changed.",
+  "inbox.newTask": "New task",
+
+  /* ── W2.2: tabs, status ribbon, save, people, ad-hoc tasks ─────────────── */
+
+  "task.tabs.label": "Task sections",
+  "task.tabs.task": "Task",
+  "task.tabs.people": "People",
+  "task.tabs.subtasks": "Subtasks",
+  "task.tabs.documents": "Documents",
+
+  "task.status.overdue": "Overdue",
+  "task.status.unassigned": "Nobody has picked this up yet",
+  "task.status.dueLater": "Due later",
+  "task.status.yours": "Assigned to you",
+  "task.status.assigned": "Assigned to {assignee}",
+
+  "task.action.save": "Save",
+  "task.action.saved": "Your answers are saved. The task is still open.",
+  "task.action.saveFailed": "Your answers could not be saved.",
+  "task.due.updated": "Due date updated.",
+
+  "task.subTasks.none": "This task has no subtasks.",
+  "task.people.none": "Nobody else is involved in this task yet.",
+  "task.people.add": "Add",
+  "task.people.added": "{who} added.",
+  "task.people.removed": "{who} removed.",
+  "task.people.remove": "Remove {who}",
+  "task.people.kind": "Person or group",
+  "task.people.kind.user": "Person",
+  "task.people.kind.group": "Group",
+  "task.people.type": "Involved as",
+  "task.people.type.participant": "Participant",
+  "task.people.type.candidate": "Candidate",
+  "task.people.search": "Who to add",
+  "task.people.search.hint": "Type two characters to search, or enter an id directly.",
+  "task.people.search.hint.noIdm":
+    "No directory is configured here, so enter the id exactly as the engine knows it.",
+
+  "newTask.title": "New task",
+  "newTask.description":
+    "A task that belongs to no process \u2014 for work you want to track without a model behind it.",
+  "newTask.detailsLabel": "Details",
+  "newTask.name": "What needs doing",
+  "newTask.nameRequired": "Give the task a name.",
+  
+  "newTask.assignee": "Assign to",
+  "newTask.assignee.hint": "Leave empty to create it unassigned.",
+  "newTask.dueDate": "Due",
+  "newTask.priority": "Priority",
+  "newTask.create": "Create task",
+  "newTask.created": "\u201c{name}\u201d created.",
+  "newTask.failed": "The task could not be created.",
   "inbox.caption": "Tasks",
   "inbox.filterLabel": "Task filter",
   "inbox.filter.mine": "Assigned to me",
@@ -62,6 +130,17 @@ export const workEn = {
   "inbox.empty.involved.title": "You're not involved in any open tasks",
   "inbox.empty.involved.description":
     "Tasks where you're an owner, candidate or participant will appear here.",
+  "inbox.empty.completed.title": "Nothing completed yet",
+  "inbox.empty.completed.description":
+    "Tasks you finish appear here, most recent first.",
+  "inbox.empty.all.title": "No tasks, open or finished",
+  "inbox.empty.all.description":
+    "Nothing has been assigned to you yet.",
+  "inbox.filter.completed": "Completed",
+  "inbox.filter.all": "All",
+  "inbox.column.status": "Status",
+  "inbox.status.open": "Open",
+  "inbox.status.completed": "Completed",
   "inbox.empty.startSomething": "Start something new",
 
   // Task detail (§7.1)

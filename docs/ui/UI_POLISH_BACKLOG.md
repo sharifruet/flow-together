@@ -637,3 +637,121 @@ data loaders, SSR — is wanted in four flat apps. The ADR records the revisit t
 Still open in §A–C: **B4** (⌘K command palette) and **F7–F10** (designed responsiveness,
 motion design, toast affordances, print/export). None was in Wave 1's scope. **D1** has its
 primitive and two screens; the rest of Work and Control is W2.1/W2.2.
+
+---
+
+## K. Wave 2 — completed
+
+**Done 2026-08-27.** [ENTERPRISE_PARITY_PLAN.md](ENTERPRISE_PARITY_PLAN.md)'s W2.1–W2.3.
+Both discovery steps ran first and their findings are recorded in
+[WAVE2_DISCOVERY.md](WAVE2_DISCOVERY.md) — including the one thing the plan asked for that
+this fork's REST layer **cannot** do.
+
+### W2.1 — Control parity
+
+E2.0 confirmed all four capabilities the plan asked about, so the scope stood as written.
+
+- **Migration with a mapping editor.** `POST /migrate` takes a migration document and
+  `/migrate/validate` dry-runs it, so the flow is validate-then-migrate and never
+  collapses the two: an operator moving live instances should see what breaks first, and
+  the migrate button stays disabled until the engine says it will work. Any edit
+  invalidates a previous verdict — a stale "valid" is the dangerous state.
+
+  Two deliberate narrowings, both recorded in the discovery doc: the editor authors
+  **one-to-one** activity mappings only (one-to-many and many-to-one describe
+  multi-instance and gateway reshapes that need a diagram-level editor to be
+  comprehensible), and the **pre/post-upgrade script hooks are absent** — they execute
+  arbitrary code server-side, and a free-text script box in an operations console is a
+  privilege-escalation surface rather than a feature.
+
+- **Editable variables**, through `/variables/{name}` and never the collection PUT — the
+  collection replaces the whole set, so editing one variable through it would delete every
+  other. Type is an explicit control rather than inferred, because sending a string where
+  a `double` was stored changes the variable's type as a side effect and breaks the
+  expressions reading it.
+
+- **Move execution**, shaped exactly like `ExecutionChangeActivityStateRequest`: cancel
+  these, start those. A friendlier "move the token from A to B" would be wrong — the
+  engine allows cancelling without starting, starting without cancelling, and several of
+  each.
+
+- **Rich filters**: business key, started-after/before, and variable-value filters with
+  ten comparisons. Variable filters are a POST body with no query-string form, so rather
+  than let a variable-filtered list be the one list that cannot be linked, they are encoded
+  into the URL. The codec caught a real bug in review: `encodeURIComponent` does not escape
+  `~`, so the first separator silently truncated any value containing one.
+
+- **Bulk delete** on the instance list, using the engine's own `bulkDeleteProcessInstances`
+  — one transaction, so 200 stuck instances are all deleted or none are.
+
+- **Read-only for non-admins**, from the signed-in user's IDM privileges. It **fails open**:
+  where privileges cannot be read — no IDM, IDM unreachable — the actions stay and the
+  server decides. Failing closed would silently turn Control into a viewer for every
+  deployment that does not run IDM. §13.1 still requires the server to enforce it; hiding
+  a button is a courtesy, not a boundary, and `usePermissions` says so at the seam.
+
+- **An overview screen** of six count tiles, each the `total` of one `size=1` query, each
+  linking to the list behind it. The screen says in as many words that these are row counts
+  and not aggregates, and that two tiles can disagree by a few rows on a busy engine.
+
+### W2.2 — Work parity
+
+- **Task detail as four tabs** — Task, People, Subtasks, Documents — matching Flowable
+  Work. Comments and history stay on the Task tab: they are the conversation *about* the
+  task, not a separate subject.
+- **Save without completing**, which the plan calls the most-missed everyday affordance.
+  Not an engine action — there is no "save" verb — but a variable write, which is what
+  completing does minus the completion.
+- **Status ribbon**, banded the way Flowable Work bands it. Overdue outranks unassigned:
+  an overdue task nobody owns is an overdue task.
+- **Five filters.** Completed and All query the *historic* task resource, because a
+  finished task has no runtime row — so the inbox switches resources rather than pretending
+  one answers both. Their field names differ from the runtime query's (`dueDateAfter`, not
+  `dueAfter`) and are translated rather than reused; reusing them would compile and
+  silently filter nothing.
+- **Editable due date**, **ad-hoc task creation**, a **People tab** that adds and removes
+  involved users and candidates, and **user chips** replacing the raw ids.
+- **An overview screen** on the same honest basis as Control's.
+
+**The one gap, not faked.** The plan asks for Flowable Work's three-level sort — due date
+ascending, then priority descending, then created descending. `TaskBaseResource` exposes a
+single `sort` property from a fixed map, with no list form and no secondary key. The
+tempting workaround — sorting the fetched page in the browser — is *not* done: a page of 25
+rows reordered locally is a lie about the other 4,000, and it puts the wrong 25 on page one
+in the first place. Work ships the single-column server sort defaulting to due date
+ascending, and closing the gap properly is engine work.
+
+### W2.3 — Design parity, part 1
+
+All seven items, in the plan's order.
+
+1. **Form builder parity.** The palette went from 11 types to all **19 the renderer can
+   render**, grouped Data entry / Selection / People / Display / Container. Every one of the
+   nine `params` constraints the renderer already honoured is now authorable — before this
+   a form could validate a length, a range or a regex that nobody could set without editing
+   JSON. Plus the twelve-slot row grid and drag-and-drop, with keyboard reordering beside
+   it because drag is unavailable to a keyboard user.
+2. **One shared editor menu bar** across all six editors. It is capability-shaped, not
+   editor-shaped: a group appears only when the editor passes a handler, because absent is
+   clearer than disabled when the capability does not exist at all.
+3. **Model relations**, derived by parsing stored sources — the engine records no
+   relationships, since model source is opaque bytes to it. Regex rather than the moddles,
+   because importing the two heaviest chunks into the library screen to read six attributes
+   is the wrong trade. Expressions are skipped rather than reported as a model named
+   `${target}`, and a delete that would break a known reference says whose.
+4. **Model templates**, a flag in `metaInfo`. Worth noting for W3.1: this works *because*
+   the engine never reads `metaInfo` — which is exactly why E0.3 must not adopt the same
+   trick for workspaces, where the absence of server-side enforcement would matter.
+5. **App export/import as a ZIP**, with stop / update / rename clash handling. Not the
+   engine's deployment bundle: that one carries no keys, versions or draft metadata, so a
+   round trip through it would lose what an author cares about.
+6. **App editor depth** — theme, tags, display order — all three marked in the UI as
+   draft-only, because this distribution's app engine reads none of them.
+7. **Library IA** — a card view with tags and a persisted layout toggle. The table stays
+   the default and the cards gained an overflow menu, because a card view that could only
+   *open* would be a downgrade from the table it replaced.
+
+### Not closed
+
+**B4** (⌘K palette) and **F7–F10** were never in Wave 2's scope. Wave 1's outstanding
+visual-regression baselines are still outstanding — see [§J](#j-wave-1--completed).

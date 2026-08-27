@@ -13,15 +13,16 @@
 
 import { buildPath, type IconName, type RouteDefinition } from "@togetherflow/common";
 
-export type WorkView = "inbox" | "cases" | "start" | "history";
+export type WorkView = "inbox" | "cases" | "start" | "history" | "reports";
 
-export const WORK_VIEWS: WorkView[] = ["inbox", "cases", "start", "history"];
+export const WORK_VIEWS: WorkView[] = ["inbox", "cases", "start", "history", "reports"];
 
 export const ROUTES: Record<WorkView, { pattern: string; icon: IconName }> = {
   inbox: { pattern: "/inbox", icon: "inbox" },
   cases: { pattern: "/cases", icon: "cases" },
   start: { pattern: "/start", icon: "play" },
   history: { pattern: "/history", icon: "history" },
+  reports: { pattern: "/reports", icon: "system" },
 };
 
 /**
@@ -36,6 +37,7 @@ export const ROUTE_TABLE: RouteDefinition<WorkView>[] = [
   { id: "cases", pattern: ROUTES.cases.pattern },
   { id: "start", pattern: ROUTES.start.pattern },
   { id: "history", pattern: ROUTES.history.pattern },
+  { id: "reports", pattern: ROUTES.reports.pattern },
   // The root is the inbox: Work opens on what is waiting for you.
   { id: "inbox", pattern: "/" },
 ];

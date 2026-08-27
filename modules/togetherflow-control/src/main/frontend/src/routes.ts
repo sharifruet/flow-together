@@ -12,6 +12,7 @@
 import { buildPath, type IconName, type RouteDefinition } from "@togetherflow/common";
 
 export type ControlView =
+  | "overview"
   | "instances"
   | "cases"
   | "definitions"
@@ -21,6 +22,7 @@ export type ControlView =
   | "system";
 
 export const CONTROL_VIEWS: ControlView[] = [
+  "overview",
   "instances",
   "cases",
   "definitions",
@@ -38,6 +40,7 @@ interface ControlRoute {
 }
 
 export const ROUTES: Record<ControlView, ControlRoute> = {
+  overview: { pattern: "/overview", icon: "system" },
   instances: { pattern: "/instances", icon: "instances" },
   cases: { pattern: "/cases", icon: "cases" },
   definitions: { pattern: "/definitions", icon: "definitions" },
@@ -48,6 +51,7 @@ export const ROUTES: Record<ControlView, ControlRoute> = {
 };
 
 export const ROUTE_TABLE: RouteDefinition<ControlView>[] = [
+  { id: "overview", pattern: ROUTES.overview.pattern },
   { id: "instances", pattern: "/instances/:instanceId" },
   { id: "instances", pattern: ROUTES.instances.pattern },
   { id: "cases", pattern: "/cases/:caseId" },
@@ -61,8 +65,8 @@ export const ROUTE_TABLE: RouteDefinition<ControlView>[] = [
   { id: "deployments", pattern: ROUTES.deployments.pattern },
   { id: "events", pattern: ROUTES.events.pattern },
   { id: "system", pattern: ROUTES.system.pattern },
-  // The root is process instances: what is running is the first operational question.
-  { id: "instances", pattern: "/" },
+  // The root is the overview (W2.1): "is anything wrong" before "what is running".
+  { id: "overview", pattern: "/" },
 ];
 
 export function pathFor(view: ControlView): string {

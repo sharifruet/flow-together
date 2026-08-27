@@ -26,6 +26,7 @@ import {
   type TFunction,
 } from "@togetherflow/common";
 import { useConflictPrompt } from "../editors/ConflictPrompt";
+import { EditorMenuBar } from "../editors/EditorMenuBar";
 import { canDeploy, issuesFromServer, type ValidationIssue } from "../bpmn/validateBpmn";
 import { problemMarkers, validateCmmn } from "./validateCmmn";
 import {
@@ -657,87 +658,38 @@ export function CmmnEditor({
 
   return (
     <section className="tf-editor" aria-label={t("editor.editing", { name: model.name || model.id })}>
-      <header className="tf-editor__header">
-        <div className="tf-editor__identity">
-          <button
-            type="button"
-            className="tf-back"
-            onClick={() => (dirty ? setConfirmLeave(true) : onBack())}
-          >
-            ← Back to models
-          </button>
-          <h1 className="tf-editor__title">{model.name || model.key || model.id}</h1>
-          <p className="tf-editor__meta" aria-live="polite">
-            {dirty
-              ? t("editor.unsaved")
-              : lastSavedAt
-                ? t("editor.saved", { time: lastSavedAt.toLocaleTimeString(locale) })
-                : t("editor.noChanges")}
-          </p>
-        </div>
-        <div className="tf-editor__actions">
-          <div className="tf-editor__group" role="group" aria-label={t("editor.history")}>
-            <Button variant="secondary" disabled={!canUndo || busy} onClick={undo}>
-              {t("action.undo")}
-            </Button>
-            <Button variant="secondary" disabled={!canRedo || busy} onClick={redo}>
-              {t("action.redo")}
-            </Button>
-          </div>
-          <div className="tf-editor__group" role="group" aria-label={t("editor.zoom")}>
-            <Button
-              variant="secondary"
-              aria-label={t("editor.zoomOut")}
-              onClick={() => setViewport((v) => ({ ...v, scale: Math.max(0.25, v.scale / 1.2) }))}
-            >
-              −
-            </Button>
-            <Button variant="secondary" onClick={() => setViewport(DEFAULT_VIEWPORT)}>
-              {t("action.fit")}
-            </Button>
-            <Button
-              variant="secondary"
-              aria-label={t("editor.zoomIn")}
-              onClick={() => setViewport((v) => ({ ...v, scale: Math.min(3, v.scale * 1.2) }))}
-            >
-              +
-            </Button>
-          </div>
-          <Button
-            variant="secondary"
-            disabled={!caseModel}
-            onClick={() => caseModel && setSourceXml(serialiseCmmn(caseModel))}
-          >
-            {t("cmmn.xmlTitle")}
-          </Button>
-          <Button
-            variant="secondary"
-            loading={checking}
-            disabled={!caseModel || !validationApi}
-            onClick={() => void check()}
-          >
-            {t("action.check")}
-          </Button>
-          <Button variant="secondary" loading={saving} disabled={!caseModel} onClick={() => void save()}>
-            {t("action.save")}
-          </Button>
-          <Button
-            variant="secondary"
-            loading={saving}
-            disabled={!caseModel}
-            onClick={() => void saveVersion()}
-          >
-            {t("editor.saveVersion")}
-          </Button>
-          <Button
-            loading={deploying || checking}
-            disabled={!caseModel}
-            onClick={() => void startDeploy()}
-          >
-            {t("action.deploy")}
-          </Button>
-        </div>
-      </header>
+      {/* W2.3 (I8): one menu bar, shared by all six editors. */}
+      <EditorMenuBar
+        title={model.name || model.key || model.id}
+        status={
+          dirty
+            ? t("editor.unsaved")
+            : lastSavedAt
+              ? t("editor.saved", { time: lastSavedAt.toLocaleTimeString(locale) })
+              : t("editor.noChanges")
+        }
+        onBack={() => (dirty ? setConfirmLeave(true) : onBack())}
+        onSave={() => void save()}
+        saving={saving}
+        ready={Boolean(caseModel)}
+        onSaveVersion={() => void saveVersion()}
+        onValidate={validationApi ? () => void check() : undefined}
+        validating={checking}
+        undo={{ run: undo, can: canUndo && !busy }}
+        redo={{ run: redo, can: canRedo && !busy }}
+        zoom={{
+          in: () => setViewport((v) => ({ ...v, scale: Math.min(3, v.scale * 1.2) })),
+          out: () => setViewport((v) => ({ ...v, scale: Math.max(0.25, v.scale / 1.2) })),
+          fit: () => setViewport(DEFAULT_VIEWPORT),
+        }}
+        onExport={() => caseModel && setSourceXml(serialiseCmmn(caseModel))}
+        exportLabel={t("cmmn.xmlTitle")}
+        primary={{
+          label: t("action.deploy"),
+          run: () => void startDeploy(),
+          busy: deploying || checking,
+        }}
+      />
 
       {issues && issues.length > 0 ? (
         <section className="tf-issues" aria-label={t("cmmn.checksLabel")}>

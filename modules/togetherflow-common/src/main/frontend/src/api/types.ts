@@ -45,6 +45,12 @@ export interface TaskResponse {
   category?: string;
   formKey?: string;
   parentTaskId?: string;
+  /**
+   * Set only on rows the inbox mapped from a *historic* task (W2.2's Completed/All
+   * filters). A runtime task is by definition still open and never carries one, so its
+   * presence is what tells a screen it is looking at a finished task.
+   */
+  endTime?: string | null;
   executionId?: string;
   processInstanceId?: string;
   processDefinitionId?: string;
@@ -162,6 +168,22 @@ export interface HistoricTaskInstanceQueryRequest {
   taskNameLikeIgnoreCase?: string;
   processDefinitionKey?: string;
   finished?: boolean;
+  /**
+   * W2.2's Completed filter, and the due-date and priority bands applied to a finished
+   * task.
+   *
+   * The names differ from the runtime query's on purpose — they are the historic
+   * resource's own (`dueDateAfter`, not `dueAfter`; `withoutDueDate`, not
+   * `taskWithoutDueDate`), read off `HistoricTaskInstanceQueryRequest` rather than
+   * assumed to mirror the runtime one. They do not mirror it.
+   */
+  taskCompletedAfter?: string;
+  taskCompletedBefore?: string;
+  dueDateAfter?: string;
+  dueDateBefore?: string;
+  withoutDueDate?: boolean;
+  taskMinPriority?: number;
+  taskMaxPriority?: number;
   tenantId?: string;
 }
 

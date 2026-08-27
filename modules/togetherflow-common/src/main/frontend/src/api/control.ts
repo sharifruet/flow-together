@@ -182,6 +182,34 @@ export interface HistoricDecisionExecutionResponse {
   tenantId?: string;
 }
 
+/**
+ * The twelve comparisons `QueryVariable.QueryVariableOperation` accepts. Confirmed against
+ * this fork's own source in W2.1's discovery step, not assumed from documentation.
+ */
+export type VariableOperation =
+  | "equals"
+  | "notEquals"
+  | "equalsIgnoreCase"
+  | "notEqualsIgnoreCase"
+  | "like"
+  | "likeIgnoreCase"
+  | "greaterThan"
+  | "greaterThanOrEquals"
+  | "lessThan"
+  | "lessThanOrEquals"
+  | "exists"
+  | "notExists";
+
+/** Operations that compare against nothing — the value is omitted rather than sent empty. */
+export const UNARY_VARIABLE_OPERATIONS: VariableOperation[] = ["exists", "notExists"];
+
+export interface VariableFilter {
+  name: string;
+  operation: VariableOperation;
+  /** Omitted for `exists`/`notExists`. Strings, numbers and booleans all round-trip. */
+  value?: string | number | boolean;
+}
+
 export interface ProcessInstanceQuery {
   start?: number;
   size?: number;
@@ -190,12 +218,76 @@ export interface ProcessInstanceQuery {
   processInstanceName?: string;
   processInstanceNameLikeIgnoreCase?: string;
   processDefinitionKey?: string;
+  processBusinessKey?: string;
   processBusinessKeyLike?: string;
   startedBy?: string;
   involvedUser?: string;
   suspended?: boolean;
   excludeSubprocesses?: boolean;
+  /** ISO instants. The engine's own `startedAfter`/`startedBefore`. */
+  startedAfter?: string;
+  startedBefore?: string;
+  /** Variable-value filters (W2.1). Sent in the POST body — they have no query-string form. */
+  variables?: VariableFilter[];
   tenantId?: string;
+}
+
+/**
+ * Just enough of the engine's `BpmnModel` JSON to walk it for activity ids.
+ *
+ * Deliberately partial: the full serialised model is large and its shape is the engine's
+ * object graph rather than a designed contract, so typing all of it would be a liability.
+ * `$type` is how the serialiser names the element class.
+ */
+interface BpmnFlowElement {
+  id?: string;
+  name?: string;
+  $type?: string;
+  flowElements?: BpmnFlowElement[];
+}
+
+interface BpmnModelResponse {
+  mainProcess?: { flowElements?: BpmnFlowElement[] };
+  processes?: { flowElements?: BpmnFlowElement[] }[];
+}
+
+/* ── Migration (W2.1) ───────────────────────────────────────────────────────
+ * Shapes taken from `ProcessInstanceMigrationDocumentConstants` and
+ * `ProcessInstanceMigrationDocumentConverter`, which is what the engine actually parses.
+ */
+
+/**
+ * A one-to-one activity mapping, optionally re-stamping the task it lands on.
+ *
+ * The engine also understands one-to-many and many-to-one mappings; the client would send
+ * them, but no UI authors them — see docs/ui/WAVE2_DISCOVERY.md for why.
+ */
+export interface ActivityMigrationMapping {
+  fromActivityId: string;
+  toActivityId: string;
+  newAssignee?: string;
+  newOwner?: string;
+  newDueDate?: string;
+  newPriority?: number;
+  newName?: string;
+  newCandidateUsers?: string[];
+  newCandidateGroups?: string[];
+}
+
+export interface MigrationDocument {
+  /** One of these two identifies the target; the id form is what the UI sends. */
+  toProcessDefinitionId?: string;
+  toProcessDefinitionKey?: string;
+  toProcessDefinitionVersion?: number;
+  toProcessDefinitionTenantId?: string;
+  activityMappings?: ActivityMigrationMapping[];
+  processInstanceVariables?: Record<string, unknown>;
+}
+
+/** What `/migrate/validate` answers. `validationMessages` is empty when it would succeed. */
+export interface MigrationValidationResult {
+  validationMessages?: string[];
+  migrationValid?: boolean;
 }
 
 /* ── Jobs ───────────────────────────────────────────────────────────────── */
@@ -303,6 +395,74 @@ export class InstanceApi {
     );
   }
 
+  /**
+   * Creates or updates one variable on a *running* instance (W2.1).
+   *
+   * PUT on the single-variable resource rather than the collection: the collection's PUT
+   * replaces the whole set, so editing one variable through it would delete every other
+   * variable that was not sent.
+   */
+  setVariable(instanceId: string, variable: RestVariable): Promise<RestVariable> {
+    return this.client.request(
+      `/runtime/process-instances/${encodeURIComponent(instanceId)}/variables/${encodeURIComponent(variable.name)}`,
+      { method: "PUT", body: { ...variable, scope: variable.scope ?? "global" } },
+    );
+  }
+
+  /** Adds a variable that does not exist yet. POST rejects a name already present. */
+  createVariable(instanceId: string, variable: RestVariable): Promise<RestVariable[]> {
+    return this.client.request(
+      `/runtime/process-instances/${encodeURIComponent(instanceId)}/variables`,
+      { method: "POST", body: [{ ...variable, scope: variable.scope ?? "global" }] },
+    );
+  }
+
+  deleteVariable(instanceId: string, name: string): Promise<void> {
+    return this.client.request(
+      `/runtime/process-instances/${encodeURIComponent(instanceId)}/variables/${encodeURIComponent(name)}`,
+      { method: "DELETE" },
+    );
+  }
+
+  /**
+   * Moves execution state (W2.1): cancel these activities, start those.
+   *
+   * Deliberately presented as exactly what `ExecutionChangeActivityStateRequest` is. A
+   * friendlier abstraction — "move the token from A to B" — would be inventing a model the
+   * engine does not have, and would mislead the moment a cancel and a start are not paired.
+   */
+  changeState(
+    instanceId: string,
+    change: { cancelActivityIds?: string[]; startActivityIds?: string[] },
+  ): Promise<void> {
+    return this.client.request(
+      `/runtime/process-instances/${encodeURIComponent(instanceId)}/change-state`,
+      { method: "POST", body: change },
+    );
+  }
+
+  /**
+   * Dry-runs a migration. Always called before `migrate` — the engine offers the check, and
+   * an operator moving live instances between definitions should see what will break first.
+   */
+  validateMigration(
+    instanceId: string,
+    document: MigrationDocument,
+    signal?: AbortSignal,
+  ): Promise<MigrationValidationResult> {
+    return this.client.request(
+      `/runtime/process-instances/${encodeURIComponent(instanceId)}/migrate/validate`,
+      { method: "POST", body: document, signal },
+    );
+  }
+
+  migrate(instanceId: string, document: MigrationDocument): Promise<void> {
+    return this.client.request(
+      `/runtime/process-instances/${encodeURIComponent(instanceId)}/migrate`,
+      { method: "POST", body: document },
+    );
+  }
+
   listActivities(
     instanceId: string,
     signal?: AbortSignal,
@@ -324,6 +484,21 @@ export class InstanceApi {
     return this.client.request(`/runtime/process-instances/${encodeURIComponent(instanceId)}`, {
       method: "DELETE",
       query: { deleteReason },
+    });
+  }
+
+  /**
+   * Deletes several instances in one call (W2.1).
+   *
+   * A real engine endpoint, not a loop of single deletes: `bulkDeleteProcessInstances`
+   * runs in one transaction, so an operator clearing 200 stuck instances gets all or
+   * nothing rather than a partial result they then have to reconcile. `action` is
+   * required and the engine rejects anything but "delete".
+   */
+  bulkDelete(instanceIds: string[], deleteReason?: string): Promise<void> {
+    return this.client.request("/runtime/process-instances/delete", {
+      method: "POST",
+      body: { action: "delete", instanceIds, deleteReason },
     });
   }
 
@@ -410,7 +585,14 @@ export class RepositoryApi {
    * the definitions it exists to un-suspend.
    */
   listProcessDefinitions(
-    query: { latest?: boolean; size?: number; nameLike?: string; suspended?: boolean } = {},
+    query: {
+      latest?: boolean;
+      size?: number;
+      nameLike?: string;
+      suspended?: boolean;
+      /** Every version of one definition — W2.1's migration targets. Pair with `latest: false`. */
+      key?: string;
+    } = {},
     signal?: AbortSignal,
   ): Promise<DataResponse<ProcessDefinitionResponse>> {
     return this.client.request("/repository/process-definitions", {
@@ -419,6 +601,7 @@ export class RepositoryApi {
         size: query.size ?? 100,
         nameLike: query.nameLike,
         suspended: query.suspended,
+        key: query.key,
         sort: "name",
         tenantId: this.client.tenantId,
       },
@@ -442,6 +625,48 @@ export class RepositoryApi {
         body: { action: suspended ? "suspend" : "activate", includeProcessInstances },
       },
     );
+  }
+
+  getProcessDefinition(
+    definitionId: string,
+    signal?: AbortSignal,
+  ): Promise<ProcessDefinitionResponse> {
+    return this.client.request(
+      `/repository/process-definitions/${encodeURIComponent(definitionId)}`,
+      { signal },
+    );
+  }
+
+  /**
+   * The activity ids in a definition, for W2.1's migration mapping editor.
+   *
+   * `/model` hands back the whole `BpmnModel` as JSON. Only the flow elements are wanted,
+   * so this flattens it here rather than handing a caller a shape whose depth is an
+   * accident of the engine's object graph. Sub-process children are included and prefixed
+   * by nothing — activity ids are unique within a definition, which is what makes a flat
+   * mapping list correct.
+   */
+  async listActivityIdsFor(
+    definitionId: string,
+    signal?: AbortSignal,
+  ): Promise<{ id: string; name?: string; type?: string }[]> {
+    const model = await this.client.request<BpmnModelResponse>(
+      `/repository/process-definitions/${encodeURIComponent(definitionId)}/model`,
+      { signal },
+    );
+
+    const found: { id: string; name?: string; type?: string }[] = [];
+    const walk = (elements: BpmnFlowElement[] | undefined) => {
+      for (const element of elements ?? []) {
+        // Sequence flows have ids too and are never a migration target.
+        if (element.id && element.$type !== "sequenceFlow") {
+          found.push({ id: element.id, name: element.name, type: element.$type });
+        }
+        walk(element.flowElements);
+      }
+    };
+    walk(model.mainProcess?.flowElements ?? model.processes?.[0]?.flowElements);
+    return found;
   }
 
   listStarters(definitionId: string, signal?: AbortSignal): Promise<RestIdentityLink[]> {

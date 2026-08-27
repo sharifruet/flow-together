@@ -11,11 +11,18 @@ export interface FieldProps {
   error?: string;
   hint?: string;
   required?: boolean;
+  /**
+   * Renders the label for assistive tech only, where the surrounding layout already names
+   * the control — a per-row select in a mapping table, say. The label is *hidden*, never
+   * dropped: an unlabelled select is unusable with a screen reader, and "the column header
+   * says what it is" is not true once you are navigating field by field.
+   */
+  hideLabel?: boolean;
   children: (props: { id: string; describedBy: string | undefined; invalid: boolean }) => ReactNode;
 }
 
 /** Wraps a control with its label, hint and inline validation message (§14.3). */
-export function Field({ label, error, hint, required, children }: FieldProps) {
+export function Field({ label, error, hint, required, hideLabel = false, children }: FieldProps) {
   const id = useId();
   const hintId = hint ? `${id}-hint` : undefined;
   const errorId = error ? `${id}-error` : undefined;
@@ -23,7 +30,7 @@ export function Field({ label, error, hint, required, children }: FieldProps) {
 
   return (
     <div className={["tf-field", error ? "tf-field--invalid" : ""].filter(Boolean).join(" ")}>
-      <label className="tf-field__label" htmlFor={id}>
+      <label className={hideLabel ? "tf-visually-hidden" : "tf-field__label"} htmlFor={id}>
         {label}
         {required ? (
           <span className="tf-field__required" aria-hidden="true">
@@ -51,11 +58,13 @@ export interface TextInputProps extends InputHTMLAttributes<HTMLInputElement> {
   label: string;
   error?: string;
   hint?: string;
+  /** See `FieldProps.hideLabel` — hidden, not dropped. */
+  hideLabel?: boolean;
 }
 
-export function TextInput({ label, error, hint, required, ...rest }: TextInputProps) {
+export function TextInput({ label, error, hint, required, hideLabel, ...rest }: TextInputProps) {
   return (
-    <Field label={label} error={error} hint={hint} required={required}>
+    <Field label={label} error={error} hint={hint} required={required} hideLabel={hideLabel}>
       {({ id, describedBy, invalid }) => (
         <input
           {...rest}
@@ -74,12 +83,14 @@ export interface SelectInputProps extends SelectHTMLAttributes<HTMLSelectElement
   label: string;
   error?: string;
   hint?: string;
+  /** See `FieldProps.hideLabel` — hidden, not dropped. */
+  hideLabel?: boolean;
   children: ReactNode;
 }
 
-export function SelectInput({ label, error, hint, children, ...rest }: SelectInputProps) {
+export function SelectInput({ label, error, hint, hideLabel, children, ...rest }: SelectInputProps) {
   return (
-    <Field label={label} error={error} hint={hint}>
+    <Field label={label} error={error} hint={hint} hideLabel={hideLabel}>
       {({ id, describedBy, invalid }) => (
         <select
           {...rest}

@@ -79,7 +79,7 @@ describe("TaskDetail", () => {
   it("loads and shows the task", async () => {
     renderDetail(stubApi());
     expect(await screen.findByRole("heading", { name: "Approve invoice" })).toBeInTheDocument();
-    expect(screen.getByText(/assigned to alice/i)).toBeInTheDocument();
+    expect(screen.getAllByText("alice")[0]).toBeInTheDocument();
   });
 
   it("requires confirmation naming the task before completing it", async () => {
