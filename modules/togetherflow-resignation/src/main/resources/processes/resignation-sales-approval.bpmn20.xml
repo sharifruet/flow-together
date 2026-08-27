@@ -1,0 +1,230 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<definitions xmlns="http://www.omg.org/spec/BPMN/20100524/MODEL"
+             xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+             xmlns:flowable="http://flowable.org/bpmn"
+             xmlns:bpmndi="http://www.omg.org/spec/BPMN/20100524/DI"
+             xmlns:omgdc="http://www.omg.org/spec/DD/20100524/DC"
+             xmlns:omgdi="http://www.omg.org/spec/DD/20100524/DI"
+             typeLanguage="http://www.w3.org/2001/XMLSchema"
+             expressionLanguage="http://www.w3.org/1999/XPath"
+             targetNamespace="http://togetherflow.org/resignation">
+
+  <!--
+      Resignation_Process.xlsx step 2 — "Resignation Approval & Sales Clearance".
+
+      The resignation letter and the sales clearance travel together up the sales line:
+      RSE -> ZSI -> SM -> GM. Every level approves both documents in one act, which is why
+      there is one task per level rather than two.
+
+      The spreadsheet describes only the happy path. A chain of four approvals with no way
+      back would be unusable in practice, so each level can also return the record to the
+      ASE who logged it; the ASE amends and the chain restarts at RSE. The decision is read
+      with `variables:equals`, which is false for an absent variable, so a task completed
+      without a decision returns rather than silently approving.
+  -->
+  <process id="salesResignationApproval" name="Sales Resignation Approval Chain" isExecutable="true">
+    <documentation>Sequential approval of the resignation letter and the sales clearance by RSE, ZSI, SM and GM (Resignation_Process.xlsx step 2).</documentation>
+
+    <startEvent id="startApproval" name="Forwarded by ASE"/>
+    <sequenceFlow id="toRseApproval" sourceRef="startApproval" targetRef="rseApproval"/>
+
+    <userTask id="rseApproval" name="RSE approval — resignation and sales clearance"
+              flowable:candidateGroups="sales-rse" flowable:formKey="approvalDecisionForm">
+      <documentation>Approve the resignation and the sales clearance, or return them to the ASE.</documentation>
+    </userTask>
+    <sequenceFlow id="toRseDecision" sourceRef="rseApproval" targetRef="rseDecision"/>
+
+    <exclusiveGateway id="rseDecision" name="RSE decision" default="rseReturned"/>
+    <sequenceFlow id="rseApproved" name="Approved" sourceRef="rseDecision" targetRef="notifyRseEntry">
+      <conditionExpression xsi:type="tFormalExpression"><![CDATA[${variables:equals(decision, 'approve')}]]></conditionExpression>
+    </sequenceFlow>
+    <sequenceFlow id="rseReturned" name="Returned" sourceRef="rseDecision" targetRef="aseAmendRecord"/>
+
+    <!-- "RSE entry in mSales, generates notification mail to recipients" (step 2.2). -->
+    <serviceTask id="notifyRseEntry" name="Notify recipients of the RSE entry"
+                 flowable:expression="${resignationNotifier.send('RSE_APPROVED', employeeId, 'hrm,acc-officer,sales-ssr')}"/>
+    <sequenceFlow id="toZsiApproval" sourceRef="notifyRseEntry" targetRef="zsiApproval"/>
+
+    <userTask id="zsiApproval" name="ZSI approval — resignation and sales clearance"
+              flowable:candidateGroups="sales-zsi" flowable:formKey="approvalDecisionForm"/>
+    <sequenceFlow id="toZsiDecision" sourceRef="zsiApproval" targetRef="zsiDecision"/>
+
+    <exclusiveGateway id="zsiDecision" name="ZSI decision" default="zsiReturned"/>
+    <sequenceFlow id="zsiApproved" name="Approved" sourceRef="zsiDecision" targetRef="smApproval">
+      <conditionExpression xsi:type="tFormalExpression"><![CDATA[${variables:equals(decision, 'approve')}]]></conditionExpression>
+    </sequenceFlow>
+    <sequenceFlow id="zsiReturned" name="Returned" sourceRef="zsiDecision" targetRef="aseAmendRecord"/>
+
+    <userTask id="smApproval" name="SM approval — resignation and sales clearance"
+              flowable:candidateGroups="sales-sm" flowable:formKey="approvalDecisionForm"/>
+    <sequenceFlow id="toSmDecision" sourceRef="smApproval" targetRef="smDecision"/>
+
+    <exclusiveGateway id="smDecision" name="SM decision" default="smReturned"/>
+    <sequenceFlow id="smApproved" name="Approved" sourceRef="smDecision" targetRef="gmApproval">
+      <conditionExpression xsi:type="tFormalExpression"><![CDATA[${variables:equals(decision, 'approve')}]]></conditionExpression>
+    </sequenceFlow>
+    <sequenceFlow id="smReturned" name="Returned" sourceRef="smDecision" targetRef="aseAmendRecord"/>
+
+    <userTask id="gmApproval" name="GM approval — resignation and sales clearance"
+              flowable:candidateGroups="sales-gm" flowable:formKey="approvalDecisionForm"/>
+    <sequenceFlow id="toGmDecision" sourceRef="gmApproval" targetRef="gmDecision"/>
+
+    <exclusiveGateway id="gmDecision" name="GM decision" default="gmReturned"/>
+    <sequenceFlow id="gmApproved" name="Approved" sourceRef="gmDecision" targetRef="forwardToSalesAdmin">
+      <conditionExpression xsi:type="tFormalExpression"><![CDATA[${variables:equals(decision, 'approve')}]]></conditionExpression>
+    </sequenceFlow>
+    <sequenceFlow id="gmReturned" name="Returned" sourceRef="gmDecision" targetRef="aseAmendRecord"/>
+
+    <!-- Step 2.4 — "GM Approval (Resignation & Clearance), FW to SSR (Sales Admin)". -->
+    <serviceTask id="forwardToSalesAdmin" name="Forward both documents to SSR (Sales Admin)"
+                 flowable:expression="${resignationNotifier.send('SALES_CHAIN_APPROVED', employeeId, 'sales-ssr')}"/>
+    <sequenceFlow id="toEndApproval" sourceRef="forwardToSalesAdmin" targetRef="endApproval"/>
+
+    <userTask id="aseAmendRecord" name="ASE — amend and resubmit the resignation record"
+              flowable:assignee="${aseUserId}" flowable:formKey="resignationSubmissionForm">
+      <documentation>A level in the chain returned the record. Correct it and resubmit; the chain restarts at RSE.</documentation>
+    </userTask>
+    <sequenceFlow id="toRseApprovalAgain" sourceRef="aseAmendRecord" targetRef="rseApproval"/>
+
+    <endEvent id="endApproval" name="Approved by the sales line"/>
+  </process>
+  <bpmndi:BPMNDiagram id="BPMNDiagram_salesResignationApproval">
+    <bpmndi:BPMNPlane id="BPMNPlane_salesResignationApproval" bpmnElement="salesResignationApproval">
+      <bpmndi:BPMNShape id="shape_startApproval" bpmnElement="startApproval">
+        <omgdc:Bounds x="140" y="145" width="30" height="30"/>
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="shape_rseApproval" bpmnElement="rseApproval">
+        <omgdc:Bounds x="300" y="120" width="150" height="80"/>
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="shape_rseDecision" bpmnElement="rseDecision">
+        <omgdc:Bounds x="575" y="140" width="40" height="40"/>
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="shape_notifyRseEntry" bpmnElement="notifyRseEntry">
+        <omgdc:Bounds x="740" y="120" width="150" height="80"/>
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="shape_zsiApproval" bpmnElement="zsiApproval">
+        <omgdc:Bounds x="960" y="120" width="150" height="80"/>
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="shape_zsiDecision" bpmnElement="zsiDecision">
+        <omgdc:Bounds x="1235" y="140" width="40" height="40"/>
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="shape_smApproval" bpmnElement="smApproval">
+        <omgdc:Bounds x="1400" y="120" width="150" height="80"/>
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="shape_smDecision" bpmnElement="smDecision">
+        <omgdc:Bounds x="1675" y="140" width="40" height="40"/>
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="shape_gmApproval" bpmnElement="gmApproval">
+        <omgdc:Bounds x="1840" y="120" width="150" height="80"/>
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="shape_gmDecision" bpmnElement="gmDecision">
+        <omgdc:Bounds x="2115" y="140" width="40" height="40"/>
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="shape_forwardToSalesAdmin" bpmnElement="forwardToSalesAdmin">
+        <omgdc:Bounds x="2280" y="120" width="150" height="80"/>
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="shape_aseAmendRecord" bpmnElement="aseAmendRecord">
+        <omgdc:Bounds x="2280" y="250" width="150" height="80"/>
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="shape_endApproval" bpmnElement="endApproval">
+        <omgdc:Bounds x="2560" y="145" width="30" height="30"/>
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNEdge id="edge_toRseApproval" bpmnElement="toRseApproval">
+        <omgdi:waypoint x="170" y="160"/>
+        <omgdi:waypoint x="235" y="160"/>
+        <omgdi:waypoint x="235" y="160"/>
+        <omgdi:waypoint x="300" y="160"/>
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="edge_toRseDecision" bpmnElement="toRseDecision">
+        <omgdi:waypoint x="450" y="160"/>
+        <omgdi:waypoint x="512.5" y="160"/>
+        <omgdi:waypoint x="512.5" y="160"/>
+        <omgdi:waypoint x="575" y="160"/>
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="edge_rseApproved" bpmnElement="rseApproved">
+        <omgdi:waypoint x="615" y="160"/>
+        <omgdi:waypoint x="677.5" y="160"/>
+        <omgdi:waypoint x="677.5" y="160"/>
+        <omgdi:waypoint x="740" y="160"/>
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="edge_rseReturned" bpmnElement="rseReturned">
+        <omgdi:waypoint x="615" y="160"/>
+        <omgdi:waypoint x="1447.5" y="160"/>
+        <omgdi:waypoint x="1447.5" y="290"/>
+        <omgdi:waypoint x="2280" y="290"/>
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="edge_toZsiApproval" bpmnElement="toZsiApproval">
+        <omgdi:waypoint x="890" y="160"/>
+        <omgdi:waypoint x="925" y="160"/>
+        <omgdi:waypoint x="925" y="160"/>
+        <omgdi:waypoint x="960" y="160"/>
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="edge_toZsiDecision" bpmnElement="toZsiDecision">
+        <omgdi:waypoint x="1110" y="160"/>
+        <omgdi:waypoint x="1172.5" y="160"/>
+        <omgdi:waypoint x="1172.5" y="160"/>
+        <omgdi:waypoint x="1235" y="160"/>
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="edge_zsiApproved" bpmnElement="zsiApproved">
+        <omgdi:waypoint x="1275" y="160"/>
+        <omgdi:waypoint x="1337.5" y="160"/>
+        <omgdi:waypoint x="1337.5" y="160"/>
+        <omgdi:waypoint x="1400" y="160"/>
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="edge_zsiReturned" bpmnElement="zsiReturned">
+        <omgdi:waypoint x="1275" y="160"/>
+        <omgdi:waypoint x="1777.5" y="160"/>
+        <omgdi:waypoint x="1777.5" y="290"/>
+        <omgdi:waypoint x="2280" y="290"/>
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="edge_toSmDecision" bpmnElement="toSmDecision">
+        <omgdi:waypoint x="1550" y="160"/>
+        <omgdi:waypoint x="1612.5" y="160"/>
+        <omgdi:waypoint x="1612.5" y="160"/>
+        <omgdi:waypoint x="1675" y="160"/>
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="edge_smApproved" bpmnElement="smApproved">
+        <omgdi:waypoint x="1715" y="160"/>
+        <omgdi:waypoint x="1777.5" y="160"/>
+        <omgdi:waypoint x="1777.5" y="160"/>
+        <omgdi:waypoint x="1840" y="160"/>
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="edge_smReturned" bpmnElement="smReturned">
+        <omgdi:waypoint x="1715" y="160"/>
+        <omgdi:waypoint x="1997.5" y="160"/>
+        <omgdi:waypoint x="1997.5" y="290"/>
+        <omgdi:waypoint x="2280" y="290"/>
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="edge_toGmDecision" bpmnElement="toGmDecision">
+        <omgdi:waypoint x="1990" y="160"/>
+        <omgdi:waypoint x="2052.5" y="160"/>
+        <omgdi:waypoint x="2052.5" y="160"/>
+        <omgdi:waypoint x="2115" y="160"/>
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="edge_gmApproved" bpmnElement="gmApproved">
+        <omgdi:waypoint x="2155" y="160"/>
+        <omgdi:waypoint x="2217.5" y="160"/>
+        <omgdi:waypoint x="2217.5" y="160"/>
+        <omgdi:waypoint x="2280" y="160"/>
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="edge_gmReturned" bpmnElement="gmReturned">
+        <omgdi:waypoint x="2155" y="160"/>
+        <omgdi:waypoint x="2217.5" y="160"/>
+        <omgdi:waypoint x="2217.5" y="290"/>
+        <omgdi:waypoint x="2280" y="290"/>
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="edge_toEndApproval" bpmnElement="toEndApproval">
+        <omgdi:waypoint x="2430" y="160"/>
+        <omgdi:waypoint x="2495" y="160"/>
+        <omgdi:waypoint x="2495" y="160"/>
+        <omgdi:waypoint x="2560" y="160"/>
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="edge_toRseApprovalAgain" bpmnElement="toRseApprovalAgain">
+        <omgdi:waypoint x="2355" y="330"/>
+        <omgdi:waypoint x="2355" y="375"/>
+        <omgdi:waypoint x="375" y="375"/>
+        <omgdi:waypoint x="375" y="200"/>
+      </bpmndi:BPMNEdge>
+    </bpmndi:BPMNPlane>
+  </bpmndi:BPMNDiagram>
+</definitions>

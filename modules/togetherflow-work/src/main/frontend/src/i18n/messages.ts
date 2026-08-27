@@ -117,7 +117,6 @@ export const workEn = {
   "task.delegate.to": "Delegate to",
   "task.delegate.hint": "The user id to hand it to.",
   "task.delegate.done": "Delegated to {to}.",
-  "task.validation.form": "Fill in the required fields before completing this task.",
   "task.validation.variables": "Fix the highlighted variables before completing this task.",
   "task.confirm.outcome.title": "{outcome} this task?",
   "task.confirm.outcome.description":
@@ -193,7 +192,6 @@ export const workEn = {
   "start.started": "Started \"{name}\".",
   "start.failed.process": "Could not start that process.",
   "start.failed.case": "Could not start that case.",
-  "start.validation.form": "Fill in the required fields before starting.",
   "start.validation.variables": "Fix the highlighted variables before starting.",
 
   // My cases (§7.1)

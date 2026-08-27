@@ -387,20 +387,6 @@ a.tf-menu__item:hover {
   outline-offset: -2px;
 }
 
-/* Upload field inside a rendered form (§7.1). */
-.tf-form__upload {
-  display: flex;
-  flex-direction: column;
-  gap: var(--tf-space-1);
-}
-.tf-form__upload-state {
-  font-size: 0.8125rem;
-  color: var(--tf-text-muted);
-}
-.tf-form__upload-state--error {
-  color: var(--tf-danger);
-}
-
 /* Saved filters (§14.4) and the filter bar they capture. */
 .tf-saved-views {
   display: flex;

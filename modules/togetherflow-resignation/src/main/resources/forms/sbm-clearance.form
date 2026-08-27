@@ -1,0 +1,30 @@
+{
+  "key": "sbmClearanceForm",
+  "name": "SBM clearance",
+  "version": 1,
+  "fields": [
+    {
+      "id": "sbmHeading",
+      "name": "SBM clearance",
+      "type": "headline"
+    },
+    {
+      "id": "sbmStockAdjusted",
+      "name": "Branch stock adjusted",
+      "type": "boolean",
+      "required": true
+    },
+    {
+      "id": "sbmDuesOutstanding",
+      "name": "Dues outstanding with the branch",
+      "type": "amount",
+      "required": true
+    },
+    {
+      "id": "sbmRemarks",
+      "name": "Remarks",
+      "type": "multi-line-text"
+    }
+  ],
+  "outcomes": []
+}

@@ -1,0 +1,30 @@
+{
+  "key": "fcaClearanceForm",
+  "name": "FCA clearance",
+  "version": 1,
+  "fields": [
+    {
+      "id": "fcaHeading",
+      "name": "FCA clearance",
+      "type": "headline"
+    },
+    {
+      "id": "fcaAdvanceOutstanding",
+      "name": "Advance outstanding",
+      "type": "amount",
+      "required": true
+    },
+    {
+      "id": "fcaLoanOutstanding",
+      "name": "Loan outstanding",
+      "type": "amount",
+      "required": true
+    },
+    {
+      "id": "fcaRemarks",
+      "name": "Remarks",
+      "type": "multi-line-text"
+    }
+  ],
+  "outcomes": []
+}

@@ -1,0 +1,88 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<definitions xmlns="http://www.omg.org/spec/BPMN/20100524/MODEL"
+             xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+             xmlns:flowable="http://flowable.org/bpmn"
+             xmlns:bpmndi="http://www.omg.org/spec/BPMN/20100524/DI"
+             xmlns:omgdc="http://www.omg.org/spec/DD/20100524/DC"
+             xmlns:omgdi="http://www.omg.org/spec/DD/20100524/DI"
+             typeLanguage="http://www.w3.org/2001/XMLSchema"
+             expressionLanguage="http://www.w3.org/1999/XPath"
+             targetNamespace="http://togetherflow.org/resignation">
+
+  <!--
+      Resignation_Process.xlsx steps 4, 5 and 6 — the SBM, FCA and GAD (motorcycle)
+      clearances.
+
+      All three read the same in the spreadsheet: one department raises its clearance and
+      forwards it to HRM. Only the department, the form and the wording differ, so this is
+      one process parameterised by `clearanceGroup`, `clearanceName` and `clearanceFormKey`,
+      started three times by the case rather than copied three times here. The case supplies
+      those values; see resignation-sales.cmmn.
+  -->
+  <process id="departmentClearance" name="Department Clearance" isExecutable="true">
+    <documentation>A single departmental clearance — SBM, FCA or GAD (motorcycle) — raised and forwarded to HRM (Resignation_Process.xlsx steps 4-6).</documentation>
+
+    <startEvent id="startClearance" name="Clearance requested"/>
+    <sequenceFlow id="toIssueClearance" sourceRef="startClearance" targetRef="issueClearance"/>
+
+    <userTask id="issueClearance" name="${clearanceName}"
+              flowable:candidateGroups="${clearanceGroup}" flowable:formKey="${clearanceFormKey}">
+      <documentation>Raise the clearance for this employee and confirm there is nothing outstanding.</documentation>
+    </userTask>
+    <sequenceFlow id="toRegisterClearance" sourceRef="issueClearance" targetRef="registerClearanceDocument"/>
+
+    <serviceTask id="registerClearanceDocument" name="Register the clearance in the case file"
+                 flowable:expression="${resignationDocuments.register(clearanceType, employeeId)}"
+                 flowable:resultVariableName="clearanceDocumentRef"/>
+    <sequenceFlow id="toNotifyHrmClearance" sourceRef="registerClearanceDocument" targetRef="notifyHrmOfClearance"/>
+
+    <serviceTask id="notifyHrmOfClearance" name="Forward the clearance to HRM"
+                 flowable:expression="${resignationNotifier.send('CLEARANCE_ISSUED', employeeId, 'hrm')}"/>
+    <sequenceFlow id="toEndClearance" sourceRef="notifyHrmOfClearance" targetRef="endClearance"/>
+
+    <endEvent id="endClearance" name="Clearance with HRM"/>
+  </process>
+  <bpmndi:BPMNDiagram id="BPMNDiagram_departmentClearance">
+    <bpmndi:BPMNPlane id="BPMNPlane_departmentClearance" bpmnElement="departmentClearance">
+      <bpmndi:BPMNShape id="shape_startClearance" bpmnElement="startClearance">
+        <omgdc:Bounds x="140" y="145" width="30" height="30"/>
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="shape_issueClearance" bpmnElement="issueClearance">
+        <omgdc:Bounds x="300" y="120" width="150" height="80"/>
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="shape_registerClearanceDocument" bpmnElement="registerClearanceDocument">
+        <omgdc:Bounds x="520" y="120" width="150" height="80"/>
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="shape_notifyHrmOfClearance" bpmnElement="notifyHrmOfClearance">
+        <omgdc:Bounds x="740" y="120" width="150" height="80"/>
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="shape_endClearance" bpmnElement="endClearance">
+        <omgdc:Bounds x="1020" y="145" width="30" height="30"/>
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNEdge id="edge_toIssueClearance" bpmnElement="toIssueClearance">
+        <omgdi:waypoint x="170" y="160"/>
+        <omgdi:waypoint x="235" y="160"/>
+        <omgdi:waypoint x="235" y="160"/>
+        <omgdi:waypoint x="300" y="160"/>
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="edge_toRegisterClearance" bpmnElement="toRegisterClearance">
+        <omgdi:waypoint x="450" y="160"/>
+        <omgdi:waypoint x="485" y="160"/>
+        <omgdi:waypoint x="485" y="160"/>
+        <omgdi:waypoint x="520" y="160"/>
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="edge_toNotifyHrmClearance" bpmnElement="toNotifyHrmClearance">
+        <omgdi:waypoint x="670" y="160"/>
+        <omgdi:waypoint x="705" y="160"/>
+        <omgdi:waypoint x="705" y="160"/>
+        <omgdi:waypoint x="740" y="160"/>
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="edge_toEndClearance" bpmnElement="toEndClearance">
+        <omgdi:waypoint x="890" y="160"/>
+        <omgdi:waypoint x="955" y="160"/>
+        <omgdi:waypoint x="955" y="160"/>
+        <omgdi:waypoint x="1020" y="160"/>
+      </bpmndi:BPMNEdge>
+    </bpmndi:BPMNPlane>
+  </bpmndi:BPMNDiagram>
+</definitions>

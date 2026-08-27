@@ -1,0 +1,59 @@
+{
+  "key": "motorcycleClearanceForm",
+  "name": "Motorcycle clearance (GAD)",
+  "version": 1,
+  "fields": [
+    {
+      "id": "motorcycleHeading",
+      "name": "Motorcycle clearance",
+      "type": "headline"
+    },
+    {
+      "id": "motorcycleIssued",
+      "name": "Company motorcycle issued",
+      "type": "boolean",
+      "required": true
+    },
+    {
+      "id": "motorcycleRegistration",
+      "name": "Registration number",
+      "type": "text"
+    },
+    {
+      "id": "motorcycleReturnDate",
+      "name": "Date returned",
+      "type": "date"
+    },
+    {
+      "id": "motorcycleCondition",
+      "name": "Condition on return",
+      "type": "dropdown",
+      "fieldType": "OptionFormField",
+      "options": [
+        {
+          "name": "Good"
+        },
+        {
+          "name": "Repairable"
+        },
+        {
+          "name": "Damaged"
+        },
+        {
+          "name": "Not applicable"
+        }
+      ]
+    },
+    {
+      "id": "motorcycleDues",
+      "name": "Recoverable amount",
+      "type": "amount"
+    },
+    {
+      "id": "motorcycleRemarks",
+      "name": "Remarks",
+      "type": "multi-line-text"
+    }
+  ],
+  "outcomes": []
+}

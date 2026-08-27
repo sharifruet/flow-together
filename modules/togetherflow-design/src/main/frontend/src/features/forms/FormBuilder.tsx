@@ -18,15 +18,20 @@ import {
   ApiError,
   Button,
   ConfirmDialog,
+  FormRenderer,
   SelectInput,
   TextInput,
+  fieldIdsInOrder,
   getVisibilityRule,
+  initialValues,
   useT,
   useToast,
+  validateForm,
   withVisibilityRule,
   type FormField,
   type FormFieldType,
   type FormModelResponse,
+  type FormValues,
   type ModelApi,
   type ModelResponse,
   type VisibilityOperator,
@@ -40,6 +45,9 @@ import {
 } from "./formDraft";
 
 const AUTOSAVE_IDLE_MS = 4000;
+
+/** Namespaces the preview's field ids, keeping them clear of the builder's own controls. */
+const PREVIEW_FORM_ID = "tf-form-preview";
 
 export interface FormBuilderProps {
   modelApi: ModelApi;
@@ -143,6 +151,61 @@ export function FormBuilder({
 
   const current = selected !== null ? fields[selected] : undefined;
 
+  /*
+   * Live preview (§7.4.6: "renders using the same component at runtime in Work so
+   * authoring and execution stay visually consistent").
+   *
+   * Literally the same component, not a lookalike: a second renderer written here would
+   * be the thing that drifts, and the author would be checking their work against it
+   * rather than against what the person filling the form will see. It is interactive on
+   * purpose — a required field, a visibility rule or a pattern is only really authored
+   * once you have watched it behave.
+   */
+  const [tab, setTab] = useState<"fields" | "preview">("fields");
+  const signature = useMemo(() => fieldIdsInOrder(form).join("|"), [form]);
+  const [preview, setPreview] = useState<{ signature: string; values: FormValues }>({
+    signature: "",
+    values: {},
+  });
+  const [previewTouched, setPreviewTouched] = useState<Record<string, boolean>>({});
+  const [previewAttempt, setPreviewAttempt] = useState(0);
+
+  // Adding or removing a field re-seeds from the model's own defaults; editing a label
+  // does not, so a preview being filled in is not reset by every keystroke elsewhere.
+  const previewValues =
+    preview.signature === signature ? preview.values : initialValues(form);
+
+  const setPreviewValue = (fieldId: string, value: unknown) =>
+    setPreview({ signature, values: { ...previewValues, [fieldId]: value } });
+
+  const previewErrors = useMemo(
+    () => validateForm(form, previewValues, t),
+    [form, previewValues, t],
+  );
+  const visiblePreviewErrors = useMemo(() => {
+    const visible: Record<string, string> = {};
+    for (const [id, message] of Object.entries(previewErrors)) {
+      if (previewTouched[id]) visible[id] = message;
+    }
+    return visible;
+  }, [previewErrors, previewTouched]);
+
+  const resetPreview = () => {
+    setPreview({ signature, values: initialValues(form) });
+    setPreviewTouched({});
+    setPreviewAttempt(0);
+  };
+
+  /** Submits the preview, so the author sees exactly what a filler would see. */
+  const submitPreview = () => {
+    if (Object.keys(previewErrors).length > 0) {
+      setPreviewTouched(Object.fromEntries(fieldIdsInOrder(form).map((id) => [id, true])));
+      setPreviewAttempt((attempt) => attempt + 1);
+      return;
+    }
+    push({ tone: "success", message: t("form.preview.valid") });
+  };
+
   return (
     <section className="tf-panel" aria-label={t("editor.editing", { name: model.name || model.id })}>
       <button
@@ -150,7 +213,7 @@ export function FormBuilder({
         className="tf-back"
         onClick={() => (dirty ? setConfirmLeave(true) : onBack())}
       >
-        ← Back to models
+        {t("editor.back")}
       </button>
 
       <header className="tf-panel__header">
@@ -166,8 +229,7 @@ export function FormBuilder({
       </header>
 
       <p className="tf-banner" role="note">
-        Forms deploy as part of an app. Add this form to an app in the model library and
-        publish that — and note it only takes effect where a form engine is configured.
+        {t("form.deployNote")}
       </p>
 
       {loadError ? (
@@ -207,8 +269,73 @@ export function FormBuilder({
             onChange={(event) => update({ name: event.target.value })}
           />
 
-          <h2 className="tf-panel__section-title">Fields ({fields.length})</h2>
-          {fields.length === 0 ? (
+          <div className="tf-form-canvas__tabs" role="tablist" aria-label={t("form.view")}>
+            <button
+              type="button"
+              role="tab"
+              aria-selected={tab === "fields"}
+              className={["tf-chip", tab === "fields" ? "tf-chip--active" : ""]
+                .filter(Boolean)
+                .join(" ")}
+              onClick={() => setTab("fields")}
+            >
+              {t("form.fields", { count: fields.length })}
+            </button>
+            <button
+              type="button"
+              role="tab"
+              aria-selected={tab === "preview"}
+              className={["tf-chip", tab === "preview" ? "tf-chip--active" : ""]
+                .filter(Boolean)
+                .join(" ")}
+              onClick={() => setTab("preview")}
+            >
+              {t("form.tab.preview")}
+            </button>
+          </div>
+
+          {tab === "preview" ? (
+            <section className="tf-form-preview" aria-label={t("form.preview.label")}>
+              <p className="tf-form-preview__note">{t("form.preview.note")}</p>
+              {fields.length === 0 ? (
+                <p className="tf-muted">{t("form.noFields")}</p>
+              ) : (
+                <>
+                  <FormRenderer
+                    id={PREVIEW_FORM_ID}
+                    model={form}
+                    values={previewValues}
+                    errors={visiblePreviewErrors}
+                    submitAttempt={previewAttempt}
+                    onSubmit={submitPreview}
+                    onChange={setPreviewValue}
+                    onBlur={(fieldId) =>
+                      setPreviewTouched((previous) => ({ ...previous, [fieldId]: true }))
+                    }
+                    /*
+                      No upload handler: a preview has no task to hang an attachment on,
+                      which is the same state a start form is in, and the renderer already
+                      says so rather than offering a control that cannot work.
+                    */
+                  />
+                  <div className="tf-form-preview__actions">
+                    {outcomes.length > 0 ? (
+                      outcomes.map((outcome, index) => (
+                        <Button key={index} onClick={submitPreview}>
+                          {outcome.name}
+                        </Button>
+                      ))
+                    ) : (
+                      <Button onClick={submitPreview}>{t("form.preview.submit")}</Button>
+                    )}
+                    <Button variant="secondary" onClick={resetPreview}>
+                      {t("form.preview.reset")}
+                    </Button>
+                  </div>
+                </>
+              )}
+            </section>
+          ) : fields.length === 0 ? (
             <p className="tf-muted">{t("form.noFields")}</p>
           ) : (
             <ul className="tf-form-fields">
@@ -301,7 +428,7 @@ export function FormBuilder({
               </header>
 
               <TextInput
-                label="Id"
+                label={t("form.field.id")}
                 value={current.id}
                 disabled={saving}
                 hint={t("form.field.id.hint")}

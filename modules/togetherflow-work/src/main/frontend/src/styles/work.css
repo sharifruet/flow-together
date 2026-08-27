@@ -623,65 +623,11 @@
   color: var(--tf-text-muted);
 }
 
-/* Form renderer */
-.tf-form__container {
-  margin-bottom: var(--tf-space-2);
-}
-.tf-form__row {
-  display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
-  gap: var(--tf-space-3);
-}
-.tf-form__headline {
-  margin: var(--tf-space-4) 0 var(--tf-space-2);
-  font-size: var(--tf-text-base);
-}
-.tf-form__headline--ruled {
-  padding-bottom: var(--tf-space-2);
-  border-bottom: 1px solid var(--tf-border);
-}
-.tf-form__rule {
-  border: none;
-  border-top: 1px solid var(--tf-border);
-  margin: var(--tf-space-4) 0;
-}
-.tf-form__spacer {
-  height: var(--tf-space-5);
-}
-.tf-form__static {
-  margin: 0 0 var(--tf-space-3);
-  font-size: var(--tf-text-sm);
-}
-.tf-form__expression {
-  display: block;
-  padding: 7px 10px;
-  background: var(--tf-bg-subtle);
-  border: 1px dashed var(--tf-border-strong);
-  border-radius: var(--tf-radius);
-  color: var(--tf-text-muted);
-}
-.tf-form__checkbox {
-  display: flex;
-  align-items: center;
-  gap: var(--tf-space-2);
-}
-.tf-form__checkbox-input {
-  width: auto;
-  margin: 0;
-}
-.tf-form__radios {
-  display: flex;
-  flex-direction: column;
-  gap: var(--tf-space-1);
-}
-.tf-form__radio {
-  display: flex;
-  align-items: center;
-  gap: var(--tf-space-2);
-}
-.tf-form__radio input {
-  margin: 0;
-}
+/*
+ * The form renderer's own styles live in `@togetherflow/common`'s theme, beside the
+ * component: it is rendered by Work *and* by Design's builder preview, so styles kept
+ * here would only ever have dressed one of them.
+ */
 
 /* ── Case work (§7.1) ─────────────────────────────────────────────────────── */
 

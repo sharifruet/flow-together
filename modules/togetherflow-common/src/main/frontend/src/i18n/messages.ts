@@ -171,6 +171,39 @@ export const commonEn = {
     "Files can't be attached before the work is started — start it first, then attach from the task.",
   "form.upload.attached": "Attached {name}",
   "form.required": "This field is required.",
+  "form.requiredHint": "required",
+  "form.optional": "optional",
+  "form.notAnswered": "Not answered",
+  "form.yes": "Yes",
+  "form.no": "No",
+  "form.charactersLeft.one": "{count} character left",
+  "form.charactersLeft.other": "{count} characters left",
+  "form.charactersOver.one": "{count} character too many",
+  "form.charactersOver.other": "{count} characters too many",
+
+  // Upload field (§7.1, §7.6)
+  "form.upload.prompt": "Choose a file or drag it here",
+  "form.upload.replacePrompt": "Choose a different file or drag it here",
+  "form.upload.accepts": "Accepts {accept}",
+  "form.upload.maxSize": "Up to {size}",
+  "form.upload.remove": "Remove {name}",
+  "form.upload.tooLarge": "That file is {size}, which is over the {limit} limit.",
+  "form.upload.wrongType": "That file type isn't accepted here. Accepts {accept}.",
+
+  // Validation (§14.3 — inline, as the user types or tabs)
+  "form.validation.required": "{field} is required.",
+  "form.validation.integer": "Enter a whole number.",
+  "form.validation.number": "Enter a number.",
+  "form.validation.date": "Enter a valid date.",
+  "form.validation.minLength": "Enter at least {min} characters.",
+  "form.validation.maxLength": "Use {max} characters or fewer.",
+  "form.validation.min": "Enter {min} or more.",
+  "form.validation.max": "Enter {max} or less.",
+  "form.validation.pattern": "Enter this in the format the form expects.",
+
+  // Error summary shown after a submit attempt (§14.1)
+  "form.errors.title.one": "There is 1 problem with this form",
+  "form.errors.title.other": "There are {count} problems with this form",
 } satisfies Messages;
 
 export const commonMessages: Catalogues = { en: commonEn };

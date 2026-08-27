@@ -1,0 +1,56 @@
+{
+  "key": "salesClearanceForm",
+  "name": "Sales clearance",
+  "version": 1,
+  "fields": [
+    {
+      "id": "salesClearanceHeading",
+      "name": "Sales clearance",
+      "type": "headline"
+    },
+    {
+      "id": "outstandingCollection",
+      "name": "Outstanding collection",
+      "type": "amount",
+      "required": true
+    },
+    {
+      "id": "stockReturned",
+      "name": "Stock returned in full",
+      "type": "boolean",
+      "required": true
+    },
+    {
+      "id": "samplesReturned",
+      "name": "Samples and POS material returned",
+      "type": "boolean",
+      "required": true
+    },
+    {
+      "id": "secondaryDues",
+      "name": "Secondary dues with dealers",
+      "type": "amount"
+    },
+    {
+      "id": "salesClearanceRemarks",
+      "name": "Remarks",
+      "type": "multi-line-text"
+    },
+    {
+      "id": "decision",
+      "name": "Decision",
+      "type": "radio-buttons",
+      "fieldType": "OptionFormField",
+      "options": [
+        {
+          "name": "approve"
+        },
+        {
+          "name": "return"
+        }
+      ],
+      "required": true
+    }
+  ],
+  "outcomes": []
+}

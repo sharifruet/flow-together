@@ -1,0 +1,55 @@
+{
+  "key": "finalSettlementForm",
+  "name": "Final settlement statement",
+  "version": 1,
+  "fields": [
+    {
+      "id": "settlementHeading",
+      "name": "Final settlement statement",
+      "type": "headline"
+    },
+    {
+      "id": "salaryDue",
+      "name": "Salary due",
+      "type": "amount",
+      "required": true
+    },
+    {
+      "id": "leaveEncashment",
+      "name": "Leave encashment",
+      "type": "amount"
+    },
+    {
+      "id": "providentFund",
+      "name": "Provident fund",
+      "type": "amount"
+    },
+    {
+      "id": "gratuity",
+      "name": "Gratuity",
+      "type": "amount"
+    },
+    {
+      "id": "settlementDivider",
+      "name": "",
+      "type": "horizontal-line"
+    },
+    {
+      "id": "recoveries",
+      "name": "Total recoveries",
+      "type": "amount"
+    },
+    {
+      "id": "netPayable",
+      "name": "Net payable",
+      "type": "amount",
+      "required": true
+    },
+    {
+      "id": "settlementRemarks",
+      "name": "Remarks",
+      "type": "multi-line-text"
+    }
+  ],
+  "outcomes": []
+}

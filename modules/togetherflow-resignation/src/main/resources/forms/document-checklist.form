@@ -1,0 +1,48 @@
+{
+  "key": "documentChecklistForm",
+  "name": "HRM document checklist",
+  "version": 1,
+  "fields": [
+    {
+      "id": "checklistHeading",
+      "name": "Documents received",
+      "type": "headline"
+    },
+    {
+      "id": "hasResignationLetter",
+      "name": "Resignation letter (from SSR Admin)",
+      "type": "boolean",
+      "required": true
+    },
+    {
+      "id": "hasSalesClearance",
+      "name": "Sales clearance (from SBM)",
+      "type": "boolean",
+      "required": true
+    },
+    {
+      "id": "hasSbmClearance",
+      "name": "SBM clearance (from SBM)",
+      "type": "boolean",
+      "required": true
+    },
+    {
+      "id": "hasMotorcycleClearance",
+      "name": "Motorcycle clearance (from GAD)",
+      "type": "boolean",
+      "required": true
+    },
+    {
+      "id": "hasFcaClearance",
+      "name": "FCA clearance (from FCA)",
+      "type": "boolean",
+      "required": true
+    },
+    {
+      "id": "checklistRemarks",
+      "name": "Remarks",
+      "type": "multi-line-text"
+    }
+  ],
+  "outcomes": []
+}

@@ -1,6 +1,8 @@
 import { describe, expect, it } from "vitest";
 import type { FormModelResponse } from "../api/types";
 import {
+  fieldConstraints,
+  fieldIdsInOrder,
   flattenFields,
   formValuesToVariables,
   hasRenderableFields,
@@ -91,6 +93,83 @@ describe("toDateInputValue", () => {
     expect(toDateInputValue("not-a-date")).toBe("not-a-date");
     expect(toDateInputValue(undefined)).toBe("");
   });
+
+  it("keeps the calendar date the value carries, whatever the offset", () => {
+    // Converting through UTC would report 4 March here, and the day would walk backwards
+    // one step per save for every user east of UTC.
+    expect(toDateInputValue("2026-03-05T01:00:00+03:00")).toBe("2026-03-05");
+    expect(toDateInputValue("2026-03-05T23:30:00-05:00")).toBe("2026-03-05");
+  });
+
+  it("round-trips what formValuesToVariables writes", () => {
+    const written = formValuesToVariables(model([{ id: "d", type: "date" }]), {
+      d: "2026-03-05",
+    })[0].value as string;
+    expect(toDateInputValue(written)).toBe("2026-03-05");
+  });
+});
+
+describe("fieldConstraints", () => {
+  it("reads the optional limits out of the engine's free-form params map", () => {
+    expect(
+      fieldConstraints({
+        id: "x",
+        type: "text",
+        params: {
+          description: "As printed on the invoice.",
+          // Numbers arrive as strings from JSON authored by hand.
+          maxLength: "40",
+          min: 1,
+          pattern: "^INV-",
+          patternMessage: "Start with INV-.",
+          accept: ".pdf",
+          maxFileSize: 1000,
+        },
+      }),
+    ).toEqual({
+      hint: "As printed on the invoice.",
+      minLength: undefined,
+      maxLength: 40,
+      min: 1,
+      max: undefined,
+      pattern: "^INV-",
+      patternMessage: "Start with INV-.",
+      accept: ".pdf",
+      maxFileSize: 1000,
+    });
+  });
+
+  it("is all-undefined for a field that declares nothing, so nothing changes", () => {
+    expect(fieldConstraints({ id: "x", type: "text" })).toEqual({
+      hint: undefined,
+      minLength: undefined,
+      maxLength: undefined,
+      min: undefined,
+      max: undefined,
+      pattern: undefined,
+      patternMessage: undefined,
+      accept: undefined,
+      maxFileSize: undefined,
+    });
+  });
+});
+
+describe("fieldIdsInOrder", () => {
+  it("reads containers in the order the form presents them", () => {
+    expect(
+      fieldIdsInOrder(
+        model([
+          {
+            id: "c",
+            type: "container",
+            fieldType: "FormContainer",
+            fields: [[{ id: "a", type: "text" }, { id: "b", type: "text" }]],
+          },
+          { id: "z", type: "text" },
+        ]),
+      ),
+    ).toEqual(["a", "b", "z"]);
+  });
 });
 
 describe("validateField", () => {
@@ -111,6 +190,48 @@ describe("validateField", () => {
 
   it("allows a blank optional field", () => {
     expect(validateField({ id: "x", type: "integer" }, "")).toBeUndefined();
+  });
+
+  it("enforces the length, range and pattern a field declares", () => {
+    const limited = { id: "x", name: "Code", type: "text", params: { minLength: 3, maxLength: 5 } };
+    expect(validateField(limited, "ab")).toBe("Enter at least 3 characters.");
+    expect(validateField(limited, "abcdef")).toBe("Use 5 characters or fewer.");
+    expect(validateField(limited, "abcd")).toBeUndefined();
+
+    const ranged = { id: "n", type: "integer", params: { min: 1, max: 10 } };
+    expect(validateField(ranged, "0")).toBe("Enter 1 or more.");
+    expect(validateField(ranged, "11")).toBe("Enter 10 or less.");
+    expect(validateField(ranged, "5")).toBeUndefined();
+
+    const shaped = { id: "r", type: "text", params: { pattern: "^INV-\\d+$" } };
+    expect(validateField(shaped, "nope")).toBe("Enter this in the format the form expects.");
+    expect(validateField(shaped, "INV-42")).toBeUndefined();
+  });
+
+  it("prefers the form author's own words for a pattern to the generic message", () => {
+    expect(
+      validateField(
+        { id: "r", type: "text", params: { pattern: "^INV-", patternMessage: "Start with INV-." } },
+        "nope",
+      ),
+    ).toBe("Start with INV-.");
+  });
+
+  it("lets a value through when the pattern itself is broken", () => {
+    // An unparseable regex is the form author's bug. Blocking on it would make the form
+    // unsubmittable by anyone, which is a worse failure than accepting the value.
+    expect(validateField({ id: "r", type: "text", params: { pattern: "([" } }, "x")).toBeUndefined();
+  });
+
+  it("reports in the caller's language rather than baked-in English (§8)", () => {
+    const de = (key: string, params?: Record<string, string | number>) =>
+      key === "form.validation.required" ? `${params?.field} ist erforderlich.` : key;
+    expect(validateField({ id: "x", name: "Name", type: "text", required: true }, "", de)).toBe(
+      "Name ist erforderlich.",
+    );
+    expect(
+      validateForm(model([{ id: "x", name: "Name", type: "text", required: true }]), { x: "" }, de),
+    ).toEqual({ x: "Name ist erforderlich." });
   });
 });
 

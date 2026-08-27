@@ -1,0 +1,25 @@
+{
+  "key": "preservationForm",
+  "name": "Employee file preservation",
+  "version": 1,
+  "fields": [
+    {
+      "id": "employeeFileReference",
+      "name": "Employee file / folder reference",
+      "type": "text",
+      "required": true
+    },
+    {
+      "id": "documentsPreserved",
+      "name": "Number of documents preserved",
+      "type": "integer",
+      "required": true
+    },
+    {
+      "id": "preservationRemarks",
+      "name": "Remarks",
+      "type": "multi-line-text"
+    }
+  ],
+  "outcomes": []
+}

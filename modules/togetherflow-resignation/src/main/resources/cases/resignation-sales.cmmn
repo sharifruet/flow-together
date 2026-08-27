@@ -1,0 +1,385 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<definitions xmlns="http://www.omg.org/spec/CMMN/20151109/MODEL"
+             xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+             xmlns:flowable="http://flowable.org/cmmn"
+             xmlns:cmmndi="http://www.omg.org/spec/CMMN/20151109/CMMNDI"
+             xmlns:dc="http://www.omg.org/spec/CMMN/20151109/DC"
+             xmlns:di="http://www.omg.org/spec/CMMN/20151109/DI"
+             targetNamespace="http://togetherflow.org/resignation">
+
+  <!--
+      Resignation (Sales) — the whole of Resignation_Process.xlsx.
+
+      Why a case and not a process: what the spreadsheet actually tracks is a folder. Seven
+      documents are collected from nine departments and the last row is "preserve in employee
+      file". The sequencing between them is real but secondary, and the folder outlives any
+      one approval chain. A case plan model owns that folder; the four linear approval chains
+      inside it are processes, called through process tasks.
+
+      The four stages match the spreadsheet's own grouping:
+
+        A. Sales approval and clearance      steps 1-3
+        B. Departmental clearances           steps 4-6
+        C. HR acceptance                     steps 7-8
+        D. Final settlement and preservation steps 9-15
+
+      Stage B is gated on stage A rather than on the ASE's approval alone, because all three
+      departments are notified "of sales clearance and resignation acceptance" (step 1.4) and
+      SBM in particular cannot start before SSR forwards the sales clearance (step 3).
+
+      The case is started by the ASE - `aseUserId` is the initiator - with the employee's
+      details and a scan of the resignation letter as case variables.
+  -->
+  <case id="salesResignation" name="Resignation (Sales)"
+        flowable:initiatorVariableName="aseUserId"
+        flowable:candidateStarterGroups="sales-ase">
+    <documentation>Resignation of a sales MPE / Sr. MPE, from the ASE logging it to HRM preserving the closed file.</documentation>
+
+    <casePlanModel id="resignationPlan" name="Resignation (Sales)" flowable:formKey="resignationSubmissionForm">
+
+      <!-- ================= Stage A - sales approval and clearance (steps 1-3) ============ -->
+      <planItem id="piSalesStage" name="Sales approval and clearance" definitionRef="salesStage"/>
+
+      <!-- ================= Stage B - departmental clearances (steps 4-6) ================= -->
+      <planItem id="piClearanceStage" name="Departmental clearances" definitionRef="clearanceStage">
+        <entryCriterion id="ecClearanceStage" sentryRef="sentrySalesStageDone"/>
+      </planItem>
+
+      <!-- ================= Stage C - HR acceptance (steps 7-8) =========================== -->
+      <planItem id="piHrStage" name="HR acceptance" definitionRef="hrStage">
+        <entryCriterion id="ecHrStage" sentryRef="sentryClearancesDone"/>
+      </planItem>
+
+      <!-- ================= Stage D - final settlement (steps 9-15) ======================= -->
+      <planItem id="piSettlementStage" name="Final settlement and preservation" definitionRef="settlementStage">
+        <entryCriterion id="ecSettlementStage" sentryRef="sentryAcceptanceDone"/>
+      </planItem>
+
+      <sentry id="sentrySalesStageDone">
+        <planItemOnPart id="onPartSalesStage" sourceRef="piSalesStage">
+          <standardEvent>complete</standardEvent>
+        </planItemOnPart>
+      </sentry>
+      <sentry id="sentryClearancesDone">
+        <planItemOnPart id="onPartClearanceStage" sourceRef="piClearanceStage">
+          <standardEvent>complete</standardEvent>
+        </planItemOnPart>
+      </sentry>
+      <sentry id="sentryAcceptanceDone">
+        <planItemOnPart id="onPartHrStage" sourceRef="piHrStage">
+          <standardEvent>complete</standardEvent>
+        </planItemOnPart>
+      </sentry>
+
+      <stage id="salesStage" name="Sales approval and clearance" flowable:includeInStageOverview="true">
+        <documentation>Steps 1 to 3: the ASE logs the resignation and raises the sales clearance, the sales line approves both, and SSR routes them onward.</documentation>
+
+        <!-- Step 1.1 - logging the resignation mails HRM, ACC and others immediately, for EBS action. -->
+        <planItem id="piNotifyResignationLogged" name="Notify HRM, ACC and others" definitionRef="notifyResignationLogged"/>
+
+        <!-- Step 1.2 - the clearance form appears for the ASE as soon as the resignation is logged. -->
+        <planItem id="piAseClearance" name="ASE - raise and approve the sales clearance" definitionRef="aseClearance"/>
+
+        <planItem id="piSalesChain" name="Sales line approval" definitionRef="salesChainTask">
+          <entryCriterion id="ecSalesChain" sentryRef="sentryAseApproved"/>
+        </planItem>
+
+        <planItem id="piSalesAdmin" name="SSR (Sales Admin) routing" definitionRef="salesAdminTask">
+          <entryCriterion id="ecSalesAdmin" sentryRef="sentrySalesChainDone"/>
+        </planItem>
+
+        <sentry id="sentryAseApproved">
+          <planItemOnPart id="onPartAseClearance" sourceRef="piAseClearance">
+            <standardEvent>complete</standardEvent>
+          </planItemOnPart>
+        </sentry>
+        <sentry id="sentrySalesChainDone">
+          <planItemOnPart id="onPartSalesChain" sourceRef="piSalesChain">
+            <standardEvent>complete</standardEvent>
+          </planItemOnPart>
+        </sentry>
+
+        <task id="notifyResignationLogged" name="Notify HRM, ACC and others"
+              flowable:type="java"
+              flowable:expression="${resignationNotifier.send('RESIGNATION_LOGGED', employeeId, 'hrm,acc-officer,sales-ssr')}"/>
+
+        <humanTask id="aseClearance" name="ASE - raise and approve the sales clearance"
+                   flowable:assignee="${aseUserId}" flowable:formKey="salesClearanceForm">
+          <documentation>Complete the sales clearance for your subordinate and approve both it and the resignation. Approving forwards both documents to the RSE.</documentation>
+        </humanTask>
+
+        <processTask id="salesChainTask" name="Sales line approval" flowable:fallbackToDefaultTenant="true">
+          <extensionElements>
+            <flowable:in source="employeeId" target="employeeId"/>
+            <flowable:in source="employeeName" target="employeeName"/>
+            <flowable:in source="aseUserId" target="aseUserId"/>
+          </extensionElements>
+          <processRefExpression><![CDATA[salesResignationApproval]]></processRefExpression>
+        </processTask>
+
+        <processTask id="salesAdminTask" name="SSR (Sales Admin) routing" flowable:fallbackToDefaultTenant="true">
+          <extensionElements>
+            <flowable:in source="employeeId" target="employeeId"/>
+            <flowable:in source="employeeName" target="employeeName"/>
+          </extensionElements>
+          <processRefExpression><![CDATA[salesAdminRouting]]></processRefExpression>
+        </processTask>
+      </stage>
+
+      <stage id="clearanceStage" name="Departmental clearances" flowable:includeInStageOverview="true">
+        <documentation>Steps 4 to 6: SBM, GAD (motorcycle) and FCA each raise their clearance and forward it to HRM. They are independent of each other.</documentation>
+
+        <planItem id="piSbmClearance" name="SBM clearance" definitionRef="sbmClearanceTask"/>
+        <planItem id="piMotorcycleClearance" name="Motorcycle clearance (GAD)" definitionRef="motorcycleClearanceTask"/>
+        <planItem id="piFcaClearance" name="FCA clearance" definitionRef="fcaClearanceTask"/>
+
+        <processTask id="sbmClearanceTask" name="SBM clearance" flowable:fallbackToDefaultTenant="true">
+          <extensionElements>
+            <flowable:in source="employeeId" target="employeeId"/>
+            <flowable:in source="employeeName" target="employeeName"/>
+            <flowable:in sourceExpression="SBM_CLEARANCE" target="clearanceType"/>
+            <flowable:in sourceExpression="SBM - generate the SBM clearance" target="clearanceName"/>
+            <flowable:in sourceExpression="sbm" target="clearanceGroup"/>
+            <flowable:in sourceExpression="sbmClearanceForm" target="clearanceFormKey"/>
+            <flowable:out source="clearanceDocumentRef" target="sbmClearanceRef"/>
+          </extensionElements>
+          <processRefExpression><![CDATA[departmentClearance]]></processRefExpression>
+        </processTask>
+
+        <processTask id="motorcycleClearanceTask" name="Motorcycle clearance (GAD)" flowable:fallbackToDefaultTenant="true">
+          <extensionElements>
+            <flowable:in source="employeeId" target="employeeId"/>
+            <flowable:in source="employeeName" target="employeeName"/>
+            <flowable:in sourceExpression="MOTORCYCLE_CLEARANCE" target="clearanceType"/>
+            <flowable:in sourceExpression="GAD - generate the motorcycle clearance" target="clearanceName"/>
+            <flowable:in sourceExpression="gad" target="clearanceGroup"/>
+            <flowable:in sourceExpression="motorcycleClearanceForm" target="clearanceFormKey"/>
+            <flowable:out source="clearanceDocumentRef" target="motorcycleClearanceRef"/>
+          </extensionElements>
+          <processRefExpression><![CDATA[departmentClearance]]></processRefExpression>
+        </processTask>
+
+        <processTask id="fcaClearanceTask" name="FCA clearance" flowable:fallbackToDefaultTenant="true">
+          <extensionElements>
+            <flowable:in source="employeeId" target="employeeId"/>
+            <flowable:in source="employeeName" target="employeeName"/>
+            <flowable:in sourceExpression="FCA_CLEARANCE" target="clearanceType"/>
+            <flowable:in sourceExpression="FCA - generate the FCA clearance" target="clearanceName"/>
+            <flowable:in sourceExpression="fca" target="clearanceGroup"/>
+            <flowable:in sourceExpression="fcaClearanceForm" target="clearanceFormKey"/>
+            <flowable:out source="clearanceDocumentRef" target="fcaClearanceRef"/>
+          </extensionElements>
+          <processRefExpression><![CDATA[departmentClearance]]></processRefExpression>
+        </processTask>
+      </stage>
+
+      <stage id="hrStage" name="HR acceptance" flowable:includeInStageOverview="true">
+        <documentation>Steps 7 and 8: HRM checks that all five documents have arrived, then the acceptance of resignation is generated and signed.</documentation>
+
+        <planItem id="piHrmVerifyDocuments" name="HRM - check the five documents" definitionRef="hrmVerifyDocuments"/>
+        <planItem id="piAcceptance" name="Acceptance of resignation" definitionRef="acceptanceTask">
+          <entryCriterion id="ecAcceptance" sentryRef="sentryDocumentsVerified"/>
+        </planItem>
+        <planItem id="piAcceptedMilestone" name="Resignation accepted" definitionRef="resignationAcceptedMilestone">
+          <entryCriterion id="ecAcceptedMilestone" sentryRef="sentryAcceptanceIssued"/>
+        </planItem>
+
+        <sentry id="sentryDocumentsVerified">
+          <planItemOnPart id="onPartHrmVerify" sourceRef="piHrmVerifyDocuments">
+            <standardEvent>complete</standardEvent>
+          </planItemOnPart>
+        </sentry>
+        <sentry id="sentryAcceptanceIssued">
+          <planItemOnPart id="onPartAcceptance" sourceRef="piAcceptance">
+            <standardEvent>complete</standardEvent>
+          </planItemOnPart>
+        </sentry>
+
+        <humanTask id="hrmVerifyDocuments" name="HRM - check the five documents"
+                   flowable:candidateGroups="hrm" flowable:formKey="documentChecklistForm">
+          <documentation>Resignation letter (from SSR), sales clearance and SBM clearance (from SBM), motorcycle clearance (from GAD) and FCA clearance (from FCA).</documentation>
+          <extensionElements>
+            <!--
+                Completing this is what asks Head of HR to sign the acceptance letter, so the
+                officer who completed it is the requester of that signature. Remembering who
+                that was is the only way a returned letter can go back to a person rather than
+                to the HRM queue.
+            -->
+            <flowable:taskListener event="complete"
+                                   expression="${task.setVariable('hrmUserId', task.getAssignee())}"/>
+          </extensionElements>
+        </humanTask>
+
+        <processTask id="acceptanceTask" name="Acceptance of resignation" flowable:fallbackToDefaultTenant="true">
+          <extensionElements>
+            <flowable:in source="employeeId" target="employeeId"/>
+            <flowable:in source="employeeName" target="employeeName"/>
+            <flowable:in source="employeeUserId" target="employeeUserId"/>
+            <flowable:in source="hrmUserId" target="hrmUserId"/>
+            <flowable:out source="acceptanceLetterRef" target="acceptanceLetterRef"/>
+          </extensionElements>
+          <processRefExpression><![CDATA[resignationAcceptance]]></processRefExpression>
+        </processTask>
+
+        <milestone id="resignationAcceptedMilestone" name="Resignation accepted"/>
+      </stage>
+
+      <stage id="settlementStage" name="Final settlement and preservation" flowable:includeInStageOverview="true">
+        <documentation>Steps 9 to 15: ACC and HR settle the account, then HRM preserves the complete file of seven documents.</documentation>
+
+        <planItem id="piFinalSettlement" name="Final settlement" definitionRef="finalSettlementTask"/>
+        <planItem id="piPreserveFile" name="HRM - preserve the employee file" definitionRef="preserveEmployeeFile">
+          <entryCriterion id="ecPreserveFile" sentryRef="sentrySettlementDone"/>
+        </planItem>
+        <planItem id="piFileClosedMilestone" name="Employee file closed" definitionRef="employeeFileClosedMilestone">
+          <entryCriterion id="ecFileClosedMilestone" sentryRef="sentryFilePreserved"/>
+        </planItem>
+
+        <sentry id="sentrySettlementDone">
+          <planItemOnPart id="onPartFinalSettlement" sourceRef="piFinalSettlement">
+            <standardEvent>complete</standardEvent>
+          </planItemOnPart>
+        </sentry>
+        <sentry id="sentryFilePreserved">
+          <planItemOnPart id="onPartPreserveFile" sourceRef="piPreserveFile">
+            <standardEvent>complete</standardEvent>
+          </planItemOnPart>
+        </sentry>
+
+        <processTask id="finalSettlementTask" name="Final settlement" flowable:fallbackToDefaultTenant="true">
+          <extensionElements>
+            <flowable:in source="employeeId" target="employeeId"/>
+            <flowable:in source="employeeName" target="employeeName"/>
+            <flowable:out source="finalSettlementRef" target="finalSettlementRef"/>
+          </extensionElements>
+          <processRefExpression><![CDATA[finalSettlement]]></processRefExpression>
+        </processTask>
+
+        <!-- Step 15 - the last row of the spreadsheet, and the reason this is a case. -->
+        <humanTask id="preserveEmployeeFile" name="HRM - preserve the employee file"
+                   flowable:candidateGroups="hrm" flowable:formKey="preservationForm">
+          <documentation>Attach the final settlement copy to the other six documents and preserve the file. All seven can be shared, printed or extracted as PDF from here.</documentation>
+        </humanTask>
+
+        <milestone id="employeeFileClosedMilestone" name="Employee file closed"/>
+      </stage>
+    </casePlanModel>
+  </case>
+
+  <cmmndi:CMMNDI>
+    <cmmndi:CMMNDiagram id="CMMNDiagram_salesResignation">
+      <cmmndi:CMMNShape id="shape_resignationPlan" cmmnElementRef="resignationPlan">
+        <dc:Bounds x="40" y="40" width="1720" height="560"/>
+        <cmmndi:CMMNLabel/>
+      </cmmndi:CMMNShape>
+
+      <cmmndi:CMMNShape id="shape_piSalesStage" cmmnElementRef="piSalesStage">
+        <dc:Bounds x="80" y="100" width="380" height="460"/>
+        <cmmndi:CMMNLabel/>
+      </cmmndi:CMMNShape>
+      <cmmndi:CMMNShape id="shape_piNotifyResignationLogged" cmmnElementRef="piNotifyResignationLogged">
+        <dc:Bounds x="110" y="140" width="320" height="70"/>
+        <cmmndi:CMMNLabel/>
+      </cmmndi:CMMNShape>
+      <cmmndi:CMMNShape id="shape_piAseClearance" cmmnElementRef="piAseClearance">
+        <dc:Bounds x="110" y="240" width="320" height="70"/>
+        <cmmndi:CMMNLabel/>
+      </cmmndi:CMMNShape>
+      <cmmndi:CMMNShape id="shape_piSalesChain" cmmnElementRef="piSalesChain">
+        <dc:Bounds x="110" y="340" width="320" height="70"/>
+        <cmmndi:CMMNLabel/>
+      </cmmndi:CMMNShape>
+      <cmmndi:CMMNShape id="shape_ecSalesChain" cmmnElementRef="ecSalesChain">
+        <dc:Bounds x="100" y="361" width="20" height="28"/>
+        <cmmndi:CMMNLabel/>
+      </cmmndi:CMMNShape>
+      <cmmndi:CMMNShape id="shape_piSalesAdmin" cmmnElementRef="piSalesAdmin">
+        <dc:Bounds x="110" y="440" width="320" height="70"/>
+        <cmmndi:CMMNLabel/>
+      </cmmndi:CMMNShape>
+      <cmmndi:CMMNShape id="shape_ecSalesAdmin" cmmnElementRef="ecSalesAdmin">
+        <dc:Bounds x="100" y="461" width="20" height="28"/>
+        <cmmndi:CMMNLabel/>
+      </cmmndi:CMMNShape>
+
+      <cmmndi:CMMNShape id="shape_piClearanceStage" cmmnElementRef="piClearanceStage">
+        <dc:Bounds x="500" y="100" width="380" height="460"/>
+        <cmmndi:CMMNLabel/>
+      </cmmndi:CMMNShape>
+      <cmmndi:CMMNShape id="shape_ecClearanceStage" cmmnElementRef="ecClearanceStage">
+        <dc:Bounds x="490" y="316" width="20" height="28"/>
+        <cmmndi:CMMNLabel/>
+      </cmmndi:CMMNShape>
+      <cmmndi:CMMNShape id="shape_piSbmClearance" cmmnElementRef="piSbmClearance">
+        <dc:Bounds x="530" y="140" width="320" height="70"/>
+        <cmmndi:CMMNLabel/>
+      </cmmndi:CMMNShape>
+      <cmmndi:CMMNShape id="shape_piMotorcycleClearance" cmmnElementRef="piMotorcycleClearance">
+        <dc:Bounds x="530" y="240" width="320" height="70"/>
+        <cmmndi:CMMNLabel/>
+      </cmmndi:CMMNShape>
+      <cmmndi:CMMNShape id="shape_piFcaClearance" cmmnElementRef="piFcaClearance">
+        <dc:Bounds x="530" y="340" width="320" height="70"/>
+        <cmmndi:CMMNLabel/>
+      </cmmndi:CMMNShape>
+
+      <cmmndi:CMMNShape id="shape_piHrStage" cmmnElementRef="piHrStage">
+        <dc:Bounds x="920" y="100" width="380" height="460"/>
+        <cmmndi:CMMNLabel/>
+      </cmmndi:CMMNShape>
+      <cmmndi:CMMNShape id="shape_ecHrStage" cmmnElementRef="ecHrStage">
+        <dc:Bounds x="910" y="316" width="20" height="28"/>
+        <cmmndi:CMMNLabel/>
+      </cmmndi:CMMNShape>
+      <cmmndi:CMMNShape id="shape_piHrmVerifyDocuments" cmmnElementRef="piHrmVerifyDocuments">
+        <dc:Bounds x="950" y="140" width="320" height="70"/>
+        <cmmndi:CMMNLabel/>
+      </cmmndi:CMMNShape>
+      <cmmndi:CMMNShape id="shape_piAcceptance" cmmnElementRef="piAcceptance">
+        <dc:Bounds x="950" y="240" width="320" height="70"/>
+        <cmmndi:CMMNLabel/>
+      </cmmndi:CMMNShape>
+      <cmmndi:CMMNShape id="shape_ecAcceptance" cmmnElementRef="ecAcceptance">
+        <dc:Bounds x="940" y="261" width="20" height="28"/>
+        <cmmndi:CMMNLabel/>
+      </cmmndi:CMMNShape>
+      <cmmndi:CMMNShape id="shape_piAcceptedMilestone" cmmnElementRef="piAcceptedMilestone">
+        <dc:Bounds x="950" y="350" width="320" height="50"/>
+        <cmmndi:CMMNLabel/>
+      </cmmndi:CMMNShape>
+      <cmmndi:CMMNShape id="shape_ecAcceptedMilestone" cmmnElementRef="ecAcceptedMilestone">
+        <dc:Bounds x="940" y="361" width="20" height="28"/>
+        <cmmndi:CMMNLabel/>
+      </cmmndi:CMMNShape>
+
+      <cmmndi:CMMNShape id="shape_piSettlementStage" cmmnElementRef="piSettlementStage">
+        <dc:Bounds x="1340" y="100" width="380" height="460"/>
+        <cmmndi:CMMNLabel/>
+      </cmmndi:CMMNShape>
+      <cmmndi:CMMNShape id="shape_ecSettlementStage" cmmnElementRef="ecSettlementStage">
+        <dc:Bounds x="1330" y="316" width="20" height="28"/>
+        <cmmndi:CMMNLabel/>
+      </cmmndi:CMMNShape>
+      <cmmndi:CMMNShape id="shape_piFinalSettlement" cmmnElementRef="piFinalSettlement">
+        <dc:Bounds x="1370" y="140" width="320" height="70"/>
+        <cmmndi:CMMNLabel/>
+      </cmmndi:CMMNShape>
+      <cmmndi:CMMNShape id="shape_piPreserveFile" cmmnElementRef="piPreserveFile">
+        <dc:Bounds x="1370" y="240" width="320" height="70"/>
+        <cmmndi:CMMNLabel/>
+      </cmmndi:CMMNShape>
+      <cmmndi:CMMNShape id="shape_ecPreserveFile" cmmnElementRef="ecPreserveFile">
+        <dc:Bounds x="1360" y="261" width="20" height="28"/>
+        <cmmndi:CMMNLabel/>
+      </cmmndi:CMMNShape>
+      <cmmndi:CMMNShape id="shape_piFileClosedMilestone" cmmnElementRef="piFileClosedMilestone">
+        <dc:Bounds x="1370" y="350" width="320" height="50"/>
+        <cmmndi:CMMNLabel/>
+      </cmmndi:CMMNShape>
+      <cmmndi:CMMNShape id="shape_ecFileClosedMilestone" cmmnElementRef="ecFileClosedMilestone">
+        <dc:Bounds x="1360" y="361" width="20" height="28"/>
+        <cmmndi:CMMNLabel/>
+      </cmmndi:CMMNShape>
+    </cmmndi:CMMNDiagram>
+  </cmmndi:CMMNDI>
+</definitions>

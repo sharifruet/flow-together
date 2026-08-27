@@ -1,0 +1,25 @@
+{
+  "key": "documentReceiptForm",
+  "name": "Document receipt",
+  "version": 1,
+  "fields": [
+    {
+      "id": "resignationLetterReceived",
+      "name": "Resignation letter received",
+      "type": "boolean",
+      "required": true
+    },
+    {
+      "id": "salesClearanceReceived",
+      "name": "Sales clearance received",
+      "type": "boolean",
+      "required": true
+    },
+    {
+      "id": "receiptRemarks",
+      "name": "Remarks",
+      "type": "multi-line-text"
+    }
+  ],
+  "outcomes": []
+}

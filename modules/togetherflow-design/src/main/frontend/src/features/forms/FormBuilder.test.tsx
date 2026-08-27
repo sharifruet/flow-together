@@ -47,7 +47,8 @@ describe("FormBuilder", () => {
 
     await user.click(screen.getByRole("button", { name: "Text" }));
 
-    expect(screen.getByRole("heading", { name: /Fields \(1\)/ })).toBeInTheDocument();
+    // The field list is now one of two views of the canvas, so its count rides on the tab.
+    expect(screen.getByRole("tab", { name: "1 field" })).toBeInTheDocument();
     // Selecting it opens the properties panel on that field.
     expect(screen.getByLabelText(/^Id/)).toHaveValue("text_1");
   });
@@ -147,5 +148,74 @@ describe("FormBuilder", () => {
     await user.click(screen.getByRole("button", { name: /Back to models/ }));
 
     expect(onBack).toHaveBeenCalled();
+  });
+
+  describe("live preview (§7.4.6)", () => {
+    const SOURCE = JSON.stringify({
+      key: "expenseClaim",
+      name: "Expense claim",
+      fields: [
+        { id: "reason", name: "Reason", type: "text", required: true },
+        { id: "amount", name: "Amount", type: "integer" },
+      ],
+    });
+
+    it("renders the form with the same renderer the Work app uses at runtime", async () => {
+      const user = userEvent.setup();
+      renderBuilder(stubApi(), SOURCE);
+
+      await user.click(screen.getByRole("tab", { name: "Preview" }));
+
+      // Real controls, built from the model — not a list of field names.
+      expect(screen.getByLabelText(/^Reason/)).toBeInTheDocument();
+      expect(screen.getByLabelText(/^Amount/)).toHaveAttribute("type", "number");
+    });
+
+    it("behaves like the real thing: a required field blocks the submit and says so", async () => {
+      const user = userEvent.setup();
+      renderBuilder(stubApi(), SOURCE);
+
+      await user.click(screen.getByRole("tab", { name: "Preview" }));
+      await user.click(screen.getByRole("button", { name: "Submit" }));
+
+      const summary = await screen.findByRole("alert");
+      expect(summary).toHaveTextContent(/There is 1 problem with this form/i);
+      expect(summary).toHaveTextContent(/Reason is required/i);
+    });
+
+    it("confirms a completed form would go through", async () => {
+      const user = userEvent.setup();
+      renderBuilder(stubApi(), SOURCE);
+
+      await user.click(screen.getByRole("tab", { name: "Preview" }));
+      await user.type(screen.getByLabelText(/^Reason/), "Client dinner");
+      await user.click(screen.getByRole("button", { name: "Submit" }));
+
+      expect(await screen.findByText(/nothing would block a submit/i)).toBeInTheDocument();
+    });
+
+    it("hides a field whose visibility rule is unmet, as the runtime would", async () => {
+      const user = userEvent.setup();
+      renderBuilder(
+        stubApi(),
+        JSON.stringify({
+          fields: [
+            { id: "kind", name: "Kind", type: "text" },
+            {
+              id: "why",
+              name: "Why",
+              type: "text",
+              params: { tfVisibleWhen: { field: "kind", operator: "equals", value: "other" } },
+            },
+          ],
+        }),
+      );
+
+      await user.click(screen.getByRole("tab", { name: "Preview" }));
+      expect(screen.queryByLabelText(/^Why/)).not.toBeInTheDocument();
+
+      await user.type(screen.getByLabelText(/^Kind/), "other");
+      expect(await screen.findByLabelText(/^Why/)).toBeInTheDocument();
+    });
   });
 });

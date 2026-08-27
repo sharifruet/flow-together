@@ -1,0 +1,178 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<definitions xmlns="http://www.omg.org/spec/BPMN/20100524/MODEL"
+             xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+             xmlns:flowable="http://flowable.org/bpmn"
+             xmlns:bpmndi="http://www.omg.org/spec/BPMN/20100524/DI"
+             xmlns:omgdc="http://www.omg.org/spec/DD/20100524/DC"
+             xmlns:omgdi="http://www.omg.org/spec/DD/20100524/DI"
+             typeLanguage="http://www.w3.org/2001/XMLSchema"
+             expressionLanguage="http://www.w3.org/1999/XPath"
+             targetNamespace="http://togetherflow.org/resignation">
+
+  <!--
+      Resignation_Process.xlsx step 8 — HRM generates the acceptance of resignation.
+
+      The spreadsheet's four sub-steps map one-to-one onto the four elements after the
+      signature: circulate, update the clearance status record, and compile the six
+      documents for ACC. The letter itself is produced by the system (step 1.5), so it is a
+      service task, not something anyone types.
+
+      Head of HR can send the draft back; that loop is not in the spreadsheet, but a
+      signature step with no way to decline is a rubber stamp, not an approval.
+  -->
+  <process id="resignationAcceptance" name="Acceptance of Resignation" isExecutable="true">
+    <documentation>Generate the acceptance of resignation, have Head of HR sign it, circulate it and hand the file to ACC (Resignation_Process.xlsx step 8).</documentation>
+
+    <startEvent id="startAcceptance" name="All clearances received"/>
+    <sequenceFlow id="toGenerateLetter" sourceRef="startAcceptance" targetRef="generateAcceptanceLetter"/>
+
+    <serviceTask id="generateAcceptanceLetter" name="Generate the acceptance of resignation letter"
+                 flowable:expression="${resignationDocuments.register('ACCEPTANCE_OF_RESIGNATION', employeeId)}"
+                 flowable:resultVariableName="acceptanceLetterRef"/>
+    <sequenceFlow id="toHeadOfHrSignature" sourceRef="generateAcceptanceLetter" targetRef="headOfHrSignature"/>
+
+    <userTask id="headOfHrSignature" name="Head of HR — sign the acceptance of resignation"
+              flowable:candidateGroups="head-of-hr" flowable:formKey="signatureForm"/>
+    <sequenceFlow id="toSignatureDecision" sourceRef="headOfHrSignature" targetRef="signatureDecision"/>
+
+    <exclusiveGateway id="signatureDecision" name="Signed?" default="acceptanceReturned"/>
+    <sequenceFlow id="acceptanceSigned" name="Signed" sourceRef="signatureDecision" targetRef="sendAcceptanceToEmployee">
+      <conditionExpression xsi:type="tFormalExpression"><![CDATA[${variables:equals(decision, 'approve')}]]></conditionExpression>
+    </sequenceFlow>
+    <sequenceFlow id="acceptanceReturned" name="Returned" sourceRef="signatureDecision" targetRef="reviseAcceptanceLetter"/>
+
+    <!--
+        Back to the requester: the HRM officer who completed the document check is who asked
+        for the signature, and `hrmUserId` is who that was. The candidate group stays as the
+        fallback for the case where nobody ever claimed that task, so a returned letter is
+        never left with no one able to pick it up.
+    -->
+    <userTask id="reviseAcceptanceLetter" name="HRM — revise the acceptance letter"
+              flowable:assignee="${variables:getOrDefault(hrmUserId, null)}"
+              flowable:candidateGroups="hrm" flowable:formKey="documentReceiptForm"/>
+    <sequenceFlow id="backToSignature" sourceRef="reviseAcceptanceLetter" targetRef="headOfHrSignature"/>
+
+    <!--
+        Step 1.6 — "sent to recipients using email, shared link (To employee, SSR Admin)", and
+        step 8.2 — "send to Reception Box for collection". Two acts, and two service tasks,
+        because the employee is a named individual and the other two are desks: the recipient
+        of the first is a variable, of the second a pair of group ids.
+
+        `employeeUserId` is the resigning employee's identity, supplied when the ASE logs the
+        resignation. It falls back to the payroll id so a case started without it still says
+        who the letter was for rather than notifying nobody.
+    -->
+    <serviceTask id="sendAcceptanceToEmployee" name="Send the acceptance letter to the employee"
+                 flowable:expression="${resignationNotifier.send('ACCEPTANCE_SENT_TO_EMPLOYEE', employeeId, variables:getOrDefault(employeeUserId, employeeId))}"/>
+    <sequenceFlow id="toCirculateAcceptance" sourceRef="sendAcceptanceToEmployee" targetRef="circulateAcceptanceLetter"/>
+
+    <serviceTask id="circulateAcceptanceLetter" name="Circulate the acceptance letter to SSR Admin and reception"
+                 flowable:expression="${resignationNotifier.send('ACCEPTANCE_CIRCULATED', employeeId, 'sales-ssr,reception')}"/>
+    <sequenceFlow id="toUpdateClearanceStatus" sourceRef="circulateAcceptanceLetter" targetRef="updateClearanceStatusRecord"/>
+
+    <userTask id="updateClearanceStatusRecord" name="HRM — update the employee clearance status record"
+              flowable:candidateGroups="hrm" flowable:formKey="clearanceStatusForm"/>
+    <sequenceFlow id="toShareWithAcc" sourceRef="updateClearanceStatusRecord" targetRef="shareDocumentsWithAcc"/>
+
+    <!-- Step 1.7 — all six documents go to ACC for the final settlement calculation. -->
+    <serviceTask id="shareDocumentsWithAcc" name="Send the six documents to ACC for final settlement"
+                 flowable:expression="${resignationNotifier.send('DOCUMENTS_SHARED_WITH_ACC', employeeId, 'acc-officer,acc-manager')}"/>
+    <sequenceFlow id="toEndAcceptance" sourceRef="shareDocumentsWithAcc" targetRef="endAcceptance"/>
+
+    <endEvent id="endAcceptance" name="Resignation accepted"/>
+  </process>
+  <bpmndi:BPMNDiagram id="BPMNDiagram_resignationAcceptance">
+    <bpmndi:BPMNPlane id="BPMNPlane_resignationAcceptance" bpmnElement="resignationAcceptance">
+      <bpmndi:BPMNShape id="shape_startAcceptance" bpmnElement="startAcceptance">
+        <omgdc:Bounds x="140" y="145" width="30" height="30"/>
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="shape_generateAcceptanceLetter" bpmnElement="generateAcceptanceLetter">
+        <omgdc:Bounds x="300" y="120" width="150" height="80"/>
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="shape_headOfHrSignature" bpmnElement="headOfHrSignature">
+        <omgdc:Bounds x="520" y="120" width="150" height="80"/>
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="shape_signatureDecision" bpmnElement="signatureDecision">
+        <omgdc:Bounds x="795" y="140" width="40" height="40"/>
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="shape_reviseAcceptanceLetter" bpmnElement="reviseAcceptanceLetter">
+        <omgdc:Bounds x="960" y="120" width="150" height="80"/>
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="shape_sendAcceptanceToEmployee" bpmnElement="sendAcceptanceToEmployee">
+        <omgdc:Bounds x="960" y="250" width="150" height="80"/>
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="shape_circulateAcceptanceLetter" bpmnElement="circulateAcceptanceLetter">
+        <omgdc:Bounds x="1180" y="120" width="150" height="80"/>
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="shape_updateClearanceStatusRecord" bpmnElement="updateClearanceStatusRecord">
+        <omgdc:Bounds x="1400" y="120" width="150" height="80"/>
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="shape_shareDocumentsWithAcc" bpmnElement="shareDocumentsWithAcc">
+        <omgdc:Bounds x="1620" y="120" width="150" height="80"/>
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="shape_endAcceptance" bpmnElement="endAcceptance">
+        <omgdc:Bounds x="1900" y="145" width="30" height="30"/>
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNEdge id="edge_toGenerateLetter" bpmnElement="toGenerateLetter">
+        <omgdi:waypoint x="170" y="160"/>
+        <omgdi:waypoint x="235" y="160"/>
+        <omgdi:waypoint x="235" y="160"/>
+        <omgdi:waypoint x="300" y="160"/>
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="edge_toHeadOfHrSignature" bpmnElement="toHeadOfHrSignature">
+        <omgdi:waypoint x="450" y="160"/>
+        <omgdi:waypoint x="485" y="160"/>
+        <omgdi:waypoint x="485" y="160"/>
+        <omgdi:waypoint x="520" y="160"/>
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="edge_toSignatureDecision" bpmnElement="toSignatureDecision">
+        <omgdi:waypoint x="670" y="160"/>
+        <omgdi:waypoint x="732.5" y="160"/>
+        <omgdi:waypoint x="732.5" y="160"/>
+        <omgdi:waypoint x="795" y="160"/>
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="edge_acceptanceSigned" bpmnElement="acceptanceSigned">
+        <omgdi:waypoint x="835" y="160"/>
+        <omgdi:waypoint x="897.5" y="160"/>
+        <omgdi:waypoint x="897.5" y="290"/>
+        <omgdi:waypoint x="960" y="290"/>
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="edge_acceptanceReturned" bpmnElement="acceptanceReturned">
+        <omgdi:waypoint x="835" y="160"/>
+        <omgdi:waypoint x="897.5" y="160"/>
+        <omgdi:waypoint x="897.5" y="160"/>
+        <omgdi:waypoint x="960" y="160"/>
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="edge_backToSignature" bpmnElement="backToSignature">
+        <omgdi:waypoint x="1035" y="200"/>
+        <omgdi:waypoint x="1035" y="245"/>
+        <omgdi:waypoint x="595" y="245"/>
+        <omgdi:waypoint x="595" y="200"/>
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="edge_toCirculateAcceptance" bpmnElement="toCirculateAcceptance">
+        <omgdi:waypoint x="1110" y="290"/>
+        <omgdi:waypoint x="1145" y="290"/>
+        <omgdi:waypoint x="1145" y="160"/>
+        <omgdi:waypoint x="1180" y="160"/>
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="edge_toUpdateClearanceStatus" bpmnElement="toUpdateClearanceStatus">
+        <omgdi:waypoint x="1330" y="160"/>
+        <omgdi:waypoint x="1365" y="160"/>
+        <omgdi:waypoint x="1365" y="160"/>
+        <omgdi:waypoint x="1400" y="160"/>
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="edge_toShareWithAcc" bpmnElement="toShareWithAcc">
+        <omgdi:waypoint x="1550" y="160"/>
+        <omgdi:waypoint x="1585" y="160"/>
+        <omgdi:waypoint x="1585" y="160"/>
+        <omgdi:waypoint x="1620" y="160"/>
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="edge_toEndAcceptance" bpmnElement="toEndAcceptance">
+        <omgdi:waypoint x="1770" y="160"/>
+        <omgdi:waypoint x="1835" y="160"/>
+        <omgdi:waypoint x="1835" y="160"/>
+        <omgdi:waypoint x="1900" y="160"/>
+      </bpmndi:BPMNEdge>
+    </bpmndi:BPMNPlane>
+  </bpmndi:BPMNDiagram>
+</definitions>

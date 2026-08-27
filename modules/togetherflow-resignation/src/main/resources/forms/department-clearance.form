@@ -1,0 +1,25 @@
+{
+  "key": "departmentClearanceForm",
+  "name": "Department clearance",
+  "version": 1,
+  "fields": [
+    {
+      "id": "duesOutstanding",
+      "name": "Dues outstanding",
+      "type": "amount",
+      "required": true
+    },
+    {
+      "id": "itemsReturned",
+      "name": "Company items returned",
+      "type": "boolean",
+      "required": true
+    },
+    {
+      "id": "clearanceRemarks",
+      "name": "Remarks",
+      "type": "multi-line-text"
+    }
+  ],
+  "outcomes": []
+}

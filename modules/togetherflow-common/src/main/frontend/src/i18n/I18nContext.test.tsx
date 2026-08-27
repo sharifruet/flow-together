@@ -181,4 +181,15 @@ describe("without a provider", () => {
     render(<Show id="test.registered" />);
     expect(screen.getByTestId("out")).toHaveTextContent("Registered");
   });
+
+  it("picks plural forms too, which a bare lookup misses entirely", () => {
+    // A plural key exists only as its `.one` / `.other` variants, so reading the key
+    // directly finds nothing and renders the key itself — which is what the fallback
+    // exists to prevent.
+    registerFallbackMessages({
+      en: { "test.plural.one": "{count} thing", "test.plural.other": "{count} things" },
+    });
+    render(<Show id="test.plural" params={{ count: 2 }} />);
+    expect(screen.getByTestId("out")).toHaveTextContent("2 things");
+  });
 });

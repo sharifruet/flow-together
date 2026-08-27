@@ -1,0 +1,427 @@
+/*
+ * Form renderer styles (REQUIREMENTS.md §7.1 Forms, §14.1, §14.3).
+ *
+ * These live here rather than in an app stylesheet because `FormRenderer` is exported
+ * from this package and rendered by two of them — Work fills forms in, Design previews
+ * them while they are being authored (§7.4.6: "renders using the same component at
+ * runtime in Work so authoring and execution stay visually consistent"). Styles that sit
+ * in one app make that literally false for the other.
+ */
+
+/* ── The form itself ──────────────────────────────────────────────────────── */
+
+.tf-form {
+  display: flex;
+  flex-direction: column;
+  /* Fields carry their own bottom margin from `.tf-field`; the gap here is only what
+     separates the structural blocks (sections, rules, the summary). */
+  gap: 0;
+}
+
+/*
+ * Fields sit closer together than the default `.tf-field` margin, which is tuned for
+ * one-off controls in a panel. A form is a column of them, and a 16px rhythm reads as
+ * a list rather than a set of unrelated inputs.
+ */
+.tf-form .tf-field {
+  margin-bottom: var(--tf-space-4);
+}
+.tf-form .tf-field:last-child {
+  margin-bottom: 0;
+}
+
+/* ── Error summary (§14.1: an error state that is specific and actionable) ── */
+
+/*
+ * Shown after a submit attempt, never while typing. Focused programmatically so a
+ * keyboard or screen-reader user lands on the list of problems rather than being told
+ * only that the button did nothing.
+ */
+.tf-form__summary {
+  margin: 0 0 var(--tf-space-5);
+  padding: var(--tf-space-4);
+  border: 1px solid var(--tf-danger);
+  border-left-width: 4px;
+  border-radius: var(--tf-radius);
+  background: var(--tf-danger-bg);
+}
+.tf-form__summary:focus-visible {
+  outline: 2px solid var(--tf-danger);
+  outline-offset: 2px;
+}
+.tf-form__summary-title {
+  margin: 0 0 var(--tf-space-2);
+  font-size: var(--tf-text-base);
+  font-weight: 600;
+  color: var(--tf-danger);
+}
+.tf-form__summary-list {
+  margin: 0;
+  padding-left: var(--tf-space-5);
+  display: flex;
+  flex-direction: column;
+  gap: var(--tf-space-1);
+}
+.tf-form__summary-link {
+  color: var(--tf-danger);
+  font-weight: 500;
+}
+.tf-form__summary-link:hover {
+  text-decoration: none;
+}
+
+/* ── Structure: headlines, rules, spacers, static text ────────────────────── */
+
+.tf-form__headline {
+  margin: var(--tf-space-5) 0 var(--tf-space-3);
+  font-size: var(--tf-text-lg);
+  font-weight: 600;
+  line-height: 1.3;
+  color: var(--tf-text);
+}
+/* A headline that opens the form should not push it down with a leading gap. */
+.tf-form > .tf-form__headline:first-child {
+  margin-top: 0;
+}
+.tf-form__headline--ruled {
+  padding-bottom: var(--tf-space-2);
+  border-bottom: 1px solid var(--tf-border);
+}
+.tf-form__rule {
+  width: 100%;
+  border: none;
+  border-top: 1px solid var(--tf-border);
+  margin: var(--tf-space-5) 0;
+}
+.tf-form__spacer {
+  height: var(--tf-space-5);
+}
+.tf-form__static {
+  margin: 0 0 var(--tf-space-4);
+  font-size: var(--tf-text-base);
+  line-height: 1.5;
+}
+
+/* ── Container layout ─────────────────────────────────────────────────────── */
+
+/*
+ * A Flowable form container is rows of columns, and a field may declare a colspan. The
+ * grid is 12 columns wide so a colspan means what it means in the model, instead of
+ * every column being forced to equal width.
+ */
+.tf-form__grid {
+  display: grid;
+  grid-template-columns: repeat(12, minmax(0, 1fr));
+  gap: 0 var(--tf-space-4);
+  align-items: start;
+}
+.tf-form__col {
+  /* Set inline from the field's layout.colspan; 12 = full width. */
+  grid-column: span var(--tf-col-span, 12);
+  min-width: 0;
+}
+
+/* One column per row below tablet: side-by-side inputs at phone width are unusable. */
+@media (max-width: 640px) {
+  .tf-form__col {
+    grid-column: 1 / -1;
+  }
+}
+
+/* ── Labels, hints, counters ──────────────────────────────────────────────── */
+
+.tf-field__label-row {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: var(--tf-space-3);
+}
+.tf-field__label-row .tf-field__label {
+  margin-bottom: 0;
+}
+
+/* Live character budget for a length-limited field. */
+.tf-field__counter {
+  font-size: var(--tf-text-xs);
+  font-variant-numeric: tabular-nums;
+  color: var(--tf-text-muted);
+  white-space: nowrap;
+}
+.tf-field__counter--near {
+  color: var(--tf-warning);
+  font-weight: 600;
+}
+.tf-field__counter--over {
+  color: var(--tf-danger);
+  font-weight: 600;
+}
+
+/* An invalid control earns a heavier border than the generic aria-invalid rule. */
+.tf-field--invalid .tf-input,
+.tf-field--invalid .tf-select {
+  border-color: var(--tf-danger);
+}
+.tf-field--invalid .tf-input:focus,
+.tf-field--invalid .tf-select:focus {
+  border-color: var(--tf-danger);
+  box-shadow: 0 0 0 3px var(--tf-danger-bg);
+}
+
+/*
+ * The error message carries a marker so it is not colour alone (WCAG 1.4.1) — the same
+ * reason status columns keep their word beside their tone.
+ */
+.tf-form .tf-field__error::before {
+  content: "!";
+  display: inline-grid;
+  place-content: center;
+  width: 14px;
+  height: 14px;
+  margin-right: var(--tf-space-1);
+  border-radius: 50%;
+  background: var(--tf-danger);
+  color: var(--tf-text-inverse);
+  font-size: 10px;
+  font-weight: 700;
+  vertical-align: -2px;
+}
+
+/* ── Prose textareas ──────────────────────────────────────────────────────── */
+
+/*
+ * `.tf-textarea` is monospace because its first home was the properties panel, where the
+ * content is script bodies and expressions. A form's multi-line answer is prose, and
+ * monospace makes it read like a terminal.
+ */
+.tf-form .tf-textarea {
+  font-family: var(--tf-font);
+  font-size: var(--tf-text-base);
+  min-height: 84px;
+}
+
+/* ── Read-only and computed values ────────────────────────────────────────── */
+
+/*
+ * A field the model marks read-only is shown as a value, not as a greyed-out input.
+ * Disabled controls are the least readable thing on a page, and "you cannot change this"
+ * is better said by not presenting a control at all.
+ *
+ * A form that is *temporarily* unavailable — an unclaimed task — keeps real disabled
+ * inputs, because that state is about the moment rather than about the field.
+ */
+.tf-form__readonly,
+.tf-form__expression {
+  display: block;
+  min-height: 36px;
+  padding: 7px 10px;
+  border-radius: var(--tf-radius);
+  background: var(--tf-bg-subtle);
+  border: 1px solid var(--tf-border);
+  color: var(--tf-text);
+  line-height: 1.5;
+  overflow-wrap: anywhere;
+}
+/* Computed by the engine, so it is marked as derived rather than merely locked. */
+.tf-form__expression {
+  border-style: dashed;
+  border-color: var(--tf-border-strong);
+  color: var(--tf-text-muted);
+}
+.tf-form__readonly--empty {
+  color: var(--tf-text-muted);
+}
+
+/* ── Checkboxes and radios ────────────────────────────────────────────────── */
+
+.tf-check {
+  display: flex;
+  align-items: flex-start;
+  gap: var(--tf-space-2);
+  cursor: pointer;
+  line-height: 1.4;
+}
+.tf-check input[type="checkbox"],
+.tf-check input[type="radio"] {
+  /* Sized up from the browser default, which is too small to hit accurately and too
+     small to read as a deliberate control. */
+  width: 18px;
+  height: 18px;
+  margin: 1px 0 0;
+  flex: none;
+  accent-color: var(--tf-accent);
+  cursor: pointer;
+}
+.tf-check input:disabled,
+.tf-check:has(input:disabled) {
+  cursor: not-allowed;
+  color: var(--tf-text-muted);
+}
+.tf-check__label {
+  min-width: 0;
+}
+
+/* A radio group is a question, so it is a fieldset with the question as its legend. */
+.tf-radio-group {
+  margin: 0;
+  padding: 0;
+  border: none;
+  min-width: 0;
+}
+.tf-radio-group__legend {
+  padding: 0;
+  margin-bottom: var(--tf-space-1);
+  font-size: var(--tf-text-sm);
+  font-weight: 600;
+  color: var(--tf-text);
+}
+.tf-radio-group__options {
+  display: flex;
+  flex-direction: column;
+  gap: var(--tf-space-2);
+  padding: var(--tf-space-1) 0;
+}
+.tf-radio-group--invalid .tf-radio-group__legend {
+  color: var(--tf-danger);
+}
+
+/* Finger-sized targets on touch, rather than desktop density squeezed onto it (§14.6). */
+@media (pointer: coarse) {
+  .tf-form .tf-input,
+  .tf-form .tf-select {
+    min-height: 44px;
+  }
+  .tf-check {
+    min-height: 44px;
+    align-items: center;
+  }
+  .tf-check input[type="checkbox"],
+  .tf-check input[type="radio"] {
+    width: 22px;
+    height: 22px;
+    margin-top: 0;
+  }
+}
+
+/* ── Upload ───────────────────────────────────────────────────────────────── */
+
+/*
+ * Uploading has four outcomes a user must be able to tell apart — idle, in flight,
+ * attached, failed — and a bare `<input type="file">` shows none of them.
+ */
+.tf-upload {
+  display: flex;
+  flex-direction: column;
+  gap: var(--tf-space-2);
+}
+.tf-upload__zone {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: var(--tf-space-1);
+  padding: var(--tf-space-5) var(--tf-space-4);
+  border: 1px dashed var(--tf-border-strong);
+  border-radius: var(--tf-radius);
+  background: var(--tf-bg-subtle);
+  color: var(--tf-text-muted);
+  text-align: center;
+  transition: border-color 0.12s ease, background-color 0.12s ease;
+}
+.tf-upload__zone:hover:not(.tf-upload__zone--disabled) {
+  border-color: var(--tf-accent);
+}
+.tf-upload__zone--dragging {
+  border-color: var(--tf-accent);
+  border-style: solid;
+  background: var(--tf-info-bg);
+  color: var(--tf-text);
+}
+.tf-upload__zone--disabled {
+  opacity: 0.6;
+}
+.tf-upload__zone:focus-within {
+  border-color: var(--tf-accent);
+  box-shadow: var(--tf-focus-ring);
+}
+/* The real input covers the zone so the whole area is the click target, and stays
+   focusable — an opacity-0 input keeps keyboard access that `display:none` removes. */
+.tf-upload__input {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  opacity: 0;
+  cursor: pointer;
+}
+.tf-upload__zone--disabled .tf-upload__input {
+  cursor: not-allowed;
+}
+.tf-upload__prompt {
+  font-weight: 500;
+  color: var(--tf-text);
+}
+.tf-upload__constraint {
+  font-size: var(--tf-text-xs);
+}
+
+/* The attached file, once there is one. */
+.tf-upload__file {
+  display: flex;
+  align-items: center;
+  gap: var(--tf-space-3);
+  padding: var(--tf-space-2) var(--tf-space-3);
+  border: 1px solid var(--tf-border);
+  border-radius: var(--tf-radius);
+  background: var(--tf-bg-raised);
+}
+.tf-upload__file-name {
+  flex: 1;
+  min-width: 0;
+  overflow-wrap: anywhere;
+  font-weight: 500;
+}
+.tf-upload__file-size {
+  font-size: var(--tf-text-xs);
+  color: var(--tf-text-muted);
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+.tf-upload__remove {
+  flex: none;
+  border: none;
+  background: none;
+  padding: var(--tf-space-1);
+  font-size: 18px;
+  line-height: 1;
+  color: var(--tf-text-muted);
+  cursor: pointer;
+  border-radius: var(--tf-radius-sm);
+}
+.tf-upload__remove:hover:not(:disabled) {
+  color: var(--tf-danger);
+  background: var(--tf-danger-bg);
+}
+.tf-upload__status {
+  display: flex;
+  align-items: center;
+  gap: var(--tf-space-2);
+  font-size: var(--tf-text-sm);
+  color: var(--tf-text-muted);
+}
+.tf-upload__status--error {
+  color: var(--tf-danger);
+}
+.tf-upload__spinner {
+  width: 13px;
+  height: 13px;
+  flex: none;
+  border: 2px solid currentColor;
+  border-right-color: transparent;
+  border-radius: 50%;
+  animation: tf-spin 0.7s linear infinite;
+}
+@media (prefers-reduced-motion: reduce) {
+  .tf-upload__spinner {
+    animation-duration: 2s;
+  }
+}

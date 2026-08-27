@@ -1,0 +1,36 @@
+{
+  "key": "clearanceStatusForm",
+  "name": "Employee clearance status",
+  "version": 1,
+  "fields": [
+    {
+      "id": "clearanceStatus",
+      "name": "Clearance status",
+      "type": "dropdown",
+      "fieldType": "OptionFormField",
+      "options": [
+        {
+          "name": "Cleared"
+        },
+        {
+          "name": "Cleared with recovery"
+        },
+        {
+          "name": "Pending"
+        }
+      ],
+      "required": true
+    },
+    {
+      "id": "recoverableAmount",
+      "name": "Total recoverable amount",
+      "type": "amount"
+    },
+    {
+      "id": "clearanceStatusRemarks",
+      "name": "Remarks",
+      "type": "multi-line-text"
+    }
+  ],
+  "outcomes": []
+}

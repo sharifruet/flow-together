@@ -13,7 +13,18 @@ import type {
   OptionFormField,
   RestVariable,
 } from "../api/types";
+import { interpolate, type Messages, type TFunction } from "../i18n/I18nContext";
+import { commonEn } from "../i18n/messages";
 import { hiddenFieldIds } from "./visibility";
+
+/**
+ * Validation runs outside React — on submit, in a `useMemo`, in tests — so it takes the
+ * translator as an argument rather than reaching for the hook. Callers that have one
+ * (both app screens do) pass it; the rest get English from the shared catalogue, which
+ * is the same copy the provider would have resolved.
+ */
+export const englishMessages: TFunction = (key, params) =>
+  interpolate((commonEn as Messages)[key] ?? key, params);
 
 /** Field types that carry no value — layout and display only. */
 const PRESENTATIONAL: ReadonlySet<string> = new Set([
@@ -86,55 +97,182 @@ function normaliseInitial(field: FormField): unknown {
   return typeof value === "object" ? JSON.stringify(value) : String(value);
 }
 
-/** `<input type="date">` only accepts yyyy-MM-dd. */
+/**
+ * `<input type="date">` only accepts yyyy-MM-dd.
+ *
+ * A string that already opens with a calendar date is trusted as written rather than
+ * re-derived through `Date`. Converting via UTC shifts the day for anyone whose offset
+ * crosses midnight — `2026-03-05T01:00:00+03:00` is 4 March in UTC — so a date the user
+ * picked would come back a day earlier, and a second later, and so on. Taking the
+ * literal keeps the round trip with `formValuesToVariables` (which writes UTC midnight)
+ * exact in every timezone.
+ */
 export function toDateInputValue(value: unknown): string {
   if (typeof value !== "string" && typeof value !== "number") return "";
+  if (typeof value === "string") {
+    const literal = /^(\d{4}-\d{2}-\d{2})(?:[T ]|$)/.exec(value);
+    if (literal) return literal[1];
+  }
   const date = new Date(value);
   if (Number.isNaN(date.getTime())) return typeof value === "string" ? value : "";
   return date.toISOString().slice(0, 10);
 }
 
+/**
+ * Optional per-field constraints, carried in the engine's free-form `params` map.
+ *
+ * Flowable's `FormField` has no schema for these — `params` is the documented place for
+ * anything the engine does not model itself, which is also where the conditional
+ * visibility rule lives (see visibility.ts). Every one is optional and a form that sets
+ * none behaves exactly as before.
+ */
+export interface FieldConstraints {
+  /** Help text shown under the label, for the guidance a placeholder cannot carry. */
+  hint?: string;
+  minLength?: number;
+  maxLength?: number;
+  min?: number;
+  max?: number;
+  pattern?: string;
+  /** What the pattern means, in words — a regex is not an error message. */
+  patternMessage?: string;
+  /** `accept` for an upload field, e.g. ".pdf,image/*". */
+  accept?: string;
+  /** Largest accepted upload, in bytes. Checked before the file is sent. */
+  maxFileSize?: number;
+}
+
+function numberParam(params: Record<string, unknown> | undefined, ...names: string[]): number | undefined {
+  for (const name of names) {
+    const raw = params?.[name];
+    if (raw === undefined || raw === null || raw === "") continue;
+    const value = Number(raw);
+    if (Number.isFinite(value)) return value;
+  }
+  return undefined;
+}
+
+function stringParam(params: Record<string, unknown> | undefined, ...names: string[]): string | undefined {
+  for (const name of names) {
+    const raw = params?.[name];
+    if (typeof raw === "string" && raw !== "") return raw;
+  }
+  return undefined;
+}
+
+export function fieldConstraints(field: FormField): FieldConstraints {
+  const params = field.params;
+  return {
+    hint: stringParam(params, "description", "hint"),
+    minLength: numberParam(params, "minLength"),
+    maxLength: numberParam(params, "maxLength"),
+    min: numberParam(params, "min", "minValue"),
+    max: numberParam(params, "max", "maxValue"),
+    pattern: stringParam(params, "pattern"),
+    patternMessage: stringParam(params, "patternMessage"),
+    accept: stringParam(params, "accept"),
+    maxFileSize: numberParam(params, "maxFileSize"),
+  };
+}
+
 export type FormErrors = Record<string, string>;
 
-export function validateForm(model: FormModelResponse, values: FormValues): FormErrors {
+export function validateForm(
+  model: FormModelResponse,
+  values: FormValues,
+  t: TFunction = englishMessages,
+): FormErrors {
   const errors: FormErrors = {};
   // A field the user cannot see must not block submission — requiring an answer to a
   // hidden question is unanswerable.
   const hidden = hiddenFieldIds(model, values);
   for (const field of flattenFields(model.fields)) {
     if (!isSubmittable(field) || field.readOnly || hidden.has(field.id)) continue;
-    const error = validateField(field, values[field.id]);
+    const error = validateField(field, values[field.id], t);
     if (error) errors[field.id] = error;
   }
   return errors;
 }
 
-export function validateField(field: FormField, value: unknown): string | undefined {
+export function validateField(
+  field: FormField,
+  value: unknown,
+  t: TFunction = englishMessages,
+): string | undefined {
   const isBlank =
     value === undefined ||
     value === null ||
     (typeof value === "string" && value.trim() === "");
 
   if (field.required && field.type !== "boolean" && isBlank) {
-    return `${field.name || field.id} is required.`;
+    return t("form.validation.required", { field: field.name || field.id });
   }
   if (isBlank) return undefined;
 
   const raw = String(value).trim();
+  const limits = fieldConstraints(field);
 
   if (field.type === "integer") {
-    if (!/^-?\d+$/.test(raw)) return "Enter a whole number.";
-    return undefined;
+    if (!/^-?\d+$/.test(raw)) return t("form.validation.integer");
+    return rangeError(Number(raw), limits, t);
   }
   if (field.type === "decimal" || field.type === "amount") {
-    if (!Number.isFinite(Number(raw))) return "Enter a number.";
-    return undefined;
+    if (!Number.isFinite(Number(raw))) return t("form.validation.number");
+    return rangeError(Number(raw), limits, t);
   }
   if (field.type === "date") {
-    if (Number.isNaN(Date.parse(raw))) return "Enter a valid date.";
+    if (Number.isNaN(Date.parse(raw))) return t("form.validation.date");
     return undefined;
   }
+
+  // Text-shaped fields: length first, then shape — a value that is the wrong length is
+  // more usefully reported as such than as failing a pattern it never had a chance at.
+  if (limits.minLength !== undefined && raw.length < limits.minLength) {
+    return t("form.validation.minLength", { min: limits.minLength });
+  }
+  if (limits.maxLength !== undefined && raw.length > limits.maxLength) {
+    return t("form.validation.maxLength", { max: limits.maxLength });
+  }
+  if (limits.pattern) {
+    // An unparseable pattern is the form author's bug, not the filler's: let the value
+    // through rather than blocking a form nobody can submit.
+    let expression: RegExp | undefined;
+    try {
+      expression = new RegExp(limits.pattern);
+    } catch {
+      expression = undefined;
+    }
+    if (expression && !expression.test(raw)) {
+      return limits.patternMessage ?? t("form.validation.pattern");
+    }
+  }
   return undefined;
+}
+
+function rangeError(
+  value: number,
+  limits: FieldConstraints,
+  t: TFunction,
+): string | undefined {
+  if (limits.min !== undefined && value < limits.min) {
+    return t("form.validation.min", { min: limits.min });
+  }
+  if (limits.max !== undefined && value > limits.max) {
+    return t("form.validation.max", { max: limits.max });
+  }
+  return undefined;
+}
+
+/**
+ * Every field id in the order the form presents them — container-aware, so a field
+ * inside a row comes back in reading order.
+ *
+ * Used when a submit attempt has to reveal problems the user has not seen yet: the
+ * errors are ordered like the form rather than by object-key order, and every field
+ * counts as visited whether it was or not.
+ */
+export function fieldIdsInOrder(model: FormModelResponse): string[] {
+  return flattenFields(model.fields).map((field) => field.id);
 }
 
 /**

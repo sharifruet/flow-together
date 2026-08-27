@@ -1,0 +1,191 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<definitions xmlns="http://www.omg.org/spec/BPMN/20100524/MODEL"
+             xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+             xmlns:flowable="http://flowable.org/bpmn"
+             xmlns:bpmndi="http://www.omg.org/spec/BPMN/20100524/DI"
+             xmlns:omgdc="http://www.omg.org/spec/DD/20100524/DC"
+             xmlns:omgdi="http://www.omg.org/spec/DD/20100524/DI"
+             typeLanguage="http://www.w3.org/2001/XMLSchema"
+             expressionLanguage="http://www.w3.org/1999/XPath"
+             targetNamespace="http://togetherflow.org/resignation">
+
+  <!--
+      Resignation_Process.xlsx step 3 — SSR (Sales Admin).
+
+      SSR receives both documents and then handles them on two independent tracks, which is
+      why this is a parallel split rather than a sequence:
+
+        * the resignation letter goes to Director Marketing for signature and then to HRM;
+        * the sales clearance needs SIMU and IB clearance (independent of each other) and
+          then goes to SBM, who raises the SBM clearance of step 4.
+
+      Nothing downstream of SSR waits for both tracks, but the case does: this process ends
+      only when both are done, which is what lets the case gate the SBM clearance on it.
+  -->
+  <process id="salesAdminRouting" name="SSR (Sales Admin) Routing" isExecutable="true">
+    <documentation>SSR routes the resignation letter to Director Marketing and the sales clearance through SIMU and IB to SBM (Resignation_Process.xlsx step 3).</documentation>
+
+    <startEvent id="startRouting" name="Documents reach SSR"/>
+    <sequenceFlow id="toReceiveDocuments" sourceRef="startRouting" targetRef="ssrReceiveDocuments"/>
+
+    <userTask id="ssrReceiveDocuments" name="SSR — record receipt of the resignation letter and sales clearance"
+              flowable:candidateGroups="sales-ssr" flowable:formKey="documentReceiptForm"/>
+    <sequenceFlow id="toRoutingFork" sourceRef="ssrReceiveDocuments" targetRef="routingFork"/>
+
+    <parallelGateway id="routingFork" name="Split the two documents"/>
+
+    <!-- Track 1: the resignation letter. -->
+    <sequenceFlow id="toDirectorSignature" sourceRef="routingFork" targetRef="directorMarketingSignature"/>
+    <userTask id="directorMarketingSignature" name="Director Marketing — sign the resignation letter"
+              flowable:candidateGroups="director-mkt" flowable:formKey="signatureForm"/>
+    <sequenceFlow id="toForwardLetter" sourceRef="directorMarketingSignature" targetRef="forwardLetterToHrm"/>
+
+    <serviceTask id="forwardLetterToHrm" name="Forward the signed resignation letter to HRM"
+                 flowable:expression="${resignationNotifier.send('RESIGNATION_LETTER_SIGNED', employeeId, 'hrm')}"/>
+    <sequenceFlow id="letterTrackToJoin" sourceRef="forwardLetterToHrm" targetRef="routingJoin"/>
+
+    <!-- Track 2: the sales clearance. -->
+    <sequenceFlow id="toClearanceFork" sourceRef="routingFork" targetRef="clearanceFork"/>
+    <parallelGateway id="clearanceFork" name="SIMU and IB in parallel"/>
+
+    <sequenceFlow id="toSimuClearance" sourceRef="clearanceFork" targetRef="simuClearance"/>
+    <userTask id="simuClearance" name="SIMU clearance"
+              flowable:candidateGroups="sales-simu" flowable:formKey="departmentClearanceForm"/>
+    <sequenceFlow id="simuToJoin" sourceRef="simuClearance" targetRef="clearanceJoin"/>
+
+    <sequenceFlow id="toIbClearance" sourceRef="clearanceFork" targetRef="ibClearance"/>
+    <userTask id="ibClearance" name="IB clearance"
+              flowable:candidateGroups="sales-ib" flowable:formKey="departmentClearanceForm"/>
+    <sequenceFlow id="ibToJoin" sourceRef="ibClearance" targetRef="clearanceJoin"/>
+
+    <parallelGateway id="clearanceJoin" name="SIMU and IB cleared"/>
+    <sequenceFlow id="toForwardClearance" sourceRef="clearanceJoin" targetRef="forwardClearanceToSbm"/>
+
+    <serviceTask id="forwardClearanceToSbm" name="Forward the sales clearance to SBM"
+                 flowable:expression="${resignationNotifier.send('SALES_CLEARANCE_FORWARDED', employeeId, 'sbm')}"/>
+    <sequenceFlow id="clearanceTrackToJoin" sourceRef="forwardClearanceToSbm" targetRef="routingJoin"/>
+
+    <parallelGateway id="routingJoin" name="Both documents dispatched"/>
+    <sequenceFlow id="toEndRouting" sourceRef="routingJoin" targetRef="endRouting"/>
+
+    <endEvent id="endRouting" name="SSR routing done"/>
+  </process>
+  <bpmndi:BPMNDiagram id="BPMNDiagram_salesAdminRouting">
+    <bpmndi:BPMNPlane id="BPMNPlane_salesAdminRouting" bpmnElement="salesAdminRouting">
+      <bpmndi:BPMNShape id="shape_startRouting" bpmnElement="startRouting">
+        <omgdc:Bounds x="140" y="145" width="30" height="30"/>
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="shape_ssrReceiveDocuments" bpmnElement="ssrReceiveDocuments">
+        <omgdc:Bounds x="300" y="120" width="150" height="80"/>
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="shape_routingFork" bpmnElement="routingFork">
+        <omgdc:Bounds x="575" y="140" width="40" height="40"/>
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="shape_directorMarketingSignature" bpmnElement="directorMarketingSignature">
+        <omgdc:Bounds x="740" y="120" width="150" height="80"/>
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="shape_forwardLetterToHrm" bpmnElement="forwardLetterToHrm">
+        <omgdc:Bounds x="960" y="120" width="150" height="80"/>
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="shape_clearanceFork" bpmnElement="clearanceFork">
+        <omgdc:Bounds x="795" y="270" width="40" height="40"/>
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="shape_simuClearance" bpmnElement="simuClearance">
+        <omgdc:Bounds x="960" y="250" width="150" height="80"/>
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="shape_ibClearance" bpmnElement="ibClearance">
+        <omgdc:Bounds x="960" y="380" width="150" height="80"/>
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="shape_clearanceJoin" bpmnElement="clearanceJoin">
+        <omgdc:Bounds x="1235" y="140" width="40" height="40"/>
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="shape_forwardClearanceToSbm" bpmnElement="forwardClearanceToSbm">
+        <omgdc:Bounds x="1400" y="120" width="150" height="80"/>
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="shape_routingJoin" bpmnElement="routingJoin">
+        <omgdc:Bounds x="1675" y="140" width="40" height="40"/>
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="shape_endRouting" bpmnElement="endRouting">
+        <omgdc:Bounds x="1900" y="145" width="30" height="30"/>
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNEdge id="edge_toReceiveDocuments" bpmnElement="toReceiveDocuments">
+        <omgdi:waypoint x="170" y="160"/>
+        <omgdi:waypoint x="235" y="160"/>
+        <omgdi:waypoint x="235" y="160"/>
+        <omgdi:waypoint x="300" y="160"/>
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="edge_toRoutingFork" bpmnElement="toRoutingFork">
+        <omgdi:waypoint x="450" y="160"/>
+        <omgdi:waypoint x="512.5" y="160"/>
+        <omgdi:waypoint x="512.5" y="160"/>
+        <omgdi:waypoint x="575" y="160"/>
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="edge_toDirectorSignature" bpmnElement="toDirectorSignature">
+        <omgdi:waypoint x="615" y="160"/>
+        <omgdi:waypoint x="677.5" y="160"/>
+        <omgdi:waypoint x="677.5" y="160"/>
+        <omgdi:waypoint x="740" y="160"/>
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="edge_toForwardLetter" bpmnElement="toForwardLetter">
+        <omgdi:waypoint x="890" y="160"/>
+        <omgdi:waypoint x="925" y="160"/>
+        <omgdi:waypoint x="925" y="160"/>
+        <omgdi:waypoint x="960" y="160"/>
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="edge_letterTrackToJoin" bpmnElement="letterTrackToJoin">
+        <omgdi:waypoint x="1110" y="160"/>
+        <omgdi:waypoint x="1392.5" y="160"/>
+        <omgdi:waypoint x="1392.5" y="160"/>
+        <omgdi:waypoint x="1675" y="160"/>
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="edge_toClearanceFork" bpmnElement="toClearanceFork">
+        <omgdi:waypoint x="615" y="160"/>
+        <omgdi:waypoint x="705" y="160"/>
+        <omgdi:waypoint x="705" y="290"/>
+        <omgdi:waypoint x="795" y="290"/>
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="edge_toSimuClearance" bpmnElement="toSimuClearance">
+        <omgdi:waypoint x="835" y="290"/>
+        <omgdi:waypoint x="897.5" y="290"/>
+        <omgdi:waypoint x="897.5" y="290"/>
+        <omgdi:waypoint x="960" y="290"/>
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="edge_simuToJoin" bpmnElement="simuToJoin">
+        <omgdi:waypoint x="1110" y="290"/>
+        <omgdi:waypoint x="1172.5" y="290"/>
+        <omgdi:waypoint x="1172.5" y="160"/>
+        <omgdi:waypoint x="1235" y="160"/>
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="edge_toIbClearance" bpmnElement="toIbClearance">
+        <omgdi:waypoint x="835" y="290"/>
+        <omgdi:waypoint x="897.5" y="290"/>
+        <omgdi:waypoint x="897.5" y="420"/>
+        <omgdi:waypoint x="960" y="420"/>
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="edge_ibToJoin" bpmnElement="ibToJoin">
+        <omgdi:waypoint x="1110" y="420"/>
+        <omgdi:waypoint x="1172.5" y="420"/>
+        <omgdi:waypoint x="1172.5" y="160"/>
+        <omgdi:waypoint x="1235" y="160"/>
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="edge_toForwardClearance" bpmnElement="toForwardClearance">
+        <omgdi:waypoint x="1275" y="160"/>
+        <omgdi:waypoint x="1337.5" y="160"/>
+        <omgdi:waypoint x="1337.5" y="160"/>
+        <omgdi:waypoint x="1400" y="160"/>
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="edge_clearanceTrackToJoin" bpmnElement="clearanceTrackToJoin">
+        <omgdi:waypoint x="1550" y="160"/>
+        <omgdi:waypoint x="1612.5" y="160"/>
+        <omgdi:waypoint x="1612.5" y="160"/>
+        <omgdi:waypoint x="1675" y="160"/>
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="edge_toEndRouting" bpmnElement="toEndRouting">
+        <omgdi:waypoint x="1715" y="160"/>
+        <omgdi:waypoint x="1807.5" y="160"/>
+        <omgdi:waypoint x="1807.5" y="160"/>
+        <omgdi:waypoint x="1900" y="160"/>
+      </bpmndi:BPMNEdge>
+    </bpmndi:BPMNPlane>
+  </bpmndi:BPMNDiagram>
+</definitions>

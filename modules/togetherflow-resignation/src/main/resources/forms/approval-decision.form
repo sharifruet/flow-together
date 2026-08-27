@@ -1,0 +1,33 @@
+{
+  "key": "approvalDecisionForm",
+  "name": "Approval decision",
+  "version": 1,
+  "fields": [
+    {
+      "id": "approvalHeading",
+      "name": "Resignation and sales clearance",
+      "type": "headline"
+    },
+    {
+      "id": "decision",
+      "name": "Decision",
+      "type": "radio-buttons",
+      "fieldType": "OptionFormField",
+      "options": [
+        {
+          "name": "approve"
+        },
+        {
+          "name": "return"
+        }
+      ],
+      "required": true
+    },
+    {
+      "id": "approvalComment",
+      "name": "Comment",
+      "type": "multi-line-text"
+    }
+  ],
+  "outcomes": []
+}

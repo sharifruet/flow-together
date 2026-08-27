@@ -7,6 +7,7 @@ import {
   ConfirmDialog,
   EmptyState,
   FormRenderer,
+  fieldIdsInOrder,
   formValuesToVariables,
   formatDateTime,
   hasRenderableFields,
@@ -27,6 +28,13 @@ import {
 } from "@togetherflow/common";
 import { Attachments } from "./Attachments";
 import { VariableEditor } from "./VariableEditor";
+
+/**
+ * Ties the rendered `<form>` to the Complete button in the task's footer, which sits
+ * outside it: `<button form="...">` is what lets a button submit a form it is not
+ * inside, and it namespaces the field ids the error summary links to.
+ */
+const FORM_ID = "tf-task-form";
 
 export interface TaskDetailProps {
   taskApi: TaskApi;
@@ -122,6 +130,8 @@ export function TaskDetail({
 
   const [formEdits, setFormEdits] = useState<{ taskId: string; values: FormValues } | null>(null);
   const [touched, setTouched] = useState<Record<string, boolean>>({});
+  /** Bumped per rejected submit, so a second attempt re-announces rather than going quiet. */
+  const [submitAttempt, setSubmitAttempt] = useState(0);
 
   const formValues = useMemo<FormValues>(
     () =>
@@ -134,8 +144,8 @@ export function TaskDetail({
   );
 
   const formErrors = useMemo(
-    () => (form ? validateForm(form, formValues) : {}),
-    [form, formValues],
+    () => (form ? validateForm(form, formValues, t) : {}),
+    [form, formValues, t],
   );
 
   // Only surface an error once the user has left the field, so a required field
@@ -166,6 +176,28 @@ export function TaskDetail({
   const canSubmit = usingForm
     ? Object.keys(formErrors).length === 0
     : gridErrors.length === 0;
+
+  /**
+   * Attempts to complete (§14.1, §14.3).
+   *
+   * The submit button is never disabled on account of validation. A disabled button
+   * explains nothing: on a form where the errors are only revealed once a field has
+   * been visited, a user who never touched the required field sees a form with no
+   * visible problems and a button that will not respond. Instead the attempt is always
+   * accepted, and an invalid form answers by revealing every problem at once and
+   * listing them in a summary that takes focus, with a link per problem.
+   */
+  const attemptComplete = useCallback(
+    (outcome: string) => {
+      if (usingForm && form && Object.keys(formErrors).length > 0) {
+        setTouched(Object.fromEntries(fieldIdsInOrder(form).map((id) => [id, true])));
+        setSubmitAttempt((attempt) => attempt + 1);
+        return;
+      }
+      setConfirmComplete(outcome);
+    },
+    [usingForm, form, formErrors],
+  );
 
   const task = detail.data?.task;
   const isAssignedToMe = task?.assignee === userId;
@@ -332,10 +364,14 @@ export function TaskDetail({
                 </h3>
                 {usingForm && form ? (
                   <FormRenderer
+                    id={FORM_ID}
                     model={form}
                     values={formValues}
                     errors={visibleFormErrors}
+                    submitAttempt={submitAttempt}
                     disabled={busy || !isAssignedToMe}
+                    // Enter in a field completes the task, the same as the footer button.
+                    onSubmit={() => attemptComplete(outcomes[0]?.name ?? "")}
                     onChange={setFormValue}
                     onBlur={(fieldId) => setTouched((previous) => ({ ...previous, [fieldId]: true }))}
                     /*
@@ -551,8 +587,8 @@ export function TaskDetail({
                         <Button
                           key={outcome.id ?? outcome.name}
                           loading={busy}
-                          disabled={!canSubmit}
-                          onClick={() => setConfirmComplete(outcome.name)}
+                          disabled={!usingForm && !canSubmit}
+                          onClick={() => attemptComplete(outcome.name)}
                         >
                           {outcome.name}
                         </Button>
@@ -560,8 +596,8 @@ export function TaskDetail({
                     ) : (
                       <Button
                         loading={busy}
-                        disabled={!canSubmit}
-                        onClick={() => setConfirmComplete("")}
+                        disabled={!usingForm && !canSubmit}
+                        onClick={() => attemptComplete("")}
                       >
                         {t("task.action.complete")}
                       </Button>
@@ -640,9 +676,15 @@ export function TaskDetail({
                 </div>
               ) : null}
 
-              {!canSubmit ? (
+              {/*
+                Only the variable grid needs a note here. A form answers for itself: the
+                renderer lists every problem in a summary above the fields once a submit
+                has been attempted, which is both more specific and where the user is
+                already looking.
+              */}
+              {!usingForm && !canSubmit ? (
                 <p className="tf-detail__note tf-detail__note--error" role="alert">
-                  {usingForm ? t("task.validation.form") : t("task.validation.variables")}
+                  {t("task.validation.variables")}
                 </p>
               ) : null}
 

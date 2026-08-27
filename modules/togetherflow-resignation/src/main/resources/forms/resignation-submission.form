@@ -1,0 +1,73 @@
+{
+  "key": "resignationSubmissionForm",
+  "name": "Resignation record",
+  "version": 1,
+  "fields": [
+    {
+      "id": "employeeId",
+      "name": "Employee ID",
+      "type": "text",
+      "required": true,
+      "placeholder": "e.g. MPE-10428"
+    },
+    {
+      "id": "employeeName",
+      "name": "Employee name",
+      "type": "text",
+      "required": true
+    },
+    {
+      "id": "employeeUserId",
+      "name": "Employee sign-in id",
+      "type": "text",
+      "required": true,
+      "placeholder": "Who the acceptance letter is sent to, e.g. rakib.hasan"
+    },
+    {
+      "id": "employeeDesignation",
+      "name": "Designation",
+      "type": "dropdown",
+      "fieldType": "OptionFormField",
+      "options": [
+        {
+          "name": "MPE"
+        },
+        {
+          "name": "Sr. MPE"
+        }
+      ],
+      "required": true
+    },
+    {
+      "id": "employeeTerritory",
+      "name": "Territory / region",
+      "type": "text",
+      "required": true
+    },
+    {
+      "id": "resignationDate",
+      "name": "Date of resignation letter",
+      "type": "date",
+      "required": true
+    },
+    {
+      "id": "lastWorkingDay",
+      "name": "Proposed last working day",
+      "type": "date",
+      "required": true
+    },
+    {
+      "id": "resignationReason",
+      "name": "Reason given",
+      "type": "multi-line-text"
+    },
+    {
+      "id": "resignationLetterRef",
+      "name": "Resignation letter (scan reference)",
+      "type": "text",
+      "required": true,
+      "placeholder": "Attachment id of the scanned letter"
+    }
+  ],
+  "outcomes": []
+}

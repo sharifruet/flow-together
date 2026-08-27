@@ -1,0 +1,28 @@
+{
+  "key": "signatureForm",
+  "name": "Signature",
+  "version": 1,
+  "fields": [
+    {
+      "id": "decision",
+      "name": "Decision",
+      "type": "radio-buttons",
+      "fieldType": "OptionFormField",
+      "options": [
+        {
+          "name": "approve"
+        },
+        {
+          "name": "return"
+        }
+      ],
+      "required": true
+    },
+    {
+      "id": "signatureRemarks",
+      "name": "Remarks",
+      "type": "multi-line-text"
+    }
+  ],
+  "outcomes": []
+}

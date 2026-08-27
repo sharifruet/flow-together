@@ -1,0 +1,25 @@
+{
+  "key": "ebsUpdateForm",
+  "name": "EBS final settlement status",
+  "version": 1,
+  "fields": [
+    {
+      "id": "ebsReference",
+      "name": "EBS reference",
+      "type": "text",
+      "required": true
+    },
+    {
+      "id": "ebsStatusUpdated",
+      "name": "Final settlement status updated in EBS",
+      "type": "boolean",
+      "required": true
+    },
+    {
+      "id": "ebsRemarks",
+      "name": "Remarks",
+      "type": "multi-line-text"
+    }
+  ],
+  "outcomes": []
+}

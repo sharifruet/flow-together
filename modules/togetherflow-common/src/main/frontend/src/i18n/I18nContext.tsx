@@ -66,7 +66,11 @@ export function registerFallbackMessages(catalogues: Catalogues, locale = DEFAUL
 
 const fallbackI18n: I18nContextValue = {
   t: (key, params) => {
-    const message = fallbackMessages[key];
+    // Through `resolveKey`, not a bare lookup: a plural key exists only as its `.one` /
+    // `.other` variants, so a direct read misses every one of them and renders the key.
+    // The fallback is here so a shared component is correct on its own, which it is not
+    // if half the catalogue resolves.
+    const message = resolveKey(fallbackMessages, key, params, DEFAULT_LOCALE);
     if (message === undefined) {
       warnMissing(key, DEFAULT_LOCALE);
       return key;

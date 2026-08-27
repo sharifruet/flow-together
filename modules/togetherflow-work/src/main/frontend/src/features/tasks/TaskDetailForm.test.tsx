@@ -119,16 +119,44 @@ describe("TaskDetail — form rendering", () => {
     expect(await screen.findByText(/definition could not be loaded/i)).toBeInTheDocument();
   });
 
-  it("blocks completion until a required field is filled", async () => {
-    renderDetail(stubApi());
+  it("does not complete a task whose required field is empty, and says why", async () => {
+    /*
+     * The Complete button is deliberately *not* disabled. Errors only surface once a
+     * field has been visited, so a disabled button on an untouched form is a form with
+     * no visible problems and a control that will not respond — the user is left with
+     * nothing to act on. The attempt is accepted instead, and answered.
+     */
+    const api = stubApi();
+    renderDetail(api);
     await screen.findByLabelText(/^Comment/);
 
-    expect(screen.getByRole("button", { name: /complete task/i })).toBeDisabled();
+    const complete = screen.getByRole("button", { name: /complete task/i });
+    expect(complete).toBeEnabled();
+
+    await userEvent.click(complete);
+
+    // No confirmation, no call — and a summary naming the problem.
+    expect(screen.queryByRole("alertdialog")).not.toBeInTheDocument();
+    expect(api.complete).not.toHaveBeenCalled();
+    const summary = await screen.findByRole("alert");
+    expect(summary).toHaveTextContent(/There is 1 problem with this form/i);
+    expect(within(summary).getByRole("link")).toHaveTextContent(/comment is required/i);
+    await waitFor(() => expect(summary).toHaveFocus());
+  });
+
+  it("clears the summary once the problem is fixed, and then completes", async () => {
+    const api = stubApi();
+    renderDetail(api);
+    await screen.findByLabelText(/^Comment/);
+
+    await userEvent.click(screen.getByRole("button", { name: /complete task/i }));
+    expect(await screen.findByRole("alert")).toBeInTheDocument();
 
     await userEvent.type(screen.getByLabelText(/^Comment/), "Looks fine");
-    await waitFor(() =>
-      expect(screen.getByRole("button", { name: /complete task/i })).toBeEnabled(),
-    );
+    await waitFor(() => expect(screen.queryByRole("alert")).not.toBeInTheDocument());
+
+    await confirmComplete();
+    await waitFor(() => expect(api.complete).toHaveBeenCalled());
   });
 
   it("shows a required-field error only after the field is left, not while empty and untouched", async () => {

@@ -15,6 +15,7 @@ import {
   FormRenderer,
   NoResultsState,
   TextInput,
+  fieldIdsInOrder,
   formValuesToVariables,
   hasRenderableFields,
   initialValues,
@@ -32,6 +33,9 @@ import {
 import { VariableEditor } from "../tasks/VariableEditor";
 
 export type StartKind = "process" | "case";
+
+/** Namespaces the start form's field ids, so its error summary links resolve. */
+const START_FORM_ID = "tf-start-form";
 
 /** What both definition kinds have in common, as far as this screen is concerned. */
 type Startable = {
@@ -58,6 +62,8 @@ export function StartWork({ processApi, caseApi, onStarted }: StartWorkProps) {
   const [businessKey, setBusinessKey] = useState("");
   const [variables, setVariables] = useState<EditableVariable[]>([]);
   const [formValues, setFormValues] = useState<FormValues>({});
+  /** Bumped per rejected submit, so a second attempt re-announces rather than going quiet. */
+  const [submitAttempt, setSubmitAttempt] = useState(0);
   const [touched, setTouched] = useState<Record<string, boolean>>({});
   const [busy, setBusy] = useState(false);
 
@@ -103,8 +109,8 @@ export function StartWork({ processApi, caseApi, onStarted }: StartWorkProps) {
   }, [form, selected]);
 
   const formErrors = useMemo(
-    () => (form ? validateForm(form, formValues) : {}),
-    [form, formValues],
+    () => (form ? validateForm(form, formValues, t) : {}),
+    [form, formValues, t],
   );
   const visibleFormErrors = useMemo(() => {
     const visible: Record<string, string> = {};
@@ -118,6 +124,21 @@ export function StartWork({ processApi, caseApi, onStarted }: StartWorkProps) {
   const validationErrors = usingForm
     ? Object.keys(formErrors).map((name) => ({ name, message: formErrors[name] }))
     : gridErrors;
+
+  /**
+   * A submit attempt is always accepted (§14.1). An invalid form answers by revealing
+   * every problem and listing them in a summary that takes focus — a Start button that
+   * is simply disabled tells a user who has not visited the required field nothing at
+   * all about why.
+   */
+  function attemptStart() {
+    if (usingForm && form && Object.keys(formErrors).length > 0) {
+      setTouched(Object.fromEntries(fieldIdsInOrder(form).map((id) => [id, true])));
+      setSubmitAttempt((attempt) => attempt + 1);
+      return;
+    }
+    void start();
+  }
 
   async function start() {
     if (!selected) return;
@@ -186,10 +207,13 @@ export function StartWork({ processApi, caseApi, onStarted }: StartWorkProps) {
                 {form.name || t("start.form.title")}
               </h2>
               <FormRenderer
+                id={START_FORM_ID}
                 model={form}
                 values={formValues}
                 errors={visibleFormErrors}
+                submitAttempt={submitAttempt}
                 disabled={busy}
+                onSubmit={attemptStart}
                 onChange={(fieldId, value) =>
                   setFormValues((previous) => ({ ...previous, [fieldId]: value }))
                 }
@@ -212,15 +236,16 @@ export function StartWork({ processApi, caseApi, onStarted }: StartWorkProps) {
             </Button>
             <Button
               loading={busy}
-              disabled={validationErrors.length > 0}
-              onClick={() => void start()}
+              // Never disabled on a form: the form itself reports what is wrong.
+              disabled={!usingForm && validationErrors.length > 0}
+              onClick={attemptStart}
             >
               {t("start.submit")}
             </Button>
           </div>
-          {validationErrors.length > 0 ? (
+          {!usingForm && validationErrors.length > 0 ? (
             <p className="tf-detail__note tf-detail__note--error" role="alert">
-              {usingForm ? t("start.validation.form") : t("start.validation.variables")}
+              {t("start.validation.variables")}
             </p>
           ) : null}
         </div>

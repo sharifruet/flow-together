@@ -1,0 +1,209 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<definitions xmlns="http://www.omg.org/spec/BPMN/20100524/MODEL"
+             xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+             xmlns:flowable="http://flowable.org/bpmn"
+             xmlns:bpmndi="http://www.omg.org/spec/BPMN/20100524/DI"
+             xmlns:omgdc="http://www.omg.org/spec/DD/20100524/DC"
+             xmlns:omgdi="http://www.omg.org/spec/DD/20100524/DI"
+             typeLanguage="http://www.w3.org/2001/XMLSchema"
+             expressionLanguage="http://www.w3.org/1999/XPath"
+             targetNamespace="http://togetherflow.org/resignation">
+
+  <!--
+      Resignation_Process.xlsx steps 9 to 14 — the final settlement.
+
+      The statement is drafted once by an ACC officer and then signed by four people in a
+      fixed order: ACC Manager, ACC Director, then across to HR for the EBS record update
+      and Head of HR's signature, then back to ACC to complete. Both ACC signatures can send
+      the draft back to the officer, which is the only loop; once it has left ACC the amount
+      is settled and HR is recording rather than re-deciding.
+
+      Step 15 (HRM preserves the file) is not here — it belongs to the case, which owns the
+      document file, and it runs after this process ends.
+  -->
+  <process id="finalSettlement" name="Employee Final Settlement" isExecutable="true">
+    <documentation>Draft, approve and complete the employee final settlement statement (Resignation_Process.xlsx steps 9-14).</documentation>
+
+    <startEvent id="startSettlement" name="Documents received from HRM"/>
+    <sequenceFlow id="toPrepareSettlement" sourceRef="startSettlement" targetRef="prepareFinalSettlement"/>
+
+    <!--
+        Both returns below come back here, and they come back to the officer who drafted the
+        statement rather than to the ACC queue: whoever completed this task first is recorded
+        in `settlementPreparedBy` and is the assignee on every later pass. On the first pass
+        the variable does not exist yet, `getOrDefault` yields null, and the candidate group
+        is what puts the task in front of ACC.
+    -->
+    <userTask id="prepareFinalSettlement" name="ACC officer — prepare the final settlement statement"
+              flowable:assignee="${variables:getOrDefault(settlementPreparedBy, null)}"
+              flowable:candidateGroups="acc-officer" flowable:formKey="finalSettlementForm">
+      <extensionElements>
+        <flowable:taskListener event="complete"
+                               expression="${task.setVariable('settlementPreparedBy', task.getAssignee())}"/>
+      </extensionElements>
+    </userTask>
+    <sequenceFlow id="toAccManagerApproval" sourceRef="prepareFinalSettlement" targetRef="accManagerApproval"/>
+
+    <userTask id="accManagerApproval" name="ACC manager — sign the final settlement"
+              flowable:candidateGroups="acc-manager" flowable:formKey="signatureForm"/>
+    <sequenceFlow id="toAccManagerDecision" sourceRef="accManagerApproval" targetRef="accManagerDecision"/>
+
+    <exclusiveGateway id="accManagerDecision" name="Signed by ACC manager?" default="accManagerReturned"/>
+    <sequenceFlow id="accManagerSigned" name="Signed" sourceRef="accManagerDecision" targetRef="accDirectorApproval">
+      <conditionExpression xsi:type="tFormalExpression"><![CDATA[${variables:equals(decision, 'approve')}]]></conditionExpression>
+    </sequenceFlow>
+    <sequenceFlow id="accManagerReturned" name="Returned" sourceRef="accManagerDecision" targetRef="prepareFinalSettlement"/>
+
+    <userTask id="accDirectorApproval" name="ACC director — sign the final settlement"
+              flowable:candidateGroups="acc-director" flowable:formKey="signatureForm"/>
+    <sequenceFlow id="toAccDirectorDecision" sourceRef="accDirectorApproval" targetRef="accDirectorDecision"/>
+
+    <exclusiveGateway id="accDirectorDecision" name="Signed by ACC director?" default="accDirectorReturned"/>
+    <sequenceFlow id="accDirectorSigned" name="Signed" sourceRef="accDirectorDecision" targetRef="hrmUpdateEbsRecord">
+      <conditionExpression xsi:type="tFormalExpression"><![CDATA[${variables:equals(decision, 'approve')}]]></conditionExpression>
+    </sequenceFlow>
+    <sequenceFlow id="accDirectorReturned" name="Returned" sourceRef="accDirectorDecision" targetRef="prepareFinalSettlement"/>
+
+    <!-- Step 12 — HRM (ISJ) checks and updates the final settlement status in EBS. -->
+    <userTask id="hrmUpdateEbsRecord" name="HRM — check and update the final settlement status in EBS"
+              flowable:candidateGroups="hrm" flowable:formKey="ebsUpdateForm"/>
+    <sequenceFlow id="toHeadOfHrSettlementSignature" sourceRef="hrmUpdateEbsRecord" targetRef="headOfHrSettlementSignature"/>
+
+    <userTask id="headOfHrSettlementSignature" name="Head of HR — sign the final settlement and return it to ACC"
+              flowable:candidateGroups="head-of-hr" flowable:formKey="signatureForm"/>
+    <sequenceFlow id="toCompleteSettlement" sourceRef="headOfHrSettlementSignature" targetRef="completeFinalSettlement"/>
+
+    <userTask id="completeFinalSettlement" name="ACC — complete the final settlement"
+              flowable:candidateGroups="acc-officer" flowable:formKey="finalSettlementForm"/>
+    <sequenceFlow id="toRegisterSettlement" sourceRef="completeFinalSettlement" targetRef="registerSettlementDocument"/>
+
+    <serviceTask id="registerSettlementDocument" name="Register the final settlement statement in the case file"
+                 flowable:expression="${resignationDocuments.register('FINAL_SETTLEMENT_STATEMENT', employeeId)}"
+                 flowable:resultVariableName="finalSettlementRef"/>
+    <sequenceFlow id="toNotifyHrmFinalCopy" sourceRef="registerSettlementDocument" targetRef="sendFinalCopyToHrm"/>
+
+    <serviceTask id="sendFinalCopyToHrm" name="Send the final copy to HRM"
+                 flowable:expression="${resignationNotifier.send('FINAL_SETTLEMENT_COMPLETED', employeeId, 'hrm')}"/>
+    <sequenceFlow id="toEndSettlement" sourceRef="sendFinalCopyToHrm" targetRef="endSettlement"/>
+
+    <endEvent id="endSettlement" name="Final settlement complete"/>
+  </process>
+  <bpmndi:BPMNDiagram id="BPMNDiagram_finalSettlement">
+    <bpmndi:BPMNPlane id="BPMNPlane_finalSettlement" bpmnElement="finalSettlement">
+      <bpmndi:BPMNShape id="shape_startSettlement" bpmnElement="startSettlement">
+        <omgdc:Bounds x="140" y="145" width="30" height="30"/>
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="shape_prepareFinalSettlement" bpmnElement="prepareFinalSettlement">
+        <omgdc:Bounds x="300" y="120" width="150" height="80"/>
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="shape_accManagerApproval" bpmnElement="accManagerApproval">
+        <omgdc:Bounds x="520" y="120" width="150" height="80"/>
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="shape_accManagerDecision" bpmnElement="accManagerDecision">
+        <omgdc:Bounds x="795" y="140" width="40" height="40"/>
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="shape_accDirectorApproval" bpmnElement="accDirectorApproval">
+        <omgdc:Bounds x="960" y="120" width="150" height="80"/>
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="shape_accDirectorDecision" bpmnElement="accDirectorDecision">
+        <omgdc:Bounds x="1235" y="140" width="40" height="40"/>
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="shape_hrmUpdateEbsRecord" bpmnElement="hrmUpdateEbsRecord">
+        <omgdc:Bounds x="1400" y="120" width="150" height="80"/>
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="shape_headOfHrSettlementSignature" bpmnElement="headOfHrSettlementSignature">
+        <omgdc:Bounds x="1620" y="120" width="150" height="80"/>
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="shape_completeFinalSettlement" bpmnElement="completeFinalSettlement">
+        <omgdc:Bounds x="1840" y="120" width="150" height="80"/>
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="shape_registerSettlementDocument" bpmnElement="registerSettlementDocument">
+        <omgdc:Bounds x="2060" y="120" width="150" height="80"/>
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="shape_sendFinalCopyToHrm" bpmnElement="sendFinalCopyToHrm">
+        <omgdc:Bounds x="2280" y="120" width="150" height="80"/>
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="shape_endSettlement" bpmnElement="endSettlement">
+        <omgdc:Bounds x="2560" y="145" width="30" height="30"/>
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNEdge id="edge_toPrepareSettlement" bpmnElement="toPrepareSettlement">
+        <omgdi:waypoint x="170" y="160"/>
+        <omgdi:waypoint x="235" y="160"/>
+        <omgdi:waypoint x="235" y="160"/>
+        <omgdi:waypoint x="300" y="160"/>
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="edge_toAccManagerApproval" bpmnElement="toAccManagerApproval">
+        <omgdi:waypoint x="450" y="160"/>
+        <omgdi:waypoint x="485" y="160"/>
+        <omgdi:waypoint x="485" y="160"/>
+        <omgdi:waypoint x="520" y="160"/>
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="edge_toAccManagerDecision" bpmnElement="toAccManagerDecision">
+        <omgdi:waypoint x="670" y="160"/>
+        <omgdi:waypoint x="732.5" y="160"/>
+        <omgdi:waypoint x="732.5" y="160"/>
+        <omgdi:waypoint x="795" y="160"/>
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="edge_accManagerSigned" bpmnElement="accManagerSigned">
+        <omgdi:waypoint x="835" y="160"/>
+        <omgdi:waypoint x="897.5" y="160"/>
+        <omgdi:waypoint x="897.5" y="160"/>
+        <omgdi:waypoint x="960" y="160"/>
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="edge_accManagerReturned" bpmnElement="accManagerReturned">
+        <omgdi:waypoint x="815" y="180"/>
+        <omgdi:waypoint x="815" y="245"/>
+        <omgdi:waypoint x="375" y="245"/>
+        <omgdi:waypoint x="375" y="200"/>
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="edge_toAccDirectorDecision" bpmnElement="toAccDirectorDecision">
+        <omgdi:waypoint x="1110" y="160"/>
+        <omgdi:waypoint x="1172.5" y="160"/>
+        <omgdi:waypoint x="1172.5" y="160"/>
+        <omgdi:waypoint x="1235" y="160"/>
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="edge_accDirectorSigned" bpmnElement="accDirectorSigned">
+        <omgdi:waypoint x="1275" y="160"/>
+        <omgdi:waypoint x="1337.5" y="160"/>
+        <omgdi:waypoint x="1337.5" y="160"/>
+        <omgdi:waypoint x="1400" y="160"/>
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="edge_accDirectorReturned" bpmnElement="accDirectorReturned">
+        <omgdi:waypoint x="1255" y="180"/>
+        <omgdi:waypoint x="1255" y="245"/>
+        <omgdi:waypoint x="375" y="245"/>
+        <omgdi:waypoint x="375" y="200"/>
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="edge_toHeadOfHrSettlementSignature" bpmnElement="toHeadOfHrSettlementSignature">
+        <omgdi:waypoint x="1550" y="160"/>
+        <omgdi:waypoint x="1585" y="160"/>
+        <omgdi:waypoint x="1585" y="160"/>
+        <omgdi:waypoint x="1620" y="160"/>
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="edge_toCompleteSettlement" bpmnElement="toCompleteSettlement">
+        <omgdi:waypoint x="1770" y="160"/>
+        <omgdi:waypoint x="1805" y="160"/>
+        <omgdi:waypoint x="1805" y="160"/>
+        <omgdi:waypoint x="1840" y="160"/>
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="edge_toRegisterSettlement" bpmnElement="toRegisterSettlement">
+        <omgdi:waypoint x="1990" y="160"/>
+        <omgdi:waypoint x="2025" y="160"/>
+        <omgdi:waypoint x="2025" y="160"/>
+        <omgdi:waypoint x="2060" y="160"/>
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="edge_toNotifyHrmFinalCopy" bpmnElement="toNotifyHrmFinalCopy">
+        <omgdi:waypoint x="2210" y="160"/>
+        <omgdi:waypoint x="2245" y="160"/>
+        <omgdi:waypoint x="2245" y="160"/>
+        <omgdi:waypoint x="2280" y="160"/>
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="edge_toEndSettlement" bpmnElement="toEndSettlement">
+        <omgdi:waypoint x="2430" y="160"/>
+        <omgdi:waypoint x="2495" y="160"/>
+        <omgdi:waypoint x="2495" y="160"/>
+        <omgdi:waypoint x="2560" y="160"/>
+      </bpmndi:BPMNEdge>
+    </bpmndi:BPMNPlane>
+  </bpmndi:BPMNDiagram>
+</definitions>
