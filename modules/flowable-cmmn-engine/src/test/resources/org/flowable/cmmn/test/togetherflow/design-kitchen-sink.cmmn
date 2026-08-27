@@ -1,0 +1,230 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<definitions xmlns="http://www.omg.org/spec/CMMN/20151109/MODEL"
+             xmlns:flowable="http://flowable.org/cmmn"
+             xmlns:cmmndi="http://www.omg.org/spec/CMMN/20151109/CMMNDI"
+             xmlns:dc="http://www.omg.org/spec/CMMN/20151109/DC"
+             targetNamespace="http://flowable.org/cmmn">
+  <case id="kitchenSink" name="Kitchen sink">
+    <casePlanModel id="kitchenSink_plan" name="Kitchen sink">
+      <planItem id="planItem_humanTask" name="Human task" definitionRef="humanTask">
+        <itemControl>
+          <repetitionRule flowable:counterVariable="loopCounter" flowable:collectionVariable="items" flowable:elementVariable="item" flowable:elementIndexVariable="itemIndex" flowable:maxInstanceCount="10" flowable:ignoreCounterVariable="true">
+            <condition><![CDATA[${again}]]></condition>
+          </repetitionRule>
+          <requiredRule>
+            <condition><![CDATA[${mandatory}]]></condition>
+          </requiredRule>
+          <manualActivationRule />
+        </itemControl>
+        <entryCriterion id="sentry_1" sentryRef="sentry_sentry_1" />
+        <exitCriterion id="sentry_2" sentryRef="sentry_sentry_2" flowable:exitType="activeInstances" flowable:exitEventType="forceComplete" />
+      </planItem>
+      <planItem id="planItem_processTask" name="Process task" definitionRef="processTask" />
+      <planItem id="planItem_caseTask" name="Case task" definitionRef="caseTask" />
+      <planItem id="planItem_decisionTask" name="Decision task" definitionRef="decisionTask" />
+      <planItem id="planItem_serviceTask" name="Service task" definitionRef="serviceTask" />
+      <planItem id="planItem_scriptTask" name="Script task" definitionRef="scriptTask" />
+      <planItem id="planItem_httpTask" name="HTTP task" definitionRef="httpTask" />
+      <planItem id="planItem_mailTask" name="Mail task" definitionRef="mailTask" />
+      <planItem id="planItem_externalWorkerTask" name="External worker task" definitionRef="externalWorkerTask" />
+      <planItem id="planItem_casePageTask" name="Case page task" definitionRef="casePageTask" />
+      <planItem id="planItem_sendEventTask" name="Send event task" definitionRef="sendEventTask" />
+      <planItem id="planItem_milestone" name="Milestone" definitionRef="milestone" />
+      <planItem id="planItem_stage" name="Stage" definitionRef="stage" />
+      <planItem id="planItem_planFragment" name="Plan fragment" definitionRef="planFragment" />
+      <planItem id="planItem_timerEventListener" name="Timer event listener" definitionRef="timerEventListener" />
+      <planItem id="planItem_userEventListener" name="User event listener" definitionRef="userEventListener" />
+      <planItem id="planItem_genericEventListener" name="Event listener" definitionRef="genericEventListener" />
+      <planItem id="planItem_signalEventListener" name="Signal event listener" definitionRef="signalEventListener" />
+      <planItem id="planItem_variableEventListener" name="Variable event listener" definitionRef="variableEventListener" />
+      <planItem id="planItem_intentEventListener" name="Intent event listener" definitionRef="intentEventListener" />
+      <planItem id="planItem_reactivateEventListener" name="Reactivate event listener" definitionRef="reactivateEventListener" />
+      <sentry id="sentry_sentry_1">
+        <ifPart>
+          <condition><![CDATA[${ready}]]></condition>
+        </ifPart>
+      </sentry>
+      <sentry id="sentry_sentry_2">
+        <planItemOnPart id="onPart_sentry_2_0" sourceRef="planItem_processTask">
+          <standardEvent>complete</standardEvent>
+        </planItemOnPart>
+      </sentry>
+      <humanTask id="humanTask" name="Human task" isBlocking="true" flowable:assignee="kermit" flowable:candidateGroups="sales" flowable:formKey="f1" flowable:isBlockingExpression="${blocking}" flowable:async="true" flowable:exclusive="true" flowable:asyncLeave="true" flowable:asyncLeaveExclusive="true" flowable:sameDeployment="true" flowable:taskIdVariableName="taskId" flowable:taskCompleterVariableName="completedBy">
+        <documentation>Why this task exists, for whoever inherits the case.</documentation>
+        <extensionElements>
+          <flowable:planItemLifecycleListener sourceState="available" targetState="active" class="com.example.Listener" />
+        </extensionElements>
+        <defaultControl>
+          <requiredRule />
+          <manualActivationRule />
+        </defaultControl>
+      </humanTask>
+      <processTask id="processTask" name="Process task" isBlocking="true" flowable:businessKey="${key}" flowable:inheritBusinessKey="true" flowable:sameDeployment="true" flowable:fallbackToDefaultTenant="true" flowable:idVariableName="startedProcessId" processRef="someProcess" />
+      <caseTask id="caseTask" name="Case task" isBlocking="true" caseRef="someCase" />
+      <decisionTask id="decisionTask" name="Decision task" isBlocking="true" decisionRef="someDecision" />
+      <task id="serviceTask" name="Service task" isBlocking="true" flowable:class="com.example.Delegate" flowable:storeResultVariableAsTransient="true" />
+      <task id="scriptTask" name="Script task" isBlocking="true" flowable:scriptFormat="groovy" flowable:resultVariableName="total" flowable:autoStoreVariables="true" flowable:type="script">
+        <extensionElements>
+          <flowable:field name="script">
+            <flowable:string><![CDATA[return 1 + 1]]></flowable:string>
+          </flowable:field>
+        </extensionElements>
+      </task>
+      <task id="httpTask" name="HTTP task" isBlocking="true" flowable:parallelInSameTransaction="true" flowable:type="http">
+        <extensionElements>
+          <flowable:field name="requestUrl">
+            <flowable:string><![CDATA[https://example.test]]></flowable:string>
+          </flowable:field>
+          <flowable:field name="requestMethod">
+            <flowable:string><![CDATA[POST]]></flowable:string>
+          </flowable:field>
+          <flowable:field name="requestBody" expression="${body}" />
+        </extensionElements>
+      </task>
+      <task id="mailTask" name="Mail task" isBlocking="true" flowable:type="mail">
+        <extensionElements>
+          <flowable:field name="to">
+            <flowable:string><![CDATA[someone@example.test]]></flowable:string>
+          </flowable:field>
+          <flowable:field name="subject">
+            <flowable:string><![CDATA[Hello]]></flowable:string>
+          </flowable:field>
+          <flowable:field name="html">
+            <flowable:string><![CDATA[<p>Hello</p>]]></flowable:string>
+          </flowable:field>
+        </extensionElements>
+      </task>
+      <task id="externalWorkerTask" name="External worker task" isBlocking="true" flowable:topic="orderPicking" flowable:doNotIncludeVariables="true" flowable:type="external-worker" />
+      <task id="casePageTask" name="Case page task" isBlocking="true" flowable:formKey="overview" flowable:label="Overview" flowable:icon="chart" flowable:sameDeployment="true" flowable:type="casePage" />
+      <task id="sendEventTask" name="Send event task" isBlocking="true" flowable:type="send-event">
+        <extensionElements>
+          <flowable:eventType>orderPlaced</flowable:eventType>
+          <flowable:eventInParameter source="orderId" target="id" />
+          <flowable:eventInParameter sourceExpression="${total}" target="amount" />
+          <flowable:eventOutParameter source="status" target="orderStatus" transient="true" />
+        </extensionElements>
+      </task>
+      <milestone id="milestone" name="Milestone" flowable:businessStatus="reviewed" flowable:displayOrder="2" flowable:includeInStageOverview="true" flowable:milestoneVariable="reviewedAt" />
+      <stage id="stage" name="Stage" flowable:autoCompleteCondition="${done}" flowable:businessStatus="in-review" flowable:displayOrder="1" flowable:includeInStageOverview="true" flowable:formKey="stageForm" flowable:formFieldValidation="true">
+        <planItem id="planItem_insideStage" name="Inside the stage" definitionRef="insideStage" />
+        <humanTask id="insideStage" name="Inside the stage" isBlocking="true" />
+      </stage>
+      <planFragment id="planFragment" name="Plan fragment">
+        <planItem id="planItem_insideFragment" name="Inside the fragment" definitionRef="insideFragment" />
+      </planFragment>
+      <humanTask id="insideFragment" name="Inside the fragment" isBlocking="true" />
+      <timerEventListener id="timerEventListener" name="Timer event listener">
+        <timerExpression>PT1H</timerExpression>
+        <planItemStartTrigger sourceRef="planItem_humanTask">
+          <standardEvent>complete</standardEvent>
+        </planItemStartTrigger>
+      </timerEventListener>
+      <userEventListener id="userEventListener" name="User event listener" flowable:availableCondition="${ready}" />
+      <eventListener id="genericEventListener" name="Event listener" />
+      <eventListener id="signalEventListener" name="Signal event listener" flowable:signalRef="somethingHappened" flowable:eventType="signal" />
+      <eventListener id="variableEventListener" name="Variable event listener" flowable:variableName="amount" flowable:variableChangeType="update" flowable:eventType="variable" />
+      <eventListener id="intentEventListener" name="Intent event listener" flowable:eventType="intent" />
+      <eventListener id="reactivateEventListener" name="Reactivate event listener" flowable:eventType="reactivate" />
+    </casePlanModel>
+  </case>
+  <cmmndi:CMMNDI>
+    <cmmndi:CMMNDiagram id="CMMNDiagram_kitchenSink">
+      <cmmndi:CMMNShape id="shape_kitchenSink_plan" cmmnElementRef="kitchenSink_plan">
+        <dc:Bounds x="60" y="60" width="760" height="440" />
+        <cmmndi:CMMNLabel />
+      </cmmndi:CMMNShape>
+      <cmmndi:CMMNShape id="shape_planItem_humanTask" cmmnElementRef="planItem_humanTask">
+        <dc:Bounds x="100" y="100" width="140" height="80" />
+        <cmmndi:CMMNLabel />
+      </cmmndi:CMMNShape>
+      <cmmndi:CMMNShape id="shape_planItem_processTask" cmmnElementRef="planItem_processTask">
+        <dc:Bounds x="280" y="100" width="140" height="80" />
+        <cmmndi:CMMNLabel />
+      </cmmndi:CMMNShape>
+      <cmmndi:CMMNShape id="shape_planItem_caseTask" cmmnElementRef="planItem_caseTask">
+        <dc:Bounds x="460" y="100" width="140" height="80" />
+        <cmmndi:CMMNLabel />
+      </cmmndi:CMMNShape>
+      <cmmndi:CMMNShape id="shape_planItem_decisionTask" cmmnElementRef="planItem_decisionTask">
+        <dc:Bounds x="640" y="100" width="140" height="80" />
+        <cmmndi:CMMNLabel />
+      </cmmndi:CMMNShape>
+      <cmmndi:CMMNShape id="shape_planItem_serviceTask" cmmnElementRef="planItem_serviceTask">
+        <dc:Bounds x="100" y="240" width="140" height="80" />
+        <cmmndi:CMMNLabel />
+      </cmmndi:CMMNShape>
+      <cmmndi:CMMNShape id="shape_planItem_scriptTask" cmmnElementRef="planItem_scriptTask">
+        <dc:Bounds x="280" y="240" width="140" height="80" />
+        <cmmndi:CMMNLabel />
+      </cmmndi:CMMNShape>
+      <cmmndi:CMMNShape id="shape_planItem_httpTask" cmmnElementRef="planItem_httpTask">
+        <dc:Bounds x="460" y="240" width="140" height="80" />
+        <cmmndi:CMMNLabel />
+      </cmmndi:CMMNShape>
+      <cmmndi:CMMNShape id="shape_planItem_mailTask" cmmnElementRef="planItem_mailTask">
+        <dc:Bounds x="640" y="240" width="140" height="80" />
+        <cmmndi:CMMNLabel />
+      </cmmndi:CMMNShape>
+      <cmmndi:CMMNShape id="shape_planItem_externalWorkerTask" cmmnElementRef="planItem_externalWorkerTask">
+        <dc:Bounds x="100" y="380" width="140" height="80" />
+        <cmmndi:CMMNLabel />
+      </cmmndi:CMMNShape>
+      <cmmndi:CMMNShape id="shape_planItem_casePageTask" cmmnElementRef="planItem_casePageTask">
+        <dc:Bounds x="280" y="380" width="140" height="80" />
+        <cmmndi:CMMNLabel />
+      </cmmndi:CMMNShape>
+      <cmmndi:CMMNShape id="shape_planItem_sendEventTask" cmmnElementRef="planItem_sendEventTask">
+        <dc:Bounds x="460" y="380" width="140" height="80" />
+        <cmmndi:CMMNLabel />
+      </cmmndi:CMMNShape>
+      <cmmndi:CMMNShape id="shape_planItem_milestone" cmmnElementRef="planItem_milestone">
+        <dc:Bounds x="640" y="380" width="140" height="50" />
+        <cmmndi:CMMNLabel />
+      </cmmndi:CMMNShape>
+      <cmmndi:CMMNShape id="shape_planItem_stage" cmmnElementRef="planItem_stage">
+        <dc:Bounds x="100" y="520" width="260" height="180" />
+        <cmmndi:CMMNLabel />
+      </cmmndi:CMMNShape>
+      <cmmndi:CMMNShape id="shape_planItem_planFragment" cmmnElementRef="planItem_planFragment">
+        <dc:Bounds x="280" y="520" width="240" height="160" />
+        <cmmndi:CMMNLabel />
+      </cmmndi:CMMNShape>
+      <cmmndi:CMMNShape id="shape_planItem_timerEventListener" cmmnElementRef="planItem_timerEventListener">
+        <dc:Bounds x="460" y="520" width="40" height="40" />
+        <cmmndi:CMMNLabel />
+      </cmmndi:CMMNShape>
+      <cmmndi:CMMNShape id="shape_planItem_userEventListener" cmmnElementRef="planItem_userEventListener">
+        <dc:Bounds x="640" y="520" width="40" height="40" />
+        <cmmndi:CMMNLabel />
+      </cmmndi:CMMNShape>
+      <cmmndi:CMMNShape id="shape_planItem_genericEventListener" cmmnElementRef="planItem_genericEventListener">
+        <dc:Bounds x="100" y="660" width="40" height="40" />
+        <cmmndi:CMMNLabel />
+      </cmmndi:CMMNShape>
+      <cmmndi:CMMNShape id="shape_planItem_signalEventListener" cmmnElementRef="planItem_signalEventListener">
+        <dc:Bounds x="280" y="660" width="40" height="40" />
+        <cmmndi:CMMNLabel />
+      </cmmndi:CMMNShape>
+      <cmmndi:CMMNShape id="shape_planItem_variableEventListener" cmmnElementRef="planItem_variableEventListener">
+        <dc:Bounds x="460" y="660" width="40" height="40" />
+        <cmmndi:CMMNLabel />
+      </cmmndi:CMMNShape>
+      <cmmndi:CMMNShape id="shape_planItem_intentEventListener" cmmnElementRef="planItem_intentEventListener">
+        <dc:Bounds x="640" y="660" width="40" height="40" />
+        <cmmndi:CMMNLabel />
+      </cmmndi:CMMNShape>
+      <cmmndi:CMMNShape id="shape_planItem_reactivateEventListener" cmmnElementRef="planItem_reactivateEventListener">
+        <dc:Bounds x="100" y="800" width="40" height="40" />
+        <cmmndi:CMMNLabel />
+      </cmmndi:CMMNShape>
+      <cmmndi:CMMNShape id="shape_planItem_insideStage" cmmnElementRef="planItem_insideStage">
+        <dc:Bounds x="140" y="260" width="140" height="80" />
+        <cmmndi:CMMNLabel />
+      </cmmndi:CMMNShape>
+      <cmmndi:CMMNShape id="shape_planItem_insideFragment" cmmnElementRef="planItem_insideFragment">
+        <dc:Bounds x="140" y="400" width="140" height="80" />
+        <cmmndi:CMMNLabel />
+      </cmmndi:CMMNShape>
+    </cmmndi:CMMNDiagram>
+  </cmmndi:CMMNDI>
+</definitions>

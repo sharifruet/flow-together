@@ -24,11 +24,11 @@ are substantially built but **not verified end to end**; §5 is explicit about w
 | `togetherflow-work` | Task and case inbox | 84 |
 | `togetherflow-control` | Runtime operations | 71 |
 | `togetherflow-identity` | Users, groups, privileges | 41 |
-| `togetherflow-design` | Model authoring across six model types | 487 |
+| `togetherflow-design` | Model authoring across six model types | 493 |
 | `togetherflow-attachment-gateway` | Optional attachment storage (Java) | 38 |
 | `togetherflow-event-recorder` | Optional inbound event log (Java) | 36 |
 
-**917 frontend tests.** Lint, typecheck, production build and bundle
+**923 frontend tests.** Lint, typecheck, production build and bundle
 budget pass for every module; the component gallery builds. On the Java side, the
 model-validation resources add 9 REST tests against a real engine, and the attachment
 gateway went from 13 tests to 38; the new event recorder adds 36.
@@ -425,8 +425,25 @@ for the same reason.
   every save. Found by running the round-trip suite against the engine's own converter
   fixtures rather than only the four repository files, which happen to carry none of them.
 
-296 tests to 487. Every kind and every attribute goes through the kitchen-sink schema case,
-so the set is proven deployable rather than assumed. `assets/index` budget 72 → 78 kB: the
+**And it deploys.** The schema check above is the gate a deployment runs *first*, and it is
+a real one — four earlier versions of this serialiser produced documents it rejected. But the
+parser and `CaseValidator` run after it, and neither is exercised by validating XML in a
+browser toolchain. So the kitchen-sink case is checked in at
+`modules/flowable-cmmn-engine/src/test/resources/org/flowable/cmmn/test/togetherflow/design-kitchen-sink.cmmn`
+and `TogetherFlowGeneratedCaseTest` deploys it into a real engine — in the default build, not
+behind a profile, because a check that does not run reports nothing.
+
+It asserts more than "it deployed". A plan item definition the parser does not recognise is
+*skipped* rather than refused, so a wrong `flowable:` discriminator gives a case that
+validates, deploys, and quietly contains a plain `Task` doing nothing. The test therefore
+checks the class the parser actually built for each of the twenty-one kinds, and that the
+settings were read onto it — the script's body and language, the worker's topic, the page's
+form and icon, the signal's ref, the variable listener's change type, the timer's start
+trigger. `schemaValidity.test.ts` fails if the checked-in file drifts from what the
+serialiser now writes, so the two sides cannot start testing different cases; regenerate with
+`TF_WRITE_FIXTURE=1` and commit, so a change to the output is reviewed rather than absorbed.
+
+296 tests to 493 in Design, plus 4 in `flowable-cmmn-engine`. `assets/index` budget 72 → 78 kB: the
 new labels are user-facing copy in the catalogue every app loads at startup.
 
 ---
@@ -439,11 +456,12 @@ budgets, gallery build, and `./mvnw -Ptogetherflow validate` for the reactor.
 **Since verified, with Docker** (see §2b): all five container images build and run, and the
 model-validation endpoints run against a real engine.
 
-**Since verified, against the CMMN 1.1 schema** (see §2d): the XML Design's CMMN serialiser
-produces — for a case using every element type and every authorable feature, and for each of
-the four repository CMMN files re-serialised — passes `xmllint --schema CMMN11.xsd`. That is
-the gate a deployment runs before the parser or `CaseValidator` see the document, and it is
-the one that rejected four earlier versions of this serialiser.
+**Since verified, against a real CMMN engine** (see §2d and §2f): the XML Design's CMMN
+serialiser produces passes `xmllint --schema CMMN11.xsd` — for a case using every element
+type and every authorable feature, and for each of the four repository CMMN files
+re-serialised — and that same case **deploys**, in `flowable-cmmn-engine`'s own test harness,
+with each of its twenty-one kinds parsed into the model class the engine's behaviour uses.
+Schema, parser and `CaseValidator`, all three.
 
 **Still not verified, and the reason:**
 
