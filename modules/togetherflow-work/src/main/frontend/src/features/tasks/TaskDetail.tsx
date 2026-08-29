@@ -10,6 +10,7 @@ import {
   UserChip,
   ConfirmDialog,
   EmptyState,
+  Modal,
   FormRenderer,
   fieldIdsInOrder,
   formValuesToVariables,
@@ -797,23 +798,16 @@ export function TaskDetail({
               </footer>
 
               {delegating ? (
-                <div className="tf-dialog-backdrop" onMouseDown={() => setDelegating(false)}>
-                  <div
-                    className="tf-dialog"
-                    role="dialog"
-                    aria-modal="true"
-                    aria-label={t("task.delegate.label")}
-                    onMouseDown={(event) => event.stopPropagation()}
-                  >
-                    <h2 className="tf-dialog__title">{t("task.delegate.title")}</h2>
-                    <p className="tf-dialog__description">{t("task.delegate.description")}</p>
-                    <TextInput
-                      label={t("task.delegate.to")}
-                      value={delegateTo}
-                      hint={t("task.delegate.hint")}
-                      onChange={(event) => setDelegateTo(event.target.value)}
-                    />
-                    <div className="tf-dialog__actions">
+                <Modal
+                  open
+                  title={t("task.delegate.title")}
+                  description={t("task.delegate.description")}
+                  size="sm"
+                  // Typed input: a stray backdrop click must not discard it.
+                  dismissOnBackdrop={false}
+                  onClose={() => setDelegating(false)}
+                  actions={
+                    <>
                       <Button
                         variant="secondary"
                         disabled={busy}
@@ -837,9 +831,16 @@ export function TaskDetail({
                       >
                         {t("task.action.delegate")}
                       </Button>
-                    </div>
-                  </div>
-                </div>
+                    </>
+                  }
+                >
+                  <TextInput
+                    label={t("task.delegate.to")}
+                    value={delegateTo}
+                    hint={t("task.delegate.hint")}
+                    onChange={(event) => setDelegateTo(event.target.value)}
+                  />
+                </Modal>
               ) : null}
 
               {/*

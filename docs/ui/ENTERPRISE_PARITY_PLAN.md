@@ -1,10 +1,14 @@
 # TogetherFlow — Enterprise Parity Plan
 
-Status: Draft v4 · Written 2026-08-27
+Status: Draft v7 · Written 2026-08-27
 · v2 added [Execution chunks](#execution-chunks)
 · v3 records **Wave 1 as built** — see [Wave 1 — Foundation](#wave-1--foundation)
 · v4 records **Wave 2 as built**, with its discovery findings in
 [WAVE2_DISCOVERY.md](WAVE2_DISCOVERY.md)
+· v7 records **W3.3 built** and **W3.4's automated half**
+· v6 records **W3.2 as built** ([ADR 0018](adr/0018-git-in-the-workspace-service.md))
+· v5 records **E0.3 decided** ([ADR 0017](adr/0017-workspaces-own-storage-and-enforcement.md))
+and **W3.1 as built** — see [§L](UI_POLISH_BACKLOG.md#l-w31--completed)
 Companion to [REQUIREMENTS.md](REQUIREMENTS.md) (scope), [IMPLEMENTATION_PLAN.md](IMPLEMENTATION_PLAN.md)
 (how Phases 1–7 were sequenced), [STATUS.md](STATUS.md) (what is built) and
 [UI_POLISH_BACKLOG.md](UI_POLISH_BACKLOG.md) (the finish-quality and Enterprise-Design gap
@@ -89,8 +93,13 @@ fix needs a server-side precondition, which is E5's server-side locking.
 **E0.2 — Decide the routing library** (blocks E1, and therefore everything).
 
 **E0.3 — Decide whether workspaces are a `metaInfo` convention or new engine surface.**
-This is the single most expensive decision in the plan; E5 cannot be estimated until it
-lands. Do not start E5 work on the assumption it will be cheap.
+*(Taken 2026-08-28 — [ADR 0017](adr/0017-workspaces-own-storage-and-enforcement.md).)*
+**Neither.** Workspaces get their own storage and their own server-side enforcement in an
+optional module, `togetherflow-workspace`, on the precedent ADR 0015 set. The `metaInfo`
+convention was rejected because model templates work *precisely* because nothing enforces
+them, and a workspace nobody enforces delivers none of what §13.1 asks for; the engine
+schema was rejected because it would mean per-dialect DDL, a `FlowableVersions` entry, and
+a persistent-schema divergence from upstream for a concept upstream lacks.
 
 **E0.4 — Confirm the Control and Work discovery steps' findings** (E2.0, E3.0) before
 committing their phase scope.
@@ -531,10 +540,10 @@ volumes (§13.5).
 | W2.1 | E2 | Control parity | W1.5 | L | no | ✅ done |
 | W2.2 | E3 | Work parity *(delivers D1)* | W1.5 | L | no | ⚠️ sort gap documented |
 | W2.3 | E4 | Design parity, part 1 | W1.5, W1.1 | L | no | ✅ done |
-| W3.1 | E5 | Workspaces + permissions | E0.3, W2.3 | XL | **yes** | blocked on E0.3 |
-| W3.2 | E6 | Git connectivity | W3.1 | XL | **yes** | not started |
-| W3.3 | E7 | Data model, preview, translations | W2.3, W3.1 | L | some | not started |
-| W3.4 | E8 | Verification gate *(less G1)* | all | M | no | not started |
+| **W3.1** | E5 | Workspaces + permissions | E0.3, W2.3 | XL | **yes** | ✅ done |
+| **W3.2** | E6 | Git connectivity | W3.1 | XL | **yes** | ✅ done (no PR/stash — [ADR 0018](adr/0018-git-in-the-workspace-service.md)) |
+| **W3.3** | E7 | Data model, preview, translations | W2.3, W3.1 | L | some | ✅ done |
+| **W3.4** | E8 | Verification gate *(less G1)* | all | M | no | ⚠️ automated half done; G2's screen-reader pass and G3 need a person |
 
 **E0.3 and E0.4 are not chunks.** E0.3 is a decision that gates W3.1 and should be taken
 during Wave 1, so that Wave 3 can be estimated at all rather than committed to blind. E0.4

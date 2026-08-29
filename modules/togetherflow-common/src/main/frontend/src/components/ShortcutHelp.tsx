@@ -6,6 +6,7 @@
 import { useEffect, useRef } from "react";
 import { useT } from "../i18n/I18nContext";
 import { Button } from "./Button";
+import { Modal } from "./Modal";
 import type { Shortcut } from "../shortcuts/useShortcuts";
 
 export interface ShortcutHelpProps {
@@ -38,31 +39,27 @@ export function ShortcutHelp({ shortcuts, open, onClose }: ShortcutHelpProps) {
   const listed = shortcuts.filter((shortcut) => shortcut.description);
 
   return (
-    <div className="tf-dialog-backdrop" onMouseDown={onClose}>
-      <div
-        className="tf-dialog"
-        role="dialog"
-        aria-modal="true"
-        aria-label={t("shortcuts.title")}
-        onMouseDown={(event) => event.stopPropagation()}
-      >
-        <h2 className="tf-dialog__title">{t("shortcuts.title")}</h2>
-        <dl className="tf-shortcuts">
-          {listed.map((shortcut) => (
-            <div className="tf-shortcuts__row" key={shortcut.key}>
-              <dt>
-                <kbd className="tf-kbd">{keyLabel(shortcut.key)}</kbd>
-              </dt>
-              <dd>{shortcut.description}</dd>
-            </div>
-          ))}
-        </dl>
-        <div className="tf-dialog__actions">
-          <Button ref={closeRef} onClick={onClose}>
-            {t("action.close")}
-          </Button>
-        </div>
-      </div>
-    </div>
+    <Modal
+      open
+      title={t("shortcuts.title")}
+      size="sm"
+      onClose={onClose}
+      actions={
+        <Button ref={closeRef} onClick={onClose}>
+          {t("action.close")}
+        </Button>
+      }
+    >
+      <dl className="tf-shortcuts">
+        {listed.map((shortcut) => (
+          <div className="tf-shortcuts__row" key={shortcut.key}>
+            <dt>
+              <kbd className="tf-kbd">{keyLabel(shortcut.key)}</kbd>
+            </dt>
+            <dd>{shortcut.description}</dd>
+          </div>
+        ))}
+      </dl>
+    </Modal>
   );
 }

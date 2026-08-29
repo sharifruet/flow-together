@@ -12,11 +12,15 @@
  * than one that writes none, because it looks like it worked.
  */
 
+import { useState } from "react";
 import {
+  Button,
   SelectInput,
   TextAreaInput,
   TextInput,
+  fieldLocales,
   useI18n,
+  withFieldLabel,
   type FormField,
 } from "@togetherflow/common";
 import { isNumericType, isPresentational, isTextualType } from "./formDraft";
@@ -191,6 +195,79 @@ export function FieldProperties({ field, disabled = false, onChange }: FieldProp
           onChange={(event) => setParam("tfVisibleWhen", event.target.value)}
         />
       )}
+
+      {isPresentational(field.type) && field.type !== "headline" ? null : (
+        <LabelTranslations field={field} disabled={disabled} onChange={onChange} />
+      )}
     </>
+  );
+}
+
+/**
+ * Per-model label translations (W3.3).
+ *
+ * ADR 0013's layer translates the UI; a form authored in English stayed English for every
+ * reader. The field's own name remains the source and the fallback — an untranslated
+ * field reads as it was written, never as a key or a blank — so adding a language is
+ * additive and removing one is safe.
+ */
+function LabelTranslations({
+  field,
+  disabled,
+  onChange,
+}: {
+  field: FormField;
+  disabled: boolean;
+  onChange: (changes: Partial<FormField>) => void;
+}) {
+  const { t } = useI18n();
+  const [locale, setLocale] = useState("");
+  const locales = fieldLocales(field);
+
+  const set = (target: string, label: string) => {
+    const next = withFieldLabel(field, target, label);
+    onChange({ params: next.params });
+  };
+
+  return (
+    <section className="tf-properties__section">
+      <h3 className="tf-properties__section-title">{t("form.field.translations")}</h3>
+      <p className="tf-muted">{t("form.field.translations.hint")}</p>
+
+      {locales.map((code) => (
+        <TextInput
+          key={code}
+          label={t("form.field.translation", { locale: code })}
+          value={String(
+            ((field.params?.tfLabels ?? {}) as Record<string, string>)[code] ?? "",
+          )}
+          disabled={disabled}
+          // Cleared, the locale goes rather than lingering as an empty override that
+          // would render a blank label.
+          onChange={(event) => set(code, event.target.value)}
+        />
+      ))}
+
+      <div className="tf-inline-form">
+        <TextInput
+          label={t("form.field.translation.add")}
+          hint={t("form.field.translation.add.hint")}
+          value={locale}
+          disabled={disabled}
+          onChange={(event) => setLocale(event.target.value)}
+        />
+        <Button
+          variant="secondary"
+          disabled={disabled || locale.trim() === "" || locales.includes(locale.trim())}
+          onClick={() => {
+            // Seeded with the source text, so the translator edits rather than retypes.
+            set(locale.trim(), field.name || field.id);
+            setLocale("");
+          }}
+        >
+          {t("action.add")}
+        </Button>
+      </div>
+    </section>
   );
 }

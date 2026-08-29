@@ -23,10 +23,11 @@
 
 import { useEffect, useRef, useState, type ReactNode } from "react";
 import type { FormField, FormModelResponse, OptionFormField } from "../api/types";
-import { useT, type TFunction } from "../i18n/I18nContext";
+import { useI18n, useT, type TFunction } from "../i18n/I18nContext";
 import { isFieldVisible } from "./visibility";
 import {
   fieldConstraints,
+  fieldLabel,
   isContainer,
   isOptionField,
   toDateInputValue,
@@ -315,7 +316,10 @@ function InputField({
   onUploadFile,
   domId,
 }: NodeProps) {
-  const t = useT();
+  const { t, locale } = useI18n();
+  // Per-model translation (W3.3): the field's own name is the source and the fallback,
+  // so an untranslated field reads as it was written rather than as a blank.
+  const label = fieldLabel(field, locale);
   const inputId = domId(field.id);
   const errorId = `${inputId}-error`;
   const hintId = `${inputId}-hint`;
@@ -368,7 +372,7 @@ function InputField({
             onChange={(event) => onChange(field.id, event.target.checked)}
           />
           <span className="tf-check__label">
-            {field.name || field.id}
+            {label}
             <RequiredMark required={field.required} t={t} />
           </span>
         </label>
@@ -392,7 +396,7 @@ function InputField({
         aria-invalid={error ? true : undefined}
       >
         <legend className="tf-radio-group__legend">
-          {field.name || field.id}
+          {label}
           <RequiredMark required={field.required} t={t} />
         </legend>
         <div className="tf-radio-group__options">
@@ -505,7 +509,7 @@ function InputField({
     <div className={fieldClass(error)}>
       <div className="tf-field__label-row">
         <label className="tf-field__label" htmlFor={inputId}>
-          {field.name || field.id}
+          {label}
           <RequiredMark required={field.required && !isReadOnlyValue} t={t} />
         </label>
         {limits.maxLength !== undefined && !isReadOnlyValue ? (

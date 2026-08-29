@@ -133,11 +133,23 @@ export function __resetSourceBaselines(): void {
 
 export class ModelApi {
   constructor(
+    /**
+     * The model repository. Points at the workspace guard where one is deployed
+     * (ADR 0017), so every read and write of a *draft* is permission-checked.
+     */
     private readonly client: ApiClient,
     /** DMN deployments go to their own servlet. */
     private readonly dmnClient?: ApiClient,
     /** CMMN likewise. */
     private readonly cmmnClient?: ApiClient,
+    /**
+     * The process engine, for BPMN *deployments*.
+     *
+     * Separate from `client` because they can be different services: the workspace guard
+     * proxies `/repository/models` and nothing else, so sending a deployment through it
+     * would 404. Defaults to `client`, which is correct whenever no guard is configured.
+     */
+    private readonly processClient: ApiClient = client,
   ) {}
 
   list(query: ModelQuery = {}, signal?: AbortSignal): Promise<DataResponse<ModelResponse>> {
@@ -411,9 +423,9 @@ export class ModelApi {
     const fileName = `${baseName}.bpmn20.xml`;
     const form = new FormData();
     form.append(fileName, new Blob([xml], { type: "application/xml" }), fileName);
-    const deployment = await this.client.request<{ id: string }>("/repository/deployments", {
+    const deployment = await this.processClient.request<{ id: string }>("/repository/deployments", {
       method: "POST",
-      query: { deploymentName: model.name || baseName, tenantId: this.client.tenantId },
+      query: { deploymentName: model.name || baseName, tenantId: this.processClient.tenantId },
       body: form,
     });
     return { ...deployment, draft: await this.cutVersionAfterDeploy(model, xml) };

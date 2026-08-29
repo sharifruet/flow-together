@@ -17,6 +17,7 @@
 import { useMemo, useState } from "react";
 import {
   ApiError,
+  Modal,
   AsyncBoundary,
   Badge,
   Button,
@@ -316,25 +317,44 @@ function CaseInspector({
   };
 
   return (
-    <div className="tf-dialog-backdrop" onMouseDown={onClose}>
-      <div
-        className="tf-dialog tf-dialog--wide"
-        role="dialog"
-        aria-modal="true"
-        aria-label={t("cases.detail.label", { name: instance.name ?? instance.id })}
-        onMouseDown={(event) => event.stopPropagation()}
-      >
-        <h2 className="tf-dialog__title">
-          {instance.name || instance.caseDefinitionName || t("cases.fallbackName")}
-        </h2>
-        <p className="tf-dialog__description">
+    <>
+    <Modal
+      open
+      title={instance.name || instance.caseDefinitionName || t("cases.fallbackName")}
+      description={
+        <>
           {instance.businessKey
             ? `${t("cases.ref", { businessKey: instance.businessKey })} · `
             : ""}
           {instance.id} ·{" "}
           {t("cases.startedAt", { when: formatDateTime(instance.startTime, locale) })}
           {instance.startUserId ? t("cases.startedBy", { userId: instance.startUserId }) : ""}
-        </p>
+        </>
+      }
+      size="lg"
+      onClose={onClose}
+      actions={
+        <>
+          {/* The destructive pair sits left of the close button — see
+              `.tf-modal__actions > .tf-row-actions` in the theme. */}
+          <div className="tf-row-actions">
+            <Button
+              variant="danger"
+              disabled={busy !== null}
+              onClick={() => setPendingEnd("terminate")}
+            >
+              {t("action.terminate")}
+            </Button>
+            <Button variant="danger" disabled={busy !== null} onClick={() => setPendingEnd("delete")}>
+              {t("action.delete")}
+            </Button>
+          </div>
+          <Button variant="secondary" onClick={onClose}>
+            {t("action.close")}
+          </Button>
+        </>
+      }
+    >
 
         <h3 className="tf-detail__section-title">{t("cases.section.progress")}</h3>
         <AsyncBoundary
@@ -433,25 +453,7 @@ function CaseInspector({
             </dl>
           )}
         </AsyncBoundary>
-
-        <div className="tf-dialog__actions tf-dialog__actions--split">
-          <div className="tf-row-actions">
-            <Button
-              variant="danger"
-              disabled={busy !== null}
-              onClick={() => setPendingEnd("terminate")}
-            >
-              {t("action.terminate")}
-            </Button>
-            <Button variant="danger" disabled={busy !== null} onClick={() => setPendingEnd("delete")}>
-              {t("action.delete")}
-            </Button>
-          </div>
-          <Button variant="secondary" onClick={onClose}>
-            {t("action.close")}
-          </Button>
-        </div>
-      </div>
+    </Modal>
 
       <ConfirmDialog
         open={pending !== null}
@@ -500,6 +502,6 @@ function CaseInspector({
         onCancel={() => setPendingEnd(null)}
         onConfirm={() => pendingEnd && void endCase(pendingEnd)}
       />
-    </div>
+    </>
   );
 }

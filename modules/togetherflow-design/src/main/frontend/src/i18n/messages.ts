@@ -11,6 +11,103 @@ export const designEn = {
 
   "nav.label": "Design sections",
   "nav.models": "Models",
+  "nav.workspaces": "Workspaces",
+
+  // Workspaces (ADR 0017 / W3.1)
+  "workspaces.label": "Workspace administration",
+  "workspaces.title": "Workspaces",
+  "workspaces.blurb":
+    "A workspace groups models and decides who may open, edit and publish them. Roles are checked by the workspace service, not just hidden here.",
+  "workspaces.new": "New workspace",
+  "workspaces.create": "Create",
+  "workspaces.created": "\"{name}\" created.",
+  "workspaces.failed": "That workspace action could not be completed.",
+  "workspaces.field.key": "Key",
+  "workspaces.field.key.hint": "Identifies the workspace. Can't be changed later.",
+  "workspaces.field.name": "Name",
+  "workspaces.empty.title": "No workspaces yet",
+  "workspaces.empty.description":
+    "Create one to group models and grant people access to them.",
+  "workspaces.membersOf": "Members of {name}",
+  "workspaces.member": "Member",
+  "workspaces.members.empty": "No members yet",
+  "workspaces.member.add": "User or group",
+  "workspaces.member.add.hint": "The id as the identity store knows it.",
+  "workspaces.member.added": "{id} added.",
+  "workspaces.member.removed": "{id} removed.",
+  "workspaces.principalType": "Type",
+  "workspaces.principal.USER": "User",
+  "workspaces.principal.GROUP": "Group",
+  "workspaces.role": "Role",
+  "workspaces.role.READER": "Reader",
+  "workspaces.role.MODELER": "Modeler",
+  "workspaces.role.OWNER": "Owner",
+  "workspaces.roleBlurb":
+    "Readers open models. Modelers also create, edit, delete and publish them. Owners additionally manage members and the workspace itself.",
+  "workspaces.sharing": "Shared models",
+  "workspaces.sharedWorkspace": "Share models from",
+  "workspaces.sharedWorkspace.hint":
+    "Models in the chosen workspace can be referenced from this one. A workspace that already shares from another can't be shared from.",
+  "workspaces.sharedWorkspace.none": "Nothing shared",
+  "workspaces.shared": "Sharing updated.",
+  "workspaces.delete": "Delete this workspace",
+  "workspaces.delete.title": "Delete this workspace?",
+  "workspaces.delete.description":
+    "\"{name}\" and its membership will be deleted. The models in it are left alone — they live in the engine and stay there, unassigned.",
+  "workspaces.delete.confirm": "Delete workspace",
+  "workspaces.deleted": "\"{name}\" deleted.",
+
+  // Git connectivity (ADR 0018 / W3.2)
+  "git.label": "Git connectivity",
+  "git.title": "Git",
+  "git.failed": "That Git action could not be completed.",
+  "git.notConnected": "This workspace isn't connected to a repository.",
+  "git.connect": "Connect",
+  "git.connected": "Connected.",
+  "git.remoteUrl": "Repository URL",
+  "git.remoteUrl.hint":
+    "Anything Git can clone. Credentials come from this deployment's configuration, not from here.",
+  "git.branch": "Branch",
+  "git.subPath": "Folder",
+  "git.subPath.hint": "Leave empty for the repository root; set it for a monorepo.",
+  "git.remote": "Repository",
+  "git.sync": "Sync",
+  "git.sync.upToDate": "Up to date",
+  "git.sync.diverged": "{ahead} ahead, {behind} behind",
+  "git.sync.unknown": "Couldn't reach the remote",
+  "git.lastCommit": "Last commit",
+  "git.changes.one": "1 pending change",
+  "git.changes.other": "{count} pending changes",
+  "git.changes.none": "Nothing has changed since the last commit.",
+  "git.change.ADDED": "Added",
+  "git.change.MODIFIED": "Changed",
+  "git.change.REMOVED": "Removed",
+  "git.diff": "Diff",
+  "git.diff.loaded": "Diff loaded.",
+  "git.diff.empty": "No textual difference.",
+  "git.diff.note":
+    "A text diff of the stored file. It shows what Git will record, which for a diagram is the serialised XML rather than the shapes.",
+  "git.commitMessage": "Commit message",
+  "git.commit": "Commit",
+  "git.committed": "Committed.",
+  "git.push": "Push",
+  "git.pushed": "Pushed.",
+  "git.pull": "Pull",
+  "git.pulled.done": "Pulled.",
+  "git.pulled": "{created} added, {updated} updated, {failed} failed.",
+  "git.revert": "Discard changes",
+  "git.reverted": "Local changes discarded.",
+  "git.switchBranch": "Branch",
+  "git.switched": "Branch switched.",
+  "git.newBranch": "New branch",
+  "git.createBranch": "Create branch",
+  "git.branchCreated": "Now on {name}.",
+  "git.disconnect": "Disconnect from Git",
+  "git.disconnect.title": "Disconnect this workspace?",
+  "git.disconnect.description":
+    "\"{name}\" will stop tracking its repository. The models stay exactly as they are — this removes the link and the working copy, not your work. Anything committed but not pushed is lost.",
+  "git.disconnect.confirm": "Disconnect",
+  "git.disconnected": "Disconnected from Git.",
 
   // Shared editor chrome
   "editor.back": "← Back to models",
@@ -160,6 +257,12 @@ export const designEn = {
   "bpmn.checks.summary.warnings.one": "{count} warning",
   "bpmn.checks.summary.warnings.other": "{count} warnings",
   // Which side reported a problem, shown as a badge beside the severity.
+  "bpmn.checks.severity.error": "error",
+  "bpmn.checks.severity.warning": "warning",
+  "bpmn.checks.nonBlocking":
+    "Nothing here stops a deploy. Warnings are advice about readability \u2014 an unnamed element deploys and runs.",
+  "bpmn.checks.blocking.one": "1 problem has to be fixed before this can be deployed.",
+  "bpmn.checks.blocking.other": "{count} problems have to be fixed before this can be deployed.",
   "bpmn.checks.source.browser": "browser",
   "bpmn.checks.source.engine": "engine",
   "bpmn.checks.source.lint": "structure",
@@ -850,6 +953,36 @@ export const designEn = {
   "app.exported": "\u201c{name}\u201d exported as an archive.",
   "app.exportFailed": "The app could not be exported.",
   "app.field.keyError": "Start with a letter or underscore; no spaces.",
+  // App-level variables (W3.3)
+  // Runtime preview (W3.3)
+  "preview.action": "Test run",
+  "preview.title": "Start a test instance",
+  "preview.description": "Runs \u201c{name}\u201d on the engine you just deployed to.",
+  "preview.warning":
+    "This starts a real process instance in the current tenant. There is no sandbox in this distribution \u2014 whatever it does, it has done, and it will appear in Control like any other instance.",
+  "preview.businessKey": "Business key",
+  "preview.businessKey.hint":
+    "Optional \u2014 leave it empty and the instance still starts. It is your own reference for this run, such as an order number or a customer id: the engine stores it alongside the instance so you can search for it in Control instead of hunting through generated ids.",
+  "preview.start": "Start it",
+  "preview.started": "Started instance {id}.",
+  "preview.failed": "The instance could not be started.",
+  "preview.instance": "Instance",
+  "preview.waitingAt": "Waiting at",
+  "preview.completed": "Finished without waiting",
+  "app.variables": "Variables",
+  "app.variables.hint":
+    "Draft-only. This distribution's app engine reads no app-level variables, so these record what the app expects rather than setting anything when it is published.",
+  "app.variable.name": "Name",
+  "app.variable.name.invalid":
+    "Use letters, digits and underscores, starting with a letter or underscore.",
+  "app.variable.type": "Type",
+  "app.variable.mode": "When published",
+  "app.variable.mode.hint":
+    "A value is overwritten on every deployment; a default only applies where the variable has none yet.",
+  "app.variable.mode.value": "Always set it",
+  "app.variable.mode.default": "Only if unset",
+  "app.variable.value": "Value",
+  "app.variable.add": "Add a variable",
   "app.publishedVersions": "Published versions",
   "app.cannotPublish": "Can't publish: {models} have no saved content.",
   "app.published": "Published \"{name}\" with {count} models.",
@@ -909,6 +1042,31 @@ export const designEn = {
   "form.field.id": "Id",
   "form.view": "Form view",
   "form.tab.preview": "Preview",
+  "form.tab.data": "Data",
+
+  // Per-model label translations (W3.3)
+  "form.field.translations": "Translations",
+  "form.field.translations.hint":
+    "The label above is the source text and the fallback: a reader whose language isn't listed sees it, never a blank.",
+  "form.field.translation": "Label ({locale})",
+  "form.field.translation.add": "Add a language",
+  "form.field.translation.add.hint": "A language tag, e.g. de or fr-CA.",
+
+  // The data model a form implies (W3.3)
+  "form.data.label": "Data this form writes",
+  "form.data.note":
+    "Derived from the fields, not declared separately: a field's id is the process variable it writes. Change an id and this changes with it.",
+  "form.data.empty": "This form writes nothing yet — add a field.",
+  "form.data.variable": "Variable",
+  "form.data.type": "Type",
+  "form.data.required": "Required",
+  "form.data.writtenBy": "Written by",
+  "form.data.unnamed": "(no id)",
+  "form.data.problem.duplicate":
+    "Two fields write \u201c{name}\u201d. Only the last one submitted survives.",
+  "form.data.problem.invalid-name":
+    "\u201c{name}\u201d isn't usable in an expression. Use letters, digits and underscores, starting with a letter or underscore.",
+  "form.data.problem.missing-name": "A field has no id, so it writes nothing.",
   "form.deployNote":
     "Forms deploy as part of an app. Add this form to an app in the model library and publish that — and note it only takes effect where a form engine is configured.",
 

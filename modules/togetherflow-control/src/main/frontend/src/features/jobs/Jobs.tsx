@@ -10,6 +10,7 @@
 import { useCallback, useMemo, useState } from "react";
 import {
   ApiError,
+  Modal,
   AsyncBoundary,
   Badge,
   Button,
@@ -456,26 +457,25 @@ function StacktraceDialog({
   );
 
   return (
-    <div className="tf-dialog-backdrop" onMouseDown={onClose}>
-      <div
-        className="tf-dialog tf-dialog--wide"
-        role="dialog"
-        aria-modal="true"
-        aria-label={t("jobs.stackTrace.label", { id: jobId })}
-        onMouseDown={(event) => event.stopPropagation()}
-      >
-        <h2 className="tf-dialog__title">{t("jobs.stackTrace.title")}</h2>
-        <p className="tf-dialog__description">{jobId}</p>
+        <Modal
+      open
+      title={t("jobs.stackTrace.title")}
+      description={jobId}
+      size="lg"
+      onClose={onClose}
+      actions={
+        <>
+<Button variant="secondary" onClick={onClose}>
+            {t("action.close")}
+          </Button>
+        </>
+      }
+    >
+
         <AsyncBoundary loading={loading} error={error} data={data} onRetry={refetch} skeletonRows={6}>
           {(trace) => <pre className="tf-stacktrace">{trace}</pre>}
         </AsyncBoundary>
-        <div className="tf-dialog__actions">
-          <Button variant="secondary" onClick={onClose}>
-            {t("action.close")}
-          </Button>
-        </div>
-      </div>
-    </div>
+    </Modal>
   );
 }
 

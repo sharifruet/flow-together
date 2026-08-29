@@ -9,6 +9,7 @@
 
 import { useEffect, useRef, useState } from "react";
 import { Button } from "./Button";
+import { Modal } from "./Modal";
 import { TextInput } from "./Field";
 import { useToast } from "./Toast";
 import { ApiError } from "../api/client";
@@ -241,45 +242,43 @@ function ChangePasswordDialog({
   };
 
   return (
-    <div className="tf-dialog-backdrop" onMouseDown={onClose}>
-      <div
-        className="tf-dialog"
-        role="dialog"
-        aria-modal="true"
-        aria-label={t("password.title")}
-        onMouseDown={(event) => event.stopPropagation()}
-      >
-        <h2 className="tf-dialog__title">{t("password.title")}</h2>
-        <p className="tf-dialog__description">{t("password.description", { userId })}</p>
-
-        <TextInput
-          label={t("password.new")}
-          type="password"
-          autoComplete="new-password"
-          value={password}
-          disabled={busy}
-          error={tooShort ? t("password.tooShort", { min: MIN_PASSWORD_LENGTH }) : undefined}
-          onChange={(event) => setPassword(event.target.value)}
-        />
-        <TextInput
-          label={t("password.confirm")}
-          type="password"
-          autoComplete="new-password"
-          value={confirmation}
-          disabled={busy}
-          error={mismatch ? t("password.mismatch") : undefined}
-          onChange={(event) => setConfirmation(event.target.value)}
-        />
-
-        <div className="tf-dialog__actions">
+    <Modal
+      open
+      title={t("password.title")}
+      description={t("password.description", { userId })}
+      size="sm"
+      // Typed credentials: a stray backdrop click must not discard them.
+      dismissOnBackdrop={false}
+      onClose={onClose}
+      actions={
+        <>
           <Button variant="secondary" disabled={busy} onClick={onClose}>
             {t("dialog.cancel")}
           </Button>
           <Button loading={busy} disabled={!canSubmit} onClick={() => void submit()}>
             {t("password.title")}
           </Button>
-        </div>
-      </div>
-    </div>
+        </>
+      }
+    >
+      <TextInput
+        label={t("password.new")}
+        type="password"
+        autoComplete="new-password"
+        value={password}
+        disabled={busy}
+        error={tooShort ? t("password.tooShort", { min: MIN_PASSWORD_LENGTH }) : undefined}
+        onChange={(event) => setPassword(event.target.value)}
+      />
+      <TextInput
+        label={t("password.confirm")}
+        type="password"
+        autoComplete="new-password"
+        value={confirmation}
+        disabled={busy}
+        error={mismatch ? t("password.mismatch") : undefined}
+        onChange={(event) => setConfirmation(event.target.value)}
+      />
+    </Modal>
   );
 }

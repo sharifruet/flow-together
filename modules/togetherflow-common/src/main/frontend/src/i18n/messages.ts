@@ -185,6 +185,12 @@ export const commonEn = {
   "savedViews.namePlaceholder": "e.g. Overdue, high priority",
   "savedViews.note": "Saved views are kept in this browser only.",
 
+  // Workspaces (ADR 0017)
+  "workspace.label": "Active workspace",
+  "workspace.unavailable": "Workspaces unavailable",
+  "workspace.unavailable.hint":
+    "This deployment is configured to use workspaces, but the workspace service didn't answer. Model permissions can't be checked until it does.",
+
   // Form renderer (§7.1 / ADR 0007)
   "form.choose": "Choose…",
   "form.userId": "User id",

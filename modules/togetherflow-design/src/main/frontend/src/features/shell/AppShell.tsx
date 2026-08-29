@@ -8,7 +8,7 @@
  */
 
 import { type ReactNode } from "react";
-import { AppFrame, useT, type AppLinks, type NavItem } from "@togetherflow/common";
+import { AppFrame, useT, useWorkspace, type AppLinks, type NavItem } from "@togetherflow/common";
 import { DESIGN_VIEWS, ROUTES, pathFor, type DesignView } from "../../routes";
 
 export interface AppShellProps {
@@ -23,7 +23,15 @@ export interface AppShellProps {
 export function AppShell({ view, modelCount, apps, onChangePassword, children }: AppShellProps) {
   const t = useT();
 
-  const items: NavItem<DesignView>[] = DESIGN_VIEWS.map((id) => ({
+  /*
+   * Workspaces are only a destination where the service is deployed (ADR 0017). Listing
+   * the item unconditionally would offer a screen that can only ever say "not
+   * configured", which is a worse answer than not being in the rail.
+   */
+  const { enabled } = useWorkspace();
+  const items: NavItem<DesignView>[] = DESIGN_VIEWS.filter(
+    (id) => id !== "workspaces" || enabled,
+  ).map((id) => ({
     id,
     label: t(`nav.${id}`),
     to: pathFor(id),

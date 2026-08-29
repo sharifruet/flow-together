@@ -1,10 +1,10 @@
 {
   "_comment": [
-    "Bundle-size budgets in gzipped kB (REQUIREMENTS.md §13.5). Enforced by",
-    "`npm run budget`, which CI runs after the build — a regression fails the",
+    "Bundle-size budgets in gzipped kB (REQUIREMENTS.md \u00a713.5). Enforced by",
+    "`npm run budget`, which CI runs after the build \u2014 a regression fails the",
     "build rather than being noticed later.",
     "Groups are filename prefixes, not exact names: Vite fingerprints its output.",
-    "Raising a budget is fine when the growth is deliberate — do it in the same",
+    "Raising a budget is fine when the growth is deliberate \u2014 do it in the same",
     "commit as the change, so the increase is reviewed alongside what caused it."
   ],
   "_cmmn_note": [
@@ -22,7 +22,7 @@
     "file, and is not worth doing for 2 kB on its own."
   ],
   "groups": {
-    "assets/index": 42,
+    "assets/index": 44,
     "assets/BpmnEditor": 100,
     "assets/DmnEditor": 260,
     "assets/CmmnEditor": 14,
@@ -37,5 +37,12 @@
     "assets/src is the shared chunk the bundler hoists out of the lazily loaded editors.",
     "It had no group, so nothing bounded it individually and `assets/index` read low",
     "(38 kB) because most of the entry's code lives here. Only totalKb was holding it."
+  ],
+  "_workspace_note": [
+    "assets/index went 42 -> 44 with W3.1 (ADR 0017). The Workspaces admin screen is",
+    "lazily loaded and is not what grew: what lands in the entry chunk is the workspace",
+    "context, its API client and the shell's switcher, all of which every page load in",
+    "Design needs \u2014 the library gates its own actions on the caller's capabilities, so",
+    "the context has to resolve before the first screen renders."
   ]
 }

@@ -297,7 +297,7 @@ jobs:
       - name: Build dependencies
         run: >-
           ./mvnw -B -ntp -Ptogetherflow
-          -pl modules/togetherflow-attachment-gateway,modules/togetherflow-event-recorder
+          -pl modules/togetherflow-attachment-gateway,modules/togetherflow-event-recorder,modules/togetherflow-workspace
           -am install -Dmaven.test.skip=true
 
       # `verify`, not `test`: checkstyle is bound to verify, so `test` would leave it
@@ -305,7 +305,7 @@ jobs:
       - name: Test and checkstyle
         run: >-
           ./mvnw -B -ntp -Ptogetherflow
-          -pl modules/togetherflow-attachment-gateway,modules/togetherflow-event-recorder
+          -pl modules/togetherflow-attachment-gateway,modules/togetherflow-event-recorder,modules/togetherflow-workspace
           verify
 
       - name: Upload surefire reports on failure

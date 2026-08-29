@@ -5,6 +5,9 @@ import {
   EventRegistryApi,
   LoginScreen,
   ModelApi,
+  useWorkspace,
+  WorkspaceApi,
+  WorkspaceGitApi,
   IdmApi,
   ModelValidationApi,
   ProcessApi,
@@ -29,6 +32,9 @@ import { useIdentities } from "./features/bpmn/useIdentities";
  * bpmn-js and dmn-js are large. Loading them lazily keeps the library screen — the
  * first thing anyone sees — from paying for two canvas engines it does not render.
  */
+const Workspaces = lazy(() =>
+  import("./features/workspaces/Workspaces").then((module) => ({ default: module.Workspaces })),
+);
 const BpmnEditor = lazy(() =>
   import("./features/bpmn/BpmnEditor").then((m) => ({ default: m.BpmnEditor })),
 );
@@ -62,14 +68,27 @@ export interface AppProps {
   idmBase?: string;
   appBase: string;
   eventBase: string;
+  /**
+   * Base URL of `togetherflow-workspace` (ADR 0017). When set, model reads and writes go
+   * through it instead of straight to the engine, so the workspace role is checked
+   * server-side rather than only reflected in what this app chooses to render. Empty —
+   * the default — keeps today's behaviour exactly.
+   */
+  workspaceBase?: string;
   fetchImpl?: typeof fetch;
 }
 
 export function App({ apps,
-  apiBase, dmnBase, cmmnBase, idmBase, appBase, eventBase, fetchImpl }: AppProps) {
+  apiBase, dmnBase, cmmnBase, idmBase, appBase, eventBase, workspaceBase, fetchImpl }: AppProps) {
   const t = useT();
   const { session, signOut, getAuthHeaders, isInitialising } = useAuth();
   const { tenantId } = useTenant();
+  /*
+   * The accessor, not the value: a client keyed on the workspace id is rebuilt the moment
+   * the workspace resolves, and every query holding one refetches. See the comment on
+   * `getWorkspaceId` in WorkspaceContext.
+   */
+  const { getWorkspaceId } = useWorkspace();
   /*
    * Which model is open comes from the URL since W1.3 (F1). A model could not be linked
    * to before, so "review this process" had to be "open Design, find it, open it".
@@ -100,16 +119,40 @@ export function App({ apps,
         fetchImpl,
         getAuthHeaders,
         getTenantId: () => tenantId,
+        getWorkspaceId,
         // Error copy the user sees comes from the active catalogue, not English (§8).
         translate: t,
         onUnauthorized: signOut,
       }),
-    [fetchImpl, getAuthHeaders, tenantId, signOut, t],
+    [fetchImpl, getAuthHeaders, tenantId, getWorkspaceId, signOut, t],
+  );
+
+  /*
+   * Models go through the workspace guard where one is deployed (ADR 0017). Only the
+   * model repository moves: deployments, definitions and everything else still address
+   * their own engines directly, because the guard governs authoring, not runtime.
+   */
+  const workspaceApi = useMemo(
+    () => (workspaceBase ? new WorkspaceApi(makeClient(workspaceBase)) : undefined),
+    [makeClient, workspaceBase],
+  );
+
+  const gitApi = useMemo(
+    () => (workspaceBase ? new WorkspaceGitApi(makeClient(workspaceBase)) : undefined),
+    [makeClient, workspaceBase],
   );
 
   const modelApi = useMemo(
-    () => new ModelApi(makeClient(apiBase), makeClient(dmnBase), makeClient(cmmnBase)),
-    [makeClient, apiBase, dmnBase, cmmnBase],
+    () =>
+      new ModelApi(
+        makeClient(workspaceBase || apiBase),
+        makeClient(dmnBase),
+        makeClient(cmmnBase),
+        // Deployments go to the engine even when drafts go through the guard: the guard
+        // proxies /repository/models and nothing else.
+        makeClient(apiBase),
+      ),
+    [makeClient, workspaceBase, apiBase, dmnBase, cmmnBase],
   );
   /** Server-side model validation (§7.4.2); CMMN validates behind its own servlet. */
   const validationApi = useMemo(
@@ -129,7 +172,17 @@ export function App({ apps,
     [makeClient, idmBase],
   );
   const processApi = useMemo(() => new ProcessApi(makeClient(apiBase)), [makeClient, apiBase]);
-  const identities = useIdentities(idmApi, processApi);
+  /*
+   * Not before there is a session.
+   *
+   * This runs at app level, above the `if (!session) return <LoginScreen/>` below — so
+   * hooks fire while the login screen is still up. Unguarded, that is three authenticated
+   * requests against the engine and the identity store on every visit to the sign-in
+   * page, each answered 401 and each landing in the console as an error the user cannot
+   * act on. The hook already treats an absent API as "no suggestions", so handing it
+   * nothing is the whole fix.
+   */
+  const identities = useIdentities(session ? idmApi : null, session ? processApi : null);
 
   const appApi = useMemo(() => new AppApi(makeClient(appBase)), [makeClient, appBase]);
   const eventApi = useMemo(
@@ -263,8 +316,21 @@ export function App({ apps,
               {...props}
               validationApi={validationApi}
               identities={identities}
+              processApi={processApi}
             />
           )}
+        </Suspense>
+      </AppShell>
+    );
+  }
+
+  if (route.id === "workspaces" && workspaceApi) {
+    return (
+      <AppShell view="workspaces" apps={apps} onChangePassword={changePassword}>
+        {/* Lazy: an admin screen most sessions never open has no business in the chunk
+            every session downloads. */}
+        <Suspense fallback={<Skeleton rows={6} />}>
+          <Workspaces workspaceApi={workspaceApi} gitApi={gitApi} />
         </Suspense>
       </AppShell>
     );

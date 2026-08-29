@@ -186,6 +186,27 @@ describe("ModelApi.saveSource — concurrent-edit guard", () => {
 });
 
 describe("ModelApi.deploy", () => {
+  it("deploys to the process engine even when drafts go through the workspace guard", async () => {
+    /*
+     * Regression (ADR 0017). Pointing the model repository at the guard is the whole
+     * mechanism by which drafts get permission-checked — but the guard proxies
+     * `/repository/models` and nothing else, so a deployment sent through it 404s. The
+     * two clients must stay separable.
+     */
+    const fetchImpl = vi.fn().mockImplementation(async () => jsonResponse({ id: "dep-1" }));
+    const guard = new ApiClient({ baseUrl: "/workspace-api", fetchImpl: fetchImpl as never });
+    const process = new ApiClient({ baseUrl: "/process-api", fetchImpl: fetchImpl as never });
+    const api = new ModelApi(guard, undefined, undefined, process);
+
+    await api.deploy(bpmnModel, "<definitions/>");
+
+    const deployUrl = fetchImpl.mock.calls
+      .map((call) => String(call[0]))
+      .find((url) => url.includes("/repository/deployments"));
+    expect(deployUrl).toContain("/process-api/repository/deployments");
+    expect(deployUrl).not.toContain("/workspace-api");
+  });
+
   it("names the BPMN part so the engine recognises it", async () => {
     const { fetchImpl, api } = setup();
     await api.deploy(bpmnModel, "<definitions/>");

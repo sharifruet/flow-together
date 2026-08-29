@@ -37,7 +37,15 @@ export interface ModalProps {
   title: string;
   /** Renders the title for assistive tech only — for a dialog whose body carries its own. */
   hideTitle?: boolean;
-  description?: string;
+  /**
+   * Rendered as the dialog's description and referenced by `aria-describedby`.
+   *
+   * `ReactNode`, not `string`: several dialogs compose theirs from values and markup —
+   * a case's business key, id and start time on one line — and forcing them to a string
+   * either loses the formatting or pushes the description into the body where assistive
+   * tech no longer treats it as the description.
+   */
+  description?: ReactNode;
   size?: ModalSize;
   /**
    * `alertdialog` for a dialog interrupting the user with something they must resolve;

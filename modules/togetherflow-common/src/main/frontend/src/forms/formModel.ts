@@ -160,6 +160,58 @@ function stringParam(params: Record<string, unknown> | undefined, ...names: stri
   return undefined;
 }
 
+/**
+ * Per-model translations (ENTERPRISE_PARITY_PLAN.md W3.3).
+ *
+ * ADR 0013's i18n layer translates the *UI*; nothing translated model content, so a form
+ * authored in English stayed English for every reader whatever their locale. Labels live
+ * in the same free-form `params` map as the visibility rule (ADR 0012) and the field
+ * constraints above — a convention this fork owns, which the engine neither reads nor
+ * rejects.
+ *
+ * The field's own `name` stays the source text and the fallback: a translation that is
+ * missing shows the original rather than a key or a blank.
+ */
+export const LABELS_PARAM = "tfLabels";
+
+export function fieldLabel(field: FormField, locale: string): string {
+  const source = field.name || field.id;
+  const labels = field.params?.[LABELS_PARAM];
+  if (!labels || typeof labels !== "object") {
+    return source;
+  }
+  const table = labels as Record<string, unknown>;
+  // `de-AT` falls back through `de` before the source, the same chain the UI layer walks.
+  for (const candidate of [locale, locale.split("-")[0]]) {
+    const translated = table[candidate];
+    if (typeof translated === "string" && translated.trim() !== "") {
+      return translated;
+    }
+  }
+  return source;
+}
+
+/** The locales a field carries a translation for. */
+export function fieldLocales(field: FormField): string[] {
+  const labels = field.params?.[LABELS_PARAM];
+  if (!labels || typeof labels !== "object") return [];
+  return Object.keys(labels as Record<string, unknown>).sort();
+}
+
+/** Sets or clears one locale's label, leaving the source text alone. */
+export function withFieldLabel(field: FormField, locale: string, label: string): FormField {
+  const existing = (field.params?.[LABELS_PARAM] ?? {}) as Record<string, string>;
+  const labels: Record<string, string> = { ...existing };
+  if (label.trim() === "") delete labels[locale];
+  else labels[locale] = label;
+
+  const params = { ...(field.params ?? {}) };
+  if (Object.keys(labels).length === 0) delete params[LABELS_PARAM];
+  else params[LABELS_PARAM] = labels;
+
+  return { ...field, params: Object.keys(params).length > 0 ? params : undefined } as FormField;
+}
+
 export function fieldConstraints(field: FormField): FieldConstraints {
   const params = field.params;
   return {

@@ -16,6 +16,8 @@ import "diagram-js-minimap/assets/diagram-js-minimap.css";
 import {
   ApiError,
   Button,
+  Modal,
+  Icon,
   ConfirmDialog,
   ErrorState,
   Skeleton,
@@ -24,6 +26,7 @@ import {
   type ModelApi,
   type ModelResponse,
   type ModelValidationApi,
+  type ProcessApi,
 } from "@togetherflow/common";
 import { useConflictPrompt } from "../editors/ConflictPrompt";
 import { EditorMenuBar } from "../editors/EditorMenuBar";
@@ -31,6 +34,7 @@ import { useBpmnModeler } from "./useBpmnModeler";
 import type { IdentitySource } from "./useIdentities";
 import { canDeploy, issuesFromServer, validateBpmn, type ValidationIssue } from "./validateBpmn";
 import { downloadFile } from "../library/importExport";
+import { RuntimePreview } from "../editors/RuntimePreview";
 import { PropertiesPanel } from "./PropertiesPanel";
 
 const AUTOSAVE_IDLE_MS = 4000;
@@ -45,6 +49,11 @@ export interface BpmnEditorProps {
   validationApi?: ModelValidationApi;
   /** Ids the reference fields suggest, and the lookup that widens them as you type. */
   identities?: IdentitySource;
+  /**
+   * Lets a deploy be followed by starting a test instance (W3.3). Omitted, the offer is
+   * simply not made — there is nowhere to start one.
+   */
+  processApi?: ProcessApi;
   model: ModelResponse;
   initialXml: string | null;
   loadError?: string | null;
@@ -63,6 +72,7 @@ export function BpmnEditor({
   modelApi,
   validationApi,
   identities,
+  processApi,
   model,
   initialXml,
   loadError,
@@ -120,6 +130,17 @@ export function BpmnEditor({
   const [lastSavedAt, setLastSavedAt] = useState<Date | null>(null);
   const [confirmLeave, setConfirmLeave] = useState(false);
   const [confirmDeploy, setConfirmDeploy] = useState(false);
+  /**
+   * Whether this model has been deployed in this session, which is what makes a test run
+   * possible — and a *button*, not a dialog that opens by itself.
+   *
+   * The first cut popped the dialog open on every deploy. Deploying is a frequent action
+   * and starting an instance is a rare one, so that put a modal about creating real
+   * runtime state in front of someone who had just asked for something else entirely.
+   * An offer waits to be taken.
+   */
+  const [deployed, setDeployed] = useState(false);
+  const [previewOpen, setPreviewOpen] = useState(false);
   const [sourceXml, setSourceXml] = useState<string | null>(null);
   const [issues, setIssues] = useState<ValidationIssue[] | null>(null);
   /** Whether the last check got a verdict from the engine, which decides the panel's caveat. */
@@ -383,6 +404,8 @@ export function BpmnEditor({
       setLastSavedAt(new Date());
       const deployment = await modelApi.deploy(model, xml);
       push({ tone: "success", message: t("editor.deployed", { id: deployment.id }) });
+      // Enables the Test run button; it does not open anything.
+      if (processApi && model.key) setDeployed(true);
       // Deploying cuts a version (§7.4.1), so the draft's version number has moved on.
       // The row itself is unchanged, which is why nothing has to re-import.
       onSaved(deployment.draft);
@@ -424,6 +447,20 @@ export function BpmnEditor({
         zoom={{ in: zoomIn, out: zoomOut, fit: zoomFit }}
         onExport={() => void openSource()}
         exportLabel={t("bpmn.xmlTitle")}
+        /*
+          Appears once this model has been deployed, because only then is there a
+          definition to start. Deliberately a button rather than something that opens
+          itself: it creates real runtime state, and that should never be the side effect
+          of asking for something else.
+        */
+        extra={
+          deployed && processApi ? (
+            <Button variant="secondary" onClick={() => setPreviewOpen(true)}>
+              <Icon name="play" size={16} />
+              {t("preview.action")}
+            </Button>
+          ) : undefined
+        }
         primary={{
           label: t("action.deploy"),
           run: () => void startDeploy(),
@@ -442,13 +479,30 @@ export function BpmnEditor({
               count: issues.filter((i) => i.severity === "warning").length,
             })}
           </h2>
+          {/*
+            Whether any of this stops a deploy, said outright.
+            `canDeploy` already ignores warnings — an unnamed gateway deploys and runs —
+            but the panel never said so, and a warning sitting under a caveat about "what
+            a deploy would reject" reads as a rejection. The rule is in the code; this is
+            the sentence that tells the reader.
+          */}
+          <p className="tf-issues__verdict">
+            {canDeploy(issues)
+              ? t("bpmn.checks.nonBlocking")
+              : t("bpmn.checks.blocking", {
+                  count: issues.filter((i) => i.severity === "error").length,
+                })}
+          </p>
           <ul className="tf-issues__list">
             {issues.map((issue, index) => (
               <li
                 className={`tf-issues__item tf-issues__item--${issue.severity}`}
                 key={`${issue.elementId ?? ""}-${index}`}
               >
-                <span className="tf-issues__severity">{issue.severity}</span>
+                {/* Translated, not the raw enum: this was rendering English in every locale. */}
+                <span className="tf-issues__severity">
+                  {t(`bpmn.checks.severity.${issue.severity}`)}
+                </span>
                 <span className={`tf-issues__source tf-issues__source--${issue.source ?? "browser"}`}>
                   {t(`bpmn.checks.source.${issue.source ?? "browser"}`)}
                 </span>
@@ -483,28 +537,18 @@ export function BpmnEditor({
       ) : null}
 
       {sourceXml !== null ? (
-        <div className="tf-dialog-backdrop" onMouseDown={() => setSourceXml(null)}>
-          <div
-            className="tf-dialog tf-dialog--wide"
-            role="dialog"
-            aria-modal="true"
-            aria-label={t("bpmn.xmlLabel")}
-            onMouseDown={(event) => event.stopPropagation()}
-          >
-            <h2 className="tf-dialog__title">{t("bpmn.xmlTitle")}</h2>
-            <p className="tf-dialog__description">
-              Exactly what will be deployed. Read-only — edit the diagram, not the text.
-            </p>
-            <pre className="tf-source">{sourceXml}</pre>
-            <div className="tf-dialog__actions">
+        <Modal
+          open
+          title={t("bpmn.xmlTitle")}
+          description={"Exactly what will be deployed. Read-only — edit the diagram, not the text."}
+          size="lg"
+          onClose={() => setSourceXml(null)}
+          actions={
+            <>
               <Button
                 variant="secondary"
                 onClick={() =>
-                  downloadFile(
-                    `${model.key ?? model.id}.bpmn20.xml`,
-                    sourceXml,
-                    "application/xml",
-                  )
+                  downloadFile(`${model.key ?? model.id}.bpmn20.xml`, sourceXml, "application/xml")
                 }
               >
                 {t("action.download")}
@@ -512,9 +556,11 @@ export function BpmnEditor({
               <Button variant="secondary" onClick={() => setSourceXml(null)}>
                 {t("action.close")}
               </Button>
-            </div>
-          </div>
-        </div>
+            </>
+          }
+        >
+          <pre className="tf-source">{sourceXml}</pre>
+        </Modal>
       ) : null}
 
       {loadError ? (
@@ -575,6 +621,15 @@ export function BpmnEditor({
           void deploy();
         }}
       />
+
+      {previewOpen && processApi && model.key ? (
+        <RuntimePreview
+          processApi={processApi}
+          definitionKey={model.key}
+          modelName={model.name || model.key || model.id}
+          onClose={() => setPreviewOpen(false)}
+        />
+      ) : null}
 
       {/* Reload-or-overwrite, when someone else saved this model (W1.1). */}
       {conflict.prompt}

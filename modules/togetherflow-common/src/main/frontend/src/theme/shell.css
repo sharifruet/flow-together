@@ -261,6 +261,17 @@
 
 /* ── Account menu ──────────────────────────────────────────────────────────── */
 
+/*
+ * Workspace and tenant selects (ADR 0017). Capped so a long workspace name truncates
+ * rather than pushing the account menu off the header.
+ */
+.tf-shell__workspace .tf-select,
+.tf-shell__tenant .tf-select {
+  max-width: 12rem;
+  padding-top: 4px;
+  padding-bottom: 4px;
+}
+
 .tf-shell__actions {
   margin-left: auto;
   display: flex;

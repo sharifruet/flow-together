@@ -1,0 +1,160 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<project xmlns="http://maven.apache.org/POM/4.0.0"
+         xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+         xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 http://maven.apache.org/xsd/maven-4.0.0.xsd">
+    <modelVersion>4.0.0</modelVersion>
+
+    <parent>
+        <groupId>org.flowable</groupId>
+        <artifactId>flowable-parent</artifactId>
+        <version>8.1.0-SNAPSHOT</version>
+        <relativePath>../flowable-parent</relativePath>
+    </parent>
+
+    <artifactId>togetherflow-workspace</artifactId>
+    <packaging>jar</packaging>
+    <name>TogetherFlow - Workspace</name>
+    <description>
+        Optional workspace and design-time permission service
+        (ENTERPRISE_PARITY_PLAN.md W3.1, ADR 0017).
+
+        Flowable Design organises models as Workspaces -> Apps -> Models with
+        owner/modeler/reader roles; TogetherFlow Design has one flat repository and one
+        privilege check in the shell. This module adds the missing concept and, crucially,
+        enforces it server-side: Design's model calls come here, the caller's role is
+        checked, and only then is the call forwarded to flowable-rest carrying the
+        caller's own credentials.
+
+        A deployment that does not run it behaves exactly as before: one flat library and
+        no workspace switcher.
+    </description>
+
+    <properties>
+        <flowable.artifact>org.togetherflow.workspace</flowable.artifact>
+        <maven.deploy.skip>true</maven.deploy.skip>
+    </properties>
+
+    <dependencyManagement>
+        <dependencies>
+            <dependency>
+                <groupId>org.springframework.boot</groupId>
+                <artifactId>spring-boot-dependencies</artifactId>
+                <version>${spring.boot.version}</version>
+                <type>pom</type>
+                <scope>import</scope>
+            </dependency>
+        </dependencies>
+    </dependencyManagement>
+
+    <dependencies>
+        <dependency>
+            <groupId>org.springframework.boot</groupId>
+            <artifactId>spring-boot-starter-web</artifactId>
+        </dependency>
+        <dependency>
+            <groupId>org.springframework.boot</groupId>
+            <artifactId>spring-boot-starter-validation</artifactId>
+        </dependency>
+        <dependency>
+            <groupId>org.springframework.boot</groupId>
+            <artifactId>spring-boot-starter-jdbc</artifactId>
+        </dependency>
+        <!--
+            The health endpoint the container healthcheck and the k8s liveness and
+            readiness probes call. Without it `application.yml` configures endpoints that
+            do not exist, `/actuator/health` 404s, and the pod never becomes ready — which
+            is invisible until something actually starts the service.
+        -->
+        <dependency>
+            <groupId>org.springframework.boot</groupId>
+            <artifactId>spring-boot-starter-actuator</artifactId>
+        </dependency>
+        <!--
+            Declared rather than inherited: Spring Boot 4 no longer brings Jackson 2's
+            databind in transitively, and the guard reads the engine's model list as a
+            tree to filter it.
+        -->
+        <dependency>
+            <groupId>com.fasterxml.jackson.core</groupId>
+            <artifactId>jackson-databind</artifactId>
+        </dependency>
+        <!--
+            The service owns three tables in the host's database, so it needs a driver of
+            its own — unlike togetherflow-event-recorder, which is a library and borrows
+            the engine's datasource. PostgreSQL is shipped because that is what the k8s
+            manifests and docker compose use; another dialect means adding its driver
+            here, and the SQL is deliberately plain enough to run on all of them.
+        -->
+        <!--
+            Git connectivity (ADR 0018). Version pinned here rather than inherited: the
+            engine reactor has no opinion about JGit, which nothing else in it uses.
+        -->
+        <dependency>
+            <groupId>org.eclipse.jgit</groupId>
+            <artifactId>org.eclipse.jgit</artifactId>
+            <version>7.1.0.202411261347-r</version>
+        </dependency>
+
+        <dependency>
+            <groupId>org.postgresql</groupId>
+            <artifactId>postgresql</artifactId>
+            <scope>runtime</scope>
+        </dependency>
+        <!--
+            H2 as well, on the same reasoning `flowable-app-rest` ships it: the default
+            local stack is that app's file-backed H2 in AUTO_SERVER mode, and this service
+            shares it. Runtime scope, so it is available to a deployment that wants it and
+            invisible to anything compiling against this module.
+        -->
+        <dependency>
+            <groupId>com.h2database</groupId>
+            <artifactId>h2</artifactId>
+            <scope>runtime</scope>
+        </dependency>
+        <!--
+            Identity has to come from validated credentials, not from a header the client
+            sets, or the workspace roles below it are decoration (ADR 0017).
+        -->
+        <dependency>
+            <groupId>org.springframework.boot</groupId>
+            <artifactId>spring-boot-starter-security</artifactId>
+        </dependency>
+        <dependency>
+            <groupId>org.springframework.boot</groupId>
+            <artifactId>spring-boot-starter-oauth2-resource-server</artifactId>
+        </dependency>
+
+        <dependency>
+            <groupId>org.springframework.boot</groupId>
+            <artifactId>spring-boot-starter-test</artifactId>
+            <scope>test</scope>
+        </dependency>
+        <dependency>
+            <groupId>org.springframework.boot</groupId>
+            <artifactId>spring-boot-starter-webmvc-test</artifactId>
+            <scope>test</scope>
+        </dependency>
+        <dependency>
+            <groupId>org.springframework.security</groupId>
+            <artifactId>spring-security-test</artifactId>
+            <scope>test</scope>
+        </dependency>
+    </dependencies>
+
+    <build>
+        <plugins>
+            <plugin>
+                <groupId>org.springframework.boot</groupId>
+                <artifactId>spring-boot-maven-plugin</artifactId>
+                <version>${spring.boot.version}</version>
+                <executions>
+                    <execution>
+                        <goals>
+                            <goal>repackage</goal>
+                        </goals>
+                    </execution>
+                </executions>
+            </plugin>
+        </plugins>
+    </build>
+</project>

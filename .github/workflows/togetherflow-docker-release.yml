@@ -111,10 +111,19 @@ jobs:
           cosign verify --key docker/cosign.pub \
             flowable/togetherflow-${{ matrix.app }}@${{ steps.build.outputs.digest }}
 
-  gateway:
-    name: Build, push and sign the attachment gateway
+  services:
+    # The Java side of TogetherFlow: optional services, each shipped as its own image.
+    # A matrix rather than a job apiece — they differ only by module name, and two copies
+    # of sixty lines is how one of them quietly stops being signed.
+    name: Build, push and sign ${{ matrix.service }}
     needs: version
     runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        service:
+          - togetherflow-attachment-gateway
+          - togetherflow-workspace
     steps:
       - name: Checkout
         uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
@@ -126,10 +135,10 @@ jobs:
           java-version: "21"
           cache: maven
 
-      # The gateway is a Spring Boot jar, not a frontend build, so its image is built
-      # from an artifact the reactor produces rather than inside the Dockerfile.
+      # These are Spring Boot jars, not frontend builds, so the image is built from an
+      # artifact the reactor produces rather than inside the Dockerfile.
       - name: Build the jar
-        run: ./mvnw -B -ntp -Ptogetherflow -pl modules/togetherflow-attachment-gateway -am package -DskipTests
+        run: ./mvnw -B -ntp -Ptogetherflow -pl modules/${{ matrix.service }} -am package -DskipTests
 
       - name: Set up Buildx
         uses: docker/setup-buildx-action@v3
@@ -140,18 +149,18 @@ jobs:
           username: ${{ secrets.DOCKER_USER }}
           password: ${{ secrets.DOCKER_PASSWORD }}
 
-      - name: Build and push togetherflow-attachment-gateway
+      - name: Build and push ${{ matrix.service }}
         id: build
         uses: docker/build-push-action@v6
         with:
-          context: modules/togetherflow-attachment-gateway
-          file: modules/togetherflow-attachment-gateway/docker/Dockerfile
+          context: modules/${{ matrix.service }}
+          file: modules/${{ matrix.service }}/docker/Dockerfile
           push: true
           provenance: true
           sbom: true
           tags: |
-            flowable/togetherflow-attachment-gateway:${{ needs.version.outputs.version }}
-            ${{ inputs.tag_latest && 'flowable/togetherflow-attachment-gateway:latest' || '' }}
+            flowable/${{ matrix.service }}:${{ needs.version.outputs.version }}
+            ${{ inputs.tag_latest && format('flowable/{0}:latest', matrix.service) || '' }}
           labels: |
             org.opencontainers.image.revision=${{ github.sha }}
             org.opencontainers.image.version=${{ needs.version.outputs.version }}
@@ -170,7 +179,7 @@ jobs:
           cosign sign --key cosign.key \
             -a "repo=${{ github.repository }}" \
             -a "ref=${{ github.sha }}" \
-            flowable/togetherflow-attachment-gateway@${{ steps.build.outputs.digest }} \
+            flowable/${{ matrix.service }}@${{ steps.build.outputs.digest }} \
             -y
 
       - name: Remove signing key
@@ -180,4 +189,4 @@ jobs:
       - name: Verify the signature
         run: |
           cosign verify --key docker/cosign.pub \
-            flowable/togetherflow-attachment-gateway@${{ steps.build.outputs.digest }}
+            flowable/${{ matrix.service }}@${{ steps.build.outputs.digest }}

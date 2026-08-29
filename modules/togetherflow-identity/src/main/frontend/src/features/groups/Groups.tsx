@@ -3,6 +3,7 @@ import {
   ApiError,
   AsyncBoundary,
   Button,
+  Modal,
   ConfirmDialog,
   DataTable,
   EmptyState,
@@ -445,23 +446,35 @@ function GroupDialog({ title, group, busy, onCancel, onSubmit }: GroupDialogProp
   const idError = !values.id.trim() ? t("groups.error.idRequired") : undefined;
 
   return (
-    <div className="tf-dialog-backdrop" onMouseDown={onCancel}>
+    <Modal
+      open
+      title={title}
+      size="sm"
+      // Typed input: a stray backdrop click must not discard it.
+      dismissOnBackdrop={false}
+      onClose={onCancel}
+      actions={
+        <>
+          <Button variant="secondary" onClick={onCancel} disabled={busy}>
+            {t("dialog.cancel")}
+          </Button>
+          <Button type="submit" form={FORM_ID} loading={busy}>
+            {isEdit ? t("action.saveChanges") : t("groups.create.submit")}
+          </Button>
+        </>
+      }
+    >
       <form
-        className="tf-dialog tf-dialog--form"
-        role="dialog"
-        aria-modal="true"
-        aria-label={title}
-        // Native constraint validation would block submit before our own runs, and
-        // its default messages are worse than the per-field ones below.
+        id={FORM_ID}
+        // Native constraint validation would block submit before our own runs, and its
+        // default messages are worse than the per-field ones below.
         noValidate
-        onMouseDown={(event) => event.stopPropagation()}
         onSubmit={(event) => {
           event.preventDefault();
           setSubmitted(true);
           if (!idError) onSubmit(values);
         }}
       >
-        <h2 className="tf-dialog__title">{title}</h2>
 
         <TextInput
           label={t("groups.field.id")}
@@ -485,16 +498,10 @@ function GroupDialog({ title, group, busy, onCancel, onSubmit }: GroupDialogProp
           hint={t("groups.field.type.hint")}
           onChange={(event) => setValues((v) => ({ ...v, type: event.target.value }))}
         />
-
-        <div className="tf-dialog__actions">
-          <Button variant="secondary" onClick={onCancel} disabled={busy}>
-            {t("dialog.cancel")}
-          </Button>
-          <Button type="submit" loading={busy}>
-            {isEdit ? t("action.saveChanges") : t("groups.create.submit")}
-          </Button>
-        </div>
       </form>
-    </div>
+    </Modal>
   );
 }
+
+/** Ties the Modal footer's submit button to the form it sits outside of. */
+const FORM_ID = "tf-group-form";

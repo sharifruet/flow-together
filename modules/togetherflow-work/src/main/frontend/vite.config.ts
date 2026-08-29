@@ -35,6 +35,15 @@ export default defineConfig({
     chunkSizeWarningLimit: 500,
   },
   server: {
+    /*
+     * The shared package is linked with a `file:` dependency, so its *source* is
+     * transformed through Vite happily — but a static asset it references (the Inter
+     * woff2 the theme ships) is served raw, and raw serving is refused for anything
+     * outside this project's root. The result is a dev-only 403 and a failed font
+     * download: every developer designs against the system fallback rather than the
+     * typeface that actually ships. Production is unaffected — the build emits the file.
+     */
+    fs: { allow: [".", "../../../../togetherflow-common/src/main/frontend"] },
     port: 5273,
     proxy: {
       "/process-api": proxy("/service"),

@@ -83,7 +83,10 @@ test.describe("appearance", () => {
 
   test("groups", async ({ page }) => {
     await signIn(page);
-    await page.goto("/groups");
+    // Clicked, not `page.goto`: the session is held in memory (ADR 0006), so a full page
+    // load lands back on the sign-in screen. Unanchored because a nav link's accessible
+    // name carries its count badge as well as its label.
+    await page.getByRole("link", { name: /^Groups/ }).first().click();
     await page.locator("tbody tr").first().waitFor();
     await expect(page).toHaveScreenshot("groups.png", { fullPage: true });
   });

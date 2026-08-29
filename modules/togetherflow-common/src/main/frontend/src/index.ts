@@ -21,6 +21,8 @@ export * from "./shell/AppFrame";
 export * from "./shell/AppRoot";
 export * from "./shell/LoginScreen";
 export * from "./tenant/TenantContext";
+export * from "./workspace/WorkspaceContext";
+export * from "./api/workspaces";
 export * from "./components/Avatar";
 export * from "./components/Badge";
 export * from "./components/Brand";

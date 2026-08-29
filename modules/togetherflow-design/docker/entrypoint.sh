@@ -30,6 +30,12 @@ set -eu
 # user's own choice in the shell menu, decide.
 : "${TF_LOCALE:=}"
 
+# Base URL of togetherflow-workspace (ADR 0017). Empty — the default — means the service
+# is not deployed: Design shows one flat model library and no workspace switcher, which
+# is what every deployment had before it existed. An absent service and an empty
+# workspace list are different states, so this is not inferred from a failed call.
+: "${TF_WORKSPACE_BASE:=}"
+
 if [ "$TF_AUTH_MODE" = "oidc" ] && { [ -z "$TF_OIDC_AUTHORITY" ] || [ -z "$TF_OIDC_CLIENT_ID" ]; }; then
   echo "FATAL: TF_AUTH_MODE=oidc requires TF_OIDC_AUTHORITY and TF_OIDC_CLIENT_ID." >&2
   echo "Set them, or set TF_AUTH_MODE=basic for local development only." >&2
@@ -48,6 +54,7 @@ window.__TOGETHERFLOW_CONFIG__ = {
   appBase: "${TF_APP_BASE}",
   eventBase: "${TF_EVENT_BASE}",
   externalJobBase: "${TF_EXTERNAL_JOB_BASE}",
+  workspaceBase: "${TF_WORKSPACE_BASE}",
   identity: { readOnly: ${TF_IDENTITY_READ_ONLY} },
   apps: {
     work: "${TF_APP_WORK}",
@@ -69,4 +76,4 @@ window.__TOGETHERFLOW_CONFIG__ = {
 };
 JS
 
-echo "TogetherFlow Design: apiBase=${TF_API_BASE} dmnBase=${TF_DMN_BASE} externalJobBase=${TF_EXTERNAL_JOB_BASE} authMode=${TF_AUTH_MODE}"
+echo "TogetherFlow Design: apiBase=${TF_API_BASE} dmnBase=${TF_DMN_BASE} externalJobBase=${TF_EXTERNAL_JOB_BASE} workspaceBase=${TF_WORKSPACE_BASE:-<none>} authMode=${TF_AUTH_MODE}"

@@ -20,6 +20,7 @@ import {
   Button,
   Icon,
   ConfirmDialog,
+  SelectInput,
   TextInput,
   bundleFileName,
   modelKindOf,
@@ -33,7 +34,7 @@ import {
 import { useConflictPrompt } from "../editors/ConflictPrompt";
 import { exportApp } from "./appPackage";
 import { EditorMenuBar } from "../editors/EditorMenuBar";
-import { parseAppDraft, type AppDraft } from "./appDraft";
+import { isValidVariableName, parseAppDraft, type AppDraft, type AppVariable } from "./appDraft";
 
 export interface AppBuilderProps {
   modelApi: ModelApi;
@@ -100,6 +101,14 @@ export function AppBuilder({
     },
     [appApi, draft.key, publishedToken],
   );
+
+  /** Edits one variable in place, leaving the others untouched. */
+  const updateVariable = (index: number, changes: Partial<AppVariable>) =>
+    update({
+      variables: (draft.variables ?? []).map((variable, i) =>
+        i === index ? { ...variable, ...changes } : variable,
+      ),
+    });
 
   const update = useCallback(
     (changes: Partial<AppDraft>) => {
@@ -413,6 +422,88 @@ export function AppBuilder({
         new version rather than mutating one, so seeing the version history is the only
         way to tell whether the draft has been published since it was last edited.
       */}
+      <section className="tf-panel__section">
+        <h2 className="tf-panel__section-title">{t("app.variables")}</h2>
+        {/*
+          Draft-only, and it says so. This distribution's app engine reads no app-level
+          variables, so these document what the app expects rather than seeding anything
+          — and a variable that looks configured but is never set is worse than absent.
+        */}
+        <p className="tf-muted">{t("app.variables.hint")}</p>
+
+        {(draft.variables ?? []).map((variable, index) => (
+          <div className="tf-inline-form" key={index}>
+            <TextInput
+              label={t("app.variable.name")}
+              value={variable.name}
+              disabled={saving}
+              error={
+                variable.name !== "" && !isValidVariableName(variable.name)
+                  ? t("app.variable.name.invalid")
+                  : undefined
+              }
+              onChange={(event) => updateVariable(index, { name: event.target.value })}
+            />
+            <SelectInput
+              label={t("app.variable.type")}
+              value={variable.type}
+              disabled={saving}
+              onChange={(event) =>
+                updateVariable(index, { type: event.target.value as AppVariable["type"] })
+              }
+            >
+              {(["string", "integer", "double", "boolean", "date"] as const).map((type) => (
+                <option key={type} value={type}>
+                  {type}
+                </option>
+              ))}
+            </SelectInput>
+            <SelectInput
+              label={t("app.variable.mode")}
+              hint={t("app.variable.mode.hint")}
+              value={variable.mode}
+              disabled={saving}
+              onChange={(event) =>
+                updateVariable(index, { mode: event.target.value as AppVariable["mode"] })
+              }
+            >
+              <option value="value">{t("app.variable.mode.value")}</option>
+              <option value="default">{t("app.variable.mode.default")}</option>
+            </SelectInput>
+            <TextInput
+              label={t("app.variable.value")}
+              value={variable.value ?? ""}
+              disabled={saving}
+              onChange={(event) => updateVariable(index, { value: event.target.value })}
+            />
+            <Button
+              variant="ghost"
+              disabled={saving}
+              onClick={() =>
+                update({ variables: (draft.variables ?? []).filter((_, i) => i !== index) })
+              }
+            >
+              {t("action.remove")}
+            </Button>
+          </div>
+        ))}
+
+        <Button
+          variant="secondary"
+          disabled={saving}
+          onClick={() =>
+            update({
+              variables: [
+                ...(draft.variables ?? []),
+                { name: "", type: "string", mode: "default" },
+              ],
+            })
+          }
+        >
+          {t("app.variable.add")}
+        </Button>
+      </section>
+
       <section className="tf-panel__section">
         <h2 className="tf-panel__section-title">{t("app.publishedVersions")}</h2>
         <AsyncBoundary

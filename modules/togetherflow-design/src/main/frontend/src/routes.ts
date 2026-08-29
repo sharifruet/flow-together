@@ -10,15 +10,19 @@
 
 import { buildPath, type IconName, type RouteDefinition } from "@togetherflow/common";
 
-export type DesignView = "models";
+export type DesignView = "models" | "workspaces";
 
-export const DESIGN_VIEWS: DesignView[] = ["models"];
+export const DESIGN_VIEWS: DesignView[] = ["models", "workspaces"];
 
 export const ROUTES: Record<DesignView, { pattern: string; icon: IconName }> = {
   models: { pattern: "/models", icon: "models" },
+  // Only navigable where the workspace service is deployed (ADR 0017); the route exists
+  // regardless so a bookmarked link resolves rather than 404ing into the model list.
+  workspaces: { pattern: "/workspaces", icon: "groups" },
 };
 
 export const ROUTE_TABLE: RouteDefinition<DesignView>[] = [
+  { id: "workspaces", pattern: ROUTES.workspaces.pattern },
   { id: "models", pattern: "/models/:modelId" },
   { id: "models", pattern: ROUTES.models.pattern },
   { id: "models", pattern: "/" },

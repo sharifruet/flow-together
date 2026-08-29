@@ -282,6 +282,14 @@ export function DataTable<T>({
             .filter(Boolean)
             .join(" ")}
           aria-busy={busy || undefined}
+          /*
+           * The *true* row count, not the rendered one (W3.4). While virtualizing, the
+           * DOM holds a window — a screen reader told there are 60 rows when there are
+           * 5,000 is worse off than one told nothing, and it has no way to discover the
+           * difference. Paired with `aria-rowindex` on each row so "row 3,412 of 5,000"
+           * is answerable from anywhere in the list.
+           */
+          aria-rowcount={virtual ? rows.length : undefined}
         >
           <caption className="tf-visually-hidden">{caption}</caption>
           <thead>
@@ -370,13 +378,16 @@ export function DataTable<T>({
               </tr>
             ) : null}
 
-            {windowRows.map((row) => {
+            {windowRows.map((row, offset) => {
               const key = rowKey(row);
               const selected = key === selectedKey;
               const checked = selection?.has(key) ?? false;
               return (
                 <tr
                   key={key}
+                  // 1-based, and counted from the top of the *list* rather than the
+                  // window, which is the whole point of announcing it.
+                  aria-rowindex={virtual ? firstVisible + offset + 1 : undefined}
                   className={[
                     selected ? "tf-table__row--selected" : "",
                     checked ? "tf-table__row--checked" : "",

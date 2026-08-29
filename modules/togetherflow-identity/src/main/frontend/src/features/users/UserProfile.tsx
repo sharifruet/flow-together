@@ -16,6 +16,7 @@ import {
   ApiError,
   AsyncBoundary,
   Button,
+  Modal,
   ConfirmDialog,
   TextInput,
   useAsync,
@@ -66,18 +67,19 @@ export function UserProfile({ profileApi, user, readOnly, onClose }: UserProfile
   };
 
   return (
-    <div className="tf-dialog-backdrop" onMouseDown={onClose}>
-      <div
-        className="tf-dialog tf-dialog--wide"
-        role="dialog"
-        aria-modal="true"
-        aria-label={`Profile for ${user.id}`}
-        onMouseDown={(event) => event.stopPropagation()}
-      >
-        <h2 className="tf-dialog__title">
-          {[user.firstName, user.lastName].filter(Boolean).join(" ") || user.id}
-        </h2>
-        <p className="tf-dialog__description">{user.id}</p>
+    <>
+      <Modal
+        open
+      title={[user.firstName, user.lastName].filter(Boolean).join(" ") || user.id}
+      description={user.id}
+      size="lg"
+      onClose={onClose}
+      actions={
+        <Button variant="secondary" onClick={onClose}>
+          {t("action.close")}
+        </Button>
+      }
+    >
 
         <section className="tf-profile">
           <div className="tf-profile__picture">
@@ -181,13 +183,7 @@ export function UserProfile({ profileApi, user, readOnly, onClose }: UserProfile
             ) : null}
           </div>
         </section>
-
-        <div className="tf-dialog__actions">
-          <Button variant="secondary" onClick={onClose}>
-            {t("action.close")}
-          </Button>
-        </div>
-      </div>
+      </Modal>
 
       <ConfirmDialog
         open={pendingDelete !== null}
@@ -210,6 +206,6 @@ export function UserProfile({ profileApi, user, readOnly, onClose }: UserProfile
           }
         }}
       />
-    </div>
+    </>
   );
 }

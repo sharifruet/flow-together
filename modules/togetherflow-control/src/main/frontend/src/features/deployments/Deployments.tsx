@@ -1,6 +1,7 @@
 import { useCallback, useMemo, useRef, useState } from "react";
 import {
   ApiError,
+  Modal,
   AsyncBoundary,
   Button,
   Badge,
@@ -249,33 +250,15 @@ export function Deployments({ repositoryApi, selectedId, onSelect }: Deployments
       </AsyncBoundary>
 
       {pendingDelete ? (
-        <div className="tf-dialog-backdrop" onMouseDown={() => setPendingDelete(null)}>
-          <div
-            className="tf-dialog"
-            role="alertdialog"
-            aria-modal="true"
-            aria-label={t("deployments.delete.label")}
-            onMouseDown={(event) => event.stopPropagation()}
-          >
-            <h2 className="tf-dialog__title">{t("deployments.delete.title")}</h2>
-            <p className="tf-dialog__description">
-              "{pendingDelete.name || pendingDelete.id}" and its definitions will be removed.
-            </p>
-            <label className="tf-checkbox tf-checkbox--block">
-              <input
-                type="checkbox"
-                checked={cascade}
-                onChange={(event) => setCascade(event.target.checked)}
-              />
-              {t("deployments.delete.cascadeLabel")}
-            </label>
-            <p className="tf-dialog__warning" role="note">
-              {cascade
-                ? t("deployments.delete.cascade")
-                : t("deployments.delete.noCascade")}
-            </p>
-            <div className="tf-dialog__actions">
-              <Button variant="secondary" onClick={() => setPendingDelete(null)} disabled={busy}>
+                <Modal
+          open
+          title={t("deployments.delete.title")}
+          description={`"${pendingDelete.name || pendingDelete.id}" and its definitions will be removed.`}
+          size="lg"
+          onClose={() => setPendingDelete(null)}
+          actions={
+            <>
+<Button variant="secondary" onClick={() => setPendingDelete(null)} disabled={busy}>
                 {t("dialog.cancel")}
               </Button>
               <Button
@@ -291,9 +274,24 @@ export function Deployments({ repositoryApi, selectedId, onSelect }: Deployments
               >
                 {t("deployments.delete.button")}
               </Button>
-            </div>
-          </div>
-        </div>
+            </>
+          }
+        >
+
+            <label className="tf-checkbox tf-checkbox--block">
+              <input
+                type="checkbox"
+                checked={cascade}
+                onChange={(event) => setCascade(event.target.checked)}
+              />
+              {t("deployments.delete.cascadeLabel")}
+            </label>
+            <p className="tf-modal__warning" role="note">
+              {cascade
+                ? t("deployments.delete.cascade")
+                : t("deployments.delete.noCascade")}
+            </p>
+        </Modal>
       ) : null}
     </section>
   );

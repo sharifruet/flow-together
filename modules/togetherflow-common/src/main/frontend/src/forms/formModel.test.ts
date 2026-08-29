@@ -2,6 +2,9 @@ import { describe, expect, it } from "vitest";
 import type { FormModelResponse } from "../api/types";
 import {
   fieldConstraints,
+  fieldLabel,
+  fieldLocales,
+  withFieldLabel,
   fieldIdsInOrder,
   flattenFields,
   formValuesToVariables,
@@ -341,5 +344,48 @@ describe("expression fields", () => {
     // Not seeded into values — the renderer reads field.value directly.
     expect(initialValues(m)).toEqual({});
     expect(m.fields?.[0].value).toBe("4,120.00");
+  });
+});
+
+describe("per-model translations (W3.3)", () => {
+  const field = (params?: Record<string, unknown>) => ({
+    id: "amount",
+    name: "Amount",
+    type: "text",
+    ...(params ? { params } : {}),
+  });
+
+  it("uses the field's own name when nothing is translated", () => {
+    // The source text is the fallback: a missing translation must not render a key or a
+    // blank, which is what a catalogue-shaped design would do.
+    expect(fieldLabel(field(), "de")).toBe("Amount");
+  });
+
+  it("prefers the active locale's label", () => {
+    expect(fieldLabel(field({ tfLabels: { de: "Betrag" } }), "de")).toBe("Betrag");
+  });
+
+  it("falls back through the base language before the source", () => {
+    expect(fieldLabel(field({ tfLabels: { de: "Betrag" } }), "de-AT")).toBe("Betrag");
+  });
+
+  it("ignores a blank translation rather than rendering nothing", () => {
+    expect(fieldLabel(field({ tfLabels: { de: "   " } }), "de")).toBe("Amount");
+  });
+
+  it("adds and clears a locale without touching the source text", () => {
+    const translated = withFieldLabel(field(), "de", "Betrag");
+    expect(fieldLocales(translated)).toEqual(["de"]);
+    expect(translated.name).toBe("Amount");
+
+    const cleared = withFieldLabel(translated, "de", "");
+    expect(fieldLocales(cleared)).toEqual([]);
+    // The params map goes entirely when it holds nothing, rather than lingering as `{}`.
+    expect(cleared.params).toBeUndefined();
+  });
+
+  it("leaves other params alone", () => {
+    const translated = withFieldLabel(field({ maxLength: 40 }), "fr", "Montant");
+    expect(translated.params?.maxLength).toBe(40);
   });
 });

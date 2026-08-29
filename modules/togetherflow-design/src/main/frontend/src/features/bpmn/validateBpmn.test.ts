@@ -182,3 +182,30 @@ describe("canDeploy", () => {
     expect(canDeploy([])).toBe(true);
   });
 });
+
+describe("what actually stops a deploy", () => {
+  /*
+   * Prompted by a real report: a saved process showed
+   * "warning · structure · Element is missing label/name" directly above a caveat about
+   * "what a deploy would reject", and the two read together as a rejection. The rule was
+   * already right — `label-required` is warn-only and `canDeploy` ignores warnings — but
+   * nothing said so, in the panel or in a test.
+   */
+  it("lets warnings through, because an unnamed element deploys and runs", () => {
+    expect(
+      canDeploy([
+        { severity: "warning", message: "Element is missing label/name", source: "lint" },
+        { severity: "warning", message: "Superfluous gateway", source: "lint" },
+      ]),
+    ).toBe(true);
+  });
+
+  it("stops on a single error, whichever side reported it", () => {
+    expect(
+      canDeploy([
+        { severity: "warning", message: "Element is missing label/name", source: "lint" },
+        { severity: "error", message: "No start event", source: "engine" },
+      ]),
+    ).toBe(false);
+  });
+});

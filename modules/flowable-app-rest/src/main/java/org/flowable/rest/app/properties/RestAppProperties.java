@@ -45,6 +45,21 @@ public class RestAppProperties {
      */
     private boolean swaggerDocsEnabled = true;
 
+    /**
+     * Whether an unauthenticated request gets a {@code WWW-Authenticate: Basic} challenge.
+     *
+     * <p>Off by default in this distribution, because the REST API here is consumed by
+     * browser applications over XHR. A browser that receives that header on an XHR opens
+     * its own native credential dialog and blocks the request behind it — in Firefox the
+     * request then never settles, so an app's own "incorrect username or password"
+     * message never runs and a working service looks hung. A bare 401 is what an API
+     * should say; the client already knows how to present a login screen.
+     *
+     * <p>Set it to {@code true} to restore the browser prompt, which is convenient when
+     * poking at the API from an address bar.
+     */
+    private boolean authenticationChallenge = false;
+
     @NestedConfigurationProperty
     private final Cors cors = new Cors();
 
@@ -70,6 +85,14 @@ public class RestAppProperties {
 
     public void setCreateDemoDefinitions(boolean createDemoDefinitions) {
         this.createDemoDefinitions = createDemoDefinitions;
+    }
+
+    public boolean isAuthenticationChallenge() {
+        return authenticationChallenge;
+    }
+
+    public void setAuthenticationChallenge(boolean authenticationChallenge) {
+        this.authenticationChallenge = authenticationChallenge;
     }
 
     public boolean isSwaggerDocsEnabled() {

@@ -27,6 +27,7 @@ import { Badge } from "../components/Badge";
 import { Link } from "../routing/Link";
 import { RouteAnnouncer } from "../routing/RouteAnnouncer";
 import { useTenant } from "../tenant/TenantContext";
+import { useWorkspace } from "../workspace/WorkspaceContext";
 import { useT } from "../i18n/I18nContext";
 import type { AppLinks } from "../config";
 
@@ -146,6 +147,7 @@ export function AppFrame<V extends string>({
 
         <div className="tf-shell__actions">
           {actions}
+          <WorkspaceSwitcher />
           {availableTenants.length > 1 ? (
             <label className="tf-shell__tenant">
               <span className="tf-visually-hidden">{t("shell.tenant.label")}</span>
@@ -189,6 +191,47 @@ export function AppFrame<V extends string>({
         </main>
       </div>
     </div>
+  );
+}
+
+/**
+ * The workspace switcher (ADR 0017).
+ *
+ * Renders nothing at all where the module is not deployed — an absent switcher and one
+ * showing a single "Default" are different claims, and only the first is true of a
+ * deployment that has no workspaces. When the service is configured but unreachable it
+ * says so rather than disappearing, so a broken deployment does not present as a
+ * downgraded one.
+ */
+function WorkspaceSwitcher() {
+  const t = useT();
+  const { status, workspaces, workspaceId, setWorkspaceId } = useWorkspace();
+
+  if (status === "disabled") return null;
+  if (status === "unavailable") {
+    return (
+      <span title={t("workspace.unavailable.hint")}>
+        <Badge tone="warning">{t("workspace.unavailable")}</Badge>
+      </span>
+    );
+  }
+  if (status === "loading" || workspaces.length === 0) return null;
+
+  return (
+    <label className="tf-shell__workspace">
+      <span className="tf-visually-hidden">{t("workspace.label")}</span>
+      <select
+        className="tf-input tf-select"
+        value={workspaceId ?? ""}
+        onChange={(event) => setWorkspaceId(event.target.value || undefined)}
+      >
+        {workspaces.map((workspace) => (
+          <option key={workspace.id} value={workspace.id}>
+            {workspace.name}
+          </option>
+        ))}
+      </select>
+    </label>
   );
 }
 
