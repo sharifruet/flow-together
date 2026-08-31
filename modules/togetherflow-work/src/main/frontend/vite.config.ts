@@ -35,6 +35,17 @@ export default defineConfig({
     chunkSizeWarningLimit: 500,
   },
   server: {
+    /*
+     * `@togetherflow/common` is a `file:` dependency, so its sources live outside this
+     * app's root and Vite's dev server refuses to serve them by default — the font
+     * `theme/fonts.css` points at came back "403 Restricted", and every dev session
+     * silently fell back to the system typeface. The production build was fine, which is
+     * what made it easy to miss: the asset is emitted there.
+     *
+     * Allowing the package root rather than the font directory: the same restriction
+     * applies to anything else common ships as an asset.
+     */
+    fs: { allow: ["..", "../../../../togetherflow-common/src/main/frontend"] },
     port: 5273,
     proxy: {
       "/process-api": proxy("/service"),

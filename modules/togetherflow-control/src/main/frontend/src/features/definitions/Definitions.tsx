@@ -21,6 +21,7 @@ import {
   ConfirmDialog,
   DataTable,
   EmptyState,
+  Modal,
   TextInput,
   useAsync,
   useI18n,
@@ -236,39 +237,20 @@ function ProcessDefinitions({ repositoryApi }: { repositoryApi: RepositoryApi })
       ) : null}
 
       {pendingSuspend ? (
-        <div
-          className="tf-dialog-backdrop"
-          onMouseDown={() => {
+        <Modal
+          open
+          size="sm"
+          role="alertdialog"
+          title={t("definitions.suspend.title")}
+          description={t("definitions.suspend.summary", {
+            name: pendingSuspend.name ?? pendingSuspend.key ?? "",
+          })}
+          onClose={() => {
             setPendingSuspend(null);
             setCascade(false);
           }}
-        >
-          <div
-            className="tf-dialog"
-            role="alertdialog"
-            aria-modal="true"
-            aria-label={t("definitions.suspend.label")}
-            onMouseDown={(event) => event.stopPropagation()}
-          >
-            <h2 className="tf-dialog__title">{t("definitions.suspend.title")}</h2>
-            <p className="tf-dialog__description">
-              No new instances of "{pendingSuspend.name ?? pendingSuspend.key}" can be
-              started while it is suspended.
-            </p>
-            <label className="tf-checkbox tf-checkbox--block">
-              <input
-                type="checkbox"
-                checked={cascade}
-                onChange={(event) => setCascade(event.target.checked)}
-              />
-              {t("definitions.suspend.cascadeLabel")}
-            </label>
-            <p className="tf-dialog__warning" role="note">
-              {cascade
-                ? t("definitions.suspend.cascade")
-                : t("definitions.suspend.noCascade")}
-            </p>
-            <div className="tf-dialog__actions">
+          actions={
+            <>
               <Button
                 variant="secondary"
                 disabled={busy !== null}
@@ -286,9 +268,21 @@ function ProcessDefinitions({ repositoryApi }: { repositoryApi: RepositoryApi })
               >
                 {t("action.suspend")}
               </Button>
-            </div>
-          </div>
-        </div>
+            </>
+          }
+        >
+          <label className="tf-checkbox tf-checkbox--block">
+            <input
+              type="checkbox"
+              checked={cascade}
+              onChange={(event) => setCascade(event.target.checked)}
+            />
+            {t("definitions.suspend.cascadeLabel")}
+          </label>
+          <p className="tf-dialog__warning" role="note">
+            {cascade ? t("definitions.suspend.cascade") : t("definitions.suspend.noCascade")}
+          </p>
+        </Modal>
       ) : null}
     </>
   );
@@ -448,19 +442,18 @@ function StarterDialog({
   };
 
   return (
-    <div className="tf-dialog-backdrop" onMouseDown={onClose}>
-      <div
-        className="tf-dialog tf-dialog--wide"
-        role="dialog"
-        aria-modal="true"
-        aria-label={title}
-        onMouseDown={(event) => event.stopPropagation()}
-      >
-        <h2 className="tf-dialog__title">{title}</h2>
-        <p className="tf-dialog__description">
-          With no entries, anyone who can reach the engine may start it. Adding even one
-          entry restricts it to those listed.
-        </p>
+    <Modal
+      open
+      size="lg"
+      title={title}
+      description={t("definitions.starters.blurb")}
+      onClose={onClose}
+      actions={
+        <Button variant="secondary" onClick={onClose}>
+          {t("action.done")}
+        </Button>
+      }
+    >
 
         <AsyncBoundary
           loading={starters.loading}
@@ -517,13 +510,7 @@ function StarterDialog({
           </Button>
         </div>
 
-        <div className="tf-dialog__actions">
-          <Button variant="secondary" onClick={onClose}>
-            {t("action.done")}
-          </Button>
-        </div>
-      </div>
-    </div>
+    </Modal>
   );
 }
 

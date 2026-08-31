@@ -21,6 +21,7 @@ import {
   AsyncBoundary,
   Button,
   ConfirmDialog,
+  Modal,
   EmptyState,
   formatDateTime,
   useAsync,
@@ -72,19 +73,31 @@ export function VersionHistory({ modelApi, model, onClose, onRestored }: Version
   const currentVersion = model.version ?? 1;
 
   return (
-    <div className="tf-dialog-backdrop" onMouseDown={onClose}>
-      <div
-        className="tf-dialog tf-dialog--wide"
-        role="dialog"
-        aria-modal="true"
-        aria-label={t("library.history.title", { name: model.name || model.id })}
-        onMouseDown={(event) => event.stopPropagation()}
+    <>
+      <Modal
+        open
+        size="lg"
+        title={t("library.history.title", { name: model.name || model.id })}
+        description={t("library.history.blurb")}
+        onClose={onClose}
+        actions={
+          <>
+            <Button
+              variant="secondary"
+              disabled={busy}
+              onClick={() =>
+                void run(t("library.history.saved", { version: currentVersion }), async () => {
+                  const source = await modelApi.getSource(model.id);
+                  await modelApi.cutVersion(model, source ?? "");
+                })
+              }
+            >
+              {t("library.history.save")}
+            </Button>
+            <Button onClick={onClose}>{t("action.close")}</Button>
+          </>
+        }
       >
-        <h2 className="tf-dialog__title">
-          {t("library.history.title", { name: model.name || model.id })}
-        </h2>
-        <p className="tf-dialog__description">{t("library.history.blurb")}</p>
-
         <AsyncBoundary
           loading={versions.loading}
           error={versions.error}
@@ -134,23 +147,11 @@ export function VersionHistory({ modelApi, model, onClose, onRestored }: Version
           )}
         </AsyncBoundary>
 
-        <div className="tf-dialog__actions">
-          <Button
-            variant="secondary"
-            disabled={busy}
-            onClick={() =>
-              void run(t("library.history.saved", { version: currentVersion }), async () => {
-                const source = await modelApi.getSource(model.id);
-                await modelApi.cutVersion(model, source ?? "");
-              })
-            }
-          >
-            {t("library.history.save")}
-          </Button>
-          <Button onClick={onClose}>{t("action.close")}</Button>
-        </div>
+      </Modal>
 
-        <ConfirmDialog
+      {/* Outside the Modal: a confirmation raised from a dialog is its own modal, and
+          nesting one in the other's body would trap focus in the wrong one. */}
+      <ConfirmDialog
           open={pendingRestore !== null}
           title={t("library.history.restore.title", { version: pendingRestore?.version ?? 1 })}
           description={t("library.history.restore.description", {
@@ -169,8 +170,7 @@ export function VersionHistory({ modelApi, model, onClose, onRestored }: Version
               () => modelApi.restoreVersion(model, target),
             );
           }}
-        />
-      </div>
-    </div>
+      />
+    </>
   );
 }

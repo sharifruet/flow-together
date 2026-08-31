@@ -170,6 +170,8 @@ export const designEn = {
   "bpmn.checks.live": "Re-check as I edit",
   "bpmn.checks.serverUnreachable": "Could not reach the engine's validator; showing browser checks only.",
   "bpmn.xmlLabel": "BPMN XML",
+  "bpmn.xmlDescription":
+    "Exactly what will be deployed. Read-only \u2014 edit the diagram, not the text.",
   "bpmn.xmlTitle": "BPMN XML",
   "bpmn.loadingDiagram": "Loading diagram",
   "bpmn.deploy.title": "Deploy this model?",

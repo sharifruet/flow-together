@@ -163,6 +163,9 @@ export const commonEn = {
 
   // API client error copy (§14.1: specific and actionable, never a bare failure)
   "api.error.offline": "Could not reach the server. Check your connection and try again.",
+  // Raised before any request leaves the browser, when nobody is signed in yet. Users
+  // should never see it — a screen that asks for data while signed out is the bug.
+  "api.error.unauthenticated": "You need to sign in before this can load.",
   "api.error.timeout": "The server took too long to respond. Try again.",
   "api.error.400": "The server rejected that request as invalid.",
   "api.error.401": "Your session has expired. Sign in again to continue.",

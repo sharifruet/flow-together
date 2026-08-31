@@ -180,3 +180,87 @@ describe("translated error copy", () => {
     ).rejects.toThrow("You do not have permission to do that.");
   });
 });
+
+/**
+ * The no-credentials guard.
+ *
+ * An unauthenticated request to a Basic-protected engine comes back `401` with
+ * `WWW-Authenticate: Basic`, and the browser answers that header with its *own* credential
+ * dialog — on top of the app's login screen. The client therefore refuses to make the
+ * request at all rather than relying on every caller to check for a session first.
+ */
+describe("requests before sign-in", () => {
+  it("does not reach the network when the header provider has nothing to give", async () => {
+    const fetchImpl = vi.fn();
+    const client = new ApiClient({
+      baseUrl: "/process-api",
+      fetchImpl: fetchImpl as never,
+      // What `useAuth().getAuthHeaders` returns while signed out.
+      getAuthHeaders: () => undefined,
+    });
+
+    await expect(client.request("/repository/models")).rejects.toBeInstanceOf(ApiError);
+    // The point of the guard: no request, so no WWW-Authenticate, so no browser dialog.
+    expect(fetchImpl).not.toHaveBeenCalled();
+  });
+
+  it("reports it as a 401 without ending a session that does not exist", async () => {
+    const onUnauthorized = vi.fn();
+    const client = new ApiClient({
+      baseUrl: "/process-api",
+      fetchImpl: vi.fn() as never,
+      getAuthHeaders: () => undefined,
+      onUnauthorized,
+    });
+
+    const error = await client.request("/x").catch((cause) => cause);
+    expect(error).toBeInstanceOf(ApiError);
+    expect((error as ApiError).status).toBe(401);
+    // Signing out again would be noise; there is nothing to sign out of.
+    expect(onUnauthorized).not.toHaveBeenCalled();
+  });
+
+  it("does not retry — a missing session is not a transient failure", async () => {
+    const fetchImpl = vi.fn();
+    const client = new ApiClient({
+      baseUrl: "/process-api",
+      fetchImpl: fetchImpl as never,
+      getAuthHeaders: () => undefined,
+      retry: { attempts: 3 },
+    });
+
+    await expect(client.request("/x")).rejects.toBeInstanceOf(ApiError);
+    expect(fetchImpl).toHaveBeenCalledTimes(0);
+  });
+
+  it("sends normally once there are credentials", async () => {
+    const fetchImpl = vi
+      .fn()
+      .mockResolvedValue(
+        new Response("{}", { status: 200, headers: { "Content-Type": "application/json" } }),
+      );
+    const client = new ApiClient({
+      baseUrl: "/process-api",
+      fetchImpl: fetchImpl as never,
+      getAuthHeaders: () => ({ Authorization: "Basic abc" }),
+    });
+
+    await client.request("/x");
+    expect(fetchImpl).toHaveBeenCalledTimes(1);
+    expect(fetchImpl.mock.calls[0][1].headers.Authorization).toBe("Basic abc");
+  });
+
+  it("leaves a client with no header provider alone", async () => {
+    // A caller deliberately talking to something unauthenticated, and the sign-in probe,
+    // both pass through untouched.
+    const fetchImpl = vi
+      .fn()
+      .mockResolvedValue(
+        new Response("{}", { status: 200, headers: { "Content-Type": "application/json" } }),
+      );
+    const client = new ApiClient({ baseUrl: "/process-api", fetchImpl: fetchImpl as never });
+
+    await client.request("/x");
+    expect(fetchImpl).toHaveBeenCalledTimes(1);
+  });
+});

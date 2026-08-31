@@ -12,6 +12,7 @@ import {
   ConfirmDialog,
   DataTable,
   DropdownMenu,
+  Modal,
   EmptyState,
   Icon,
   NoResultsState,
@@ -672,27 +673,46 @@ function NewModelDialog({
       ? t("library.error.keyFormat")
       : undefined;
 
+  /*
+   * The submit button lives in the modal's footer, outside the <form> element — so it is
+   * tied back to it by id. `form="…"` on a submit button is what makes Enter-to-submit and
+   * the button do the same thing when they are not nested.
+   */
+  const formId = "tf-new-model-form";
+
   return (
-    <div className="tf-dialog-backdrop" onMouseDown={onCancel}>
+    <Modal
+      open
+      size="sm"
+      title={t(`library.newTitle.${kind}`)}
+      // Typed-in work: a stray backdrop click must not discard it.
+      dismissOnBackdrop={false}
+      onClose={onCancel}
+      actions={
+        <>
+          <Button variant="secondary" onClick={onCancel} disabled={busy}>
+            {t("dialog.cancel")}
+          </Button>
+          <Button type="submit" form={formId} loading={busy}>
+            {t("library.createAndOpen")}
+          </Button>
+        </>
+      }
+    >
       <form
-        className="tf-dialog tf-dialog--form"
-        role="dialog"
-        aria-modal="true"
-        aria-label={t(`library.new.${kind}`)}
+        id={formId}
         noValidate
-        onMouseDown={(event) => event.stopPropagation()}
         onSubmit={(event) => {
           event.preventDefault();
           setSubmitted(true);
           if (!nameError && !keyError) onSubmit({ name: name.trim(), key: key.trim() });
         }}
       >
-        <h2 className="tf-dialog__title">{t(`library.newTitle.${kind}`)}</h2>
-
         <TextInput
           label={t("library.field.name")}
           value={name}
           required
+          autoFocus
           disabled={busy}
           error={submitted ? nameError : undefined}
           onChange={(event) => {
@@ -714,17 +734,8 @@ function NewModelDialog({
             setKey(event.target.value);
           }}
         />
-
-        <div className="tf-dialog__actions">
-          <Button variant="secondary" onClick={onCancel} disabled={busy}>
-            {t("dialog.cancel")}
-          </Button>
-          <Button type="submit" loading={busy}>
-            {t("library.createAndOpen")}
-          </Button>
-        </div>
       </form>
-    </div>
+    </Modal>
   );
 }
 

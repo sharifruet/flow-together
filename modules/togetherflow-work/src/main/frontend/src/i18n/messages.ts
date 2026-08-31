@@ -263,8 +263,15 @@ export const workEn = {
   "start.back.case": "← Back to all cases",
   "start.label.for": "Start {name}",
   "start.version": "Version {version}",
-  "start.businessKey": "Business key",
-  "start.businessKey.hint": "Optional reference you can use to find this instance later.",
+  /*
+   * "(optional)" is in the *label*, not only the hint. On a process with no start form
+   * and no variables this is the only input on the screen, which reads as "the thing you
+   * must fill in" however the hint is worded — and people were filling it in to get past
+   * it. The hint now says what it is *for* rather than repeating that it is optional.
+   */
+  "start.businessKey": "Business key (optional)",
+  "start.businessKey.hint":
+    "Your own reference for this instance \u2014 an order number, a ticket id. Control can search by it. Leave it empty if you have nothing to put here.",
   "start.form.loading": "Loading form…",
   "start.form.title": "Start form",
   "start.form.unloadable.process":

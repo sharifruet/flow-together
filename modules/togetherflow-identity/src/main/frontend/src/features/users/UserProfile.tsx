@@ -17,6 +17,7 @@ import {
   AsyncBoundary,
   Button,
   ConfirmDialog,
+  Modal,
   TextInput,
   useAsync,
   useT,
@@ -66,18 +67,19 @@ export function UserProfile({ profileApi, user, readOnly, onClose }: UserProfile
   };
 
   return (
-    <div className="tf-dialog-backdrop" onMouseDown={onClose}>
-      <div
-        className="tf-dialog tf-dialog--wide"
-        role="dialog"
-        aria-modal="true"
-        aria-label={`Profile for ${user.id}`}
-        onMouseDown={(event) => event.stopPropagation()}
+    <>
+      <Modal
+        open
+        size="lg"
+        title={[user.firstName, user.lastName].filter(Boolean).join(" ") || user.id}
+        description={user.id}
+        onClose={onClose}
+        actions={
+          <Button variant="secondary" onClick={onClose}>
+            {t("action.close")}
+          </Button>
+        }
       >
-        <h2 className="tf-dialog__title">
-          {[user.firstName, user.lastName].filter(Boolean).join(" ") || user.id}
-        </h2>
-        <p className="tf-dialog__description">{user.id}</p>
 
         <section className="tf-profile">
           <div className="tf-profile__picture">
@@ -182,13 +184,10 @@ export function UserProfile({ profileApi, user, readOnly, onClose }: UserProfile
           </div>
         </section>
 
-        <div className="tf-dialog__actions">
-          <Button variant="secondary" onClick={onClose}>
-            {t("action.close")}
-          </Button>
-        </div>
-      </div>
+      </Modal>
 
+      {/* Outside the Modal on purpose: a confirmation raised *from* a dialog is its own
+          modal, and nesting one inside the other's body would trap focus in the wrong one. */}
       <ConfirmDialog
         open={pendingDelete !== null}
         title={t("profile.info.delete.title")}
@@ -210,6 +209,6 @@ export function UserProfile({ profileApi, user, readOnly, onClose }: UserProfile
           }
         }}
       />
-    </div>
+    </>
   );
 }

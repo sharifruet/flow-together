@@ -179,6 +179,40 @@ export class ApiClient {
     // One id for the whole logical request, retries included: an operator chasing a
     // reference the user quoted wants every attempt, not just the last one.
     const correlationId = newCorrelationId();
+
+    /*
+     * Refuse to reach the network with no credentials.
+     *
+     * The engine answers an unauthenticated request with `401` and
+     * `WWW-Authenticate: Basic realm="Realm"`, and a browser that sees that header on a
+     * `fetch` from a page it is displaying pops its **own** username/password dialog —
+     * over the top of the app's login screen. Two prompts, one of which the app does not
+     * control and cannot style, and whose credentials it never sees.
+     *
+     * The trigger is any request issued before sign-in. Screens guard on `session`, but a
+     * *hook* runs before the guard returns — React calls every hook on every render,
+     * early return or not — so one `useEffect` that fetches on mount is enough. That is
+     * exactly how it happened: Design's `useIdentities` prefetches users, groups and
+     * process keys, and it is called above the `if (!session)` line.
+     *
+     * Fixing the caller is necessary but not sufficient: the next hook someone adds
+     * reintroduces it. So the client refuses instead. A configured `getAuthHeaders` that
+     * returns nothing means "not signed in yet", and a request made then fails here
+     * rather than at the server — no network round trip, no `WWW-Authenticate`, no
+     * browser dialog.
+     *
+     * A client constructed *without* a header provider is untouched: that is a caller
+     * deliberately talking to something unauthenticated, and the sign-in probe passes a
+     * provider that always answers.
+     */
+    if (this.options.getAuthHeaders && !this.options.getAuthHeaders()) {
+      throw new ApiError(this.t("api.error.unauthenticated"), 401, correlationId, undefined, {
+        // Not a retry candidate, and deliberately does *not* fire `onUnauthorized`:
+        // there is no session to end, and signing out again would be noise.
+        attempts: 1,
+      });
+    }
+
     const method = (options.method ?? "GET").toUpperCase();
     const retryable = options.retry ?? SAFE_METHODS.has(method);
     // A FormData body is a one-shot stream in some runtimes, so replaying it is unsafe.

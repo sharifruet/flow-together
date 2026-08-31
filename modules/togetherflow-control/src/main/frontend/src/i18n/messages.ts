@@ -257,6 +257,7 @@ export const controlEn = {
   "deployments.empty.description": "Deploy a BPMN, CMMN, DMN or form file to get started.",
   "deployments.deployed": "\"{name}\" deployed.",
   "deployments.delete.label": "Delete deployment",
+  "deployments.delete.summary": "\u201c{name}\u201d and its definitions will be removed.",
   "deployments.delete.title": "Delete this deployment?",
   "deployments.delete.cascade":
     "Every running instance from this deployment will be deleted too. Work in progress is lost.",
@@ -348,6 +349,10 @@ export const controlEn = {
   "definitions.suspend.cascadeLabel": "Also suspend instances that are already running",
   "definitions.signal.action": "Broadcast signal",
   "definitions.suspend.label": "Suspend process definition",
+  "definitions.suspend.summary":
+    "No new instances of \u201c{name}\u201d can be started while it is suspended.",
+  "definitions.starters.blurb":
+    "With no entries, anyone who can reach the engine may start it. Adding even one entry restricts it to those listed.",
   "definitions.suspend.title": "Suspend this process definition?",
   "definitions.suspend.cascade":
     "Running instances stop progressing until the definition is activated again.",

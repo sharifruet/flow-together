@@ -11,6 +11,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   ApiError,
   Button,
+  Modal,
   ConfirmDialog,
   ErrorState,
   SelectInput,
@@ -797,18 +798,14 @@ export function CmmnEditor({
       ) : null}
 
       {sourceXml !== null ? (
-        <div className="tf-dialog-backdrop" onMouseDown={() => setSourceXml(null)}>
-          <div
-            className="tf-dialog tf-dialog--wide"
-            role="dialog"
-            aria-modal="true"
-            aria-label={t("cmmn.xmlTitle")}
-            onMouseDown={(event) => event.stopPropagation()}
-          >
-            <h2 className="tf-dialog__title">{t("cmmn.xmlTitle")}</h2>
-            <p className="tf-dialog__description">{t("cmmn.xmlDescription")}</p>
-            <pre className="tf-source">{sourceXml}</pre>
-            <div className="tf-dialog__actions">
+        <Modal
+          open
+          size="lg"
+          title={t("cmmn.xmlTitle")}
+          description={t("cmmn.xmlDescription")}
+          onClose={() => setSourceXml(null)}
+          actions={
+            <>
               <Button
                 variant="secondary"
                 onClick={() =>
@@ -820,9 +817,11 @@ export function CmmnEditor({
               <Button variant="secondary" onClick={() => setSourceXml(null)}>
                 {t("action.close")}
               </Button>
-            </div>
-          </div>
-        </div>
+            </>
+          }
+        >
+          <pre className="tf-source">{sourceXml}</pre>
+        </Modal>
       ) : null}
 
       <ConfirmDialog

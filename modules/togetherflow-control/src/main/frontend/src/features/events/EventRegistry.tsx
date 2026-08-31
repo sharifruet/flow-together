@@ -24,6 +24,7 @@ import {
   Button,
   DataTable,
   EmptyState,
+  Modal,
   NoResultsState,
   Pagination,
   TextInput,
@@ -459,21 +460,21 @@ function RecordedEventDialog({
   const { t, locale } = useI18n();
 
   return (
-    <div className="tf-dialog-backdrop" onMouseDown={onClose}>
-      <div
-        className="tf-dialog tf-dialog--wide"
-        role="dialog"
-        aria-modal="true"
-        aria-label={t("events.received.dialog.label")}
-        onMouseDown={(mouse) => mouse.stopPropagation()}
-      >
-        <h2 className="tf-dialog__title">{event.eventKey ?? t("events.received.noEventKey")}</h2>
-        <p className="tf-dialog__description">
-          {t("events.received.dialog.meta", {
-            channel: event.channelKey ?? t("events.received.noChannel"),
-            when: formatDateTime(event.receivedAt, locale),
-          })}
-        </p>
+    <Modal
+      open
+      size="lg"
+      title={event.eventKey ?? t("events.received.noEventKey")}
+      description={t("events.received.dialog.meta", {
+        channel: event.channelKey ?? t("events.received.noChannel"),
+        when: formatDateTime(event.receivedAt, locale),
+      })}
+      onClose={onClose}
+      actions={
+        <Button variant="secondary" onClick={onClose}>
+          {t("action.close")}
+        </Button>
+      }
+    >
 
         {event.status === "FAILED" && event.errorMessage ? (
           <p className="tf-danger-text" role="alert">
@@ -501,13 +502,7 @@ function RecordedEventDialog({
           </>
         )}
 
-        <div className="tf-dialog__actions">
-          <Button variant="secondary" onClick={onClose}>
-            {t("action.close")}
-          </Button>
-        </div>
-      </div>
-    </div>
+    </Modal>
   );
 }
 
@@ -524,16 +519,18 @@ function SourceDialog({
   const model = useAsync((signal) => load(signal), []);
 
   return (
-    <div className="tf-dialog-backdrop" onMouseDown={onClose}>
-      <div
-        className="tf-dialog tf-dialog--wide"
-        role="dialog"
-        aria-modal="true"
-        aria-label={t("events.source.label", { title })}
-        onMouseDown={(event) => event.stopPropagation()}
-      >
-        <h2 className="tf-dialog__title">{title}</h2>
-        <p className="tf-dialog__description">{t("events.source.description")}</p>
+    <Modal
+      open
+      size="lg"
+      title={title}
+      description={t("events.source.description")}
+      onClose={onClose}
+      actions={
+        <Button variant="secondary" onClick={onClose}>
+          {t("action.close")}
+        </Button>
+      }
+    >
         <AsyncBoundary
           loading={model.loading}
           error={model.error}
@@ -542,13 +539,7 @@ function SourceDialog({
         >
           {(value) => <pre className="tf-source">{JSON.stringify(value, null, 2)}</pre>}
         </AsyncBoundary>
-        <div className="tf-dialog__actions">
-          <Button variant="secondary" onClick={onClose}>
-            {t("action.close")}
-          </Button>
-        </div>
-      </div>
-    </div>
+    </Modal>
   );
 }
 

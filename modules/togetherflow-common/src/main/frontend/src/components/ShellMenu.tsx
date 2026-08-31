@@ -9,6 +9,7 @@
 
 import { useEffect, useRef, useState } from "react";
 import { Button } from "./Button";
+import { Modal } from "./Modal";
 import { TextInput } from "./Field";
 import { useToast } from "./Toast";
 import { ApiError } from "../api/client";
@@ -241,17 +242,25 @@ function ChangePasswordDialog({
   };
 
   return (
-    <div className="tf-dialog-backdrop" onMouseDown={onClose}>
-      <div
-        className="tf-dialog"
-        role="dialog"
-        aria-modal="true"
-        aria-label={t("password.title")}
-        onMouseDown={(event) => event.stopPropagation()}
-      >
-        <h2 className="tf-dialog__title">{t("password.title")}</h2>
-        <p className="tf-dialog__description">{t("password.description", { userId })}</p>
-
+    <Modal
+      open
+      size="sm"
+      title={t("password.title")}
+      description={t("password.description", { userId })}
+      // Typed-in credentials: a stray backdrop click must not discard them.
+      dismissOnBackdrop={false}
+      onClose={onClose}
+      actions={
+        <>
+          <Button variant="secondary" disabled={busy} onClick={onClose}>
+            {t("dialog.cancel")}
+          </Button>
+          <Button loading={busy} disabled={!canSubmit} onClick={() => void submit()}>
+            {t("password.title")}
+          </Button>
+        </>
+      }
+    >
         <TextInput
           label={t("password.new")}
           type="password"
@@ -271,15 +280,6 @@ function ChangePasswordDialog({
           onChange={(event) => setConfirmation(event.target.value)}
         />
 
-        <div className="tf-dialog__actions">
-          <Button variant="secondary" disabled={busy} onClick={onClose}>
-            {t("dialog.cancel")}
-          </Button>
-          <Button loading={busy} disabled={!canSubmit} onClick={() => void submit()}>
-            {t("password.title")}
-          </Button>
-        </div>
-      </div>
-    </div>
+    </Modal>
   );
 }

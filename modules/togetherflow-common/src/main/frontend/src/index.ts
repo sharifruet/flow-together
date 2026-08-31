@@ -43,6 +43,7 @@ export * from "./components/ShortcutHelp";
 export * from "./components/States";
 export * from "./components/ShellMenu";
 export * from "./components/Toast";
+export * from "./lazyWithRetry";
 export * from "./hooks/useAsync";
 export * from "./hooks/usePersistentState";
 export * from "./shortcuts/ShortcutContext";

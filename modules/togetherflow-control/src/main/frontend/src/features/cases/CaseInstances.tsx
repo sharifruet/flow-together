@@ -23,6 +23,7 @@ import {
   ConfirmDialog,
   DataTable,
   EmptyState,
+  Modal,
   NoResultsState,
   PageHeader,
   Pagination,
@@ -316,18 +317,35 @@ function CaseInspector({
   };
 
   return (
-    <div className="tf-dialog-backdrop" onMouseDown={onClose}>
-      <div
-        className="tf-dialog tf-dialog--wide"
-        role="dialog"
-        aria-modal="true"
-        aria-label={t("cases.detail.label", { name: instance.name ?? instance.id })}
-        onMouseDown={(event) => event.stopPropagation()}
+    <>
+      <Modal
+        open
+        size="lg"
+        title={instance.name || instance.caseDefinitionName || t("cases.fallbackName")}
+        onClose={onClose}
+        actions={
+          <>
+            <Button
+              variant="danger"
+              disabled={busy !== null}
+              onClick={() => setPendingEnd("terminate")}
+            >
+              {t("action.terminate")}
+            </Button>
+            <Button
+              variant="danger"
+              disabled={busy !== null}
+              onClick={() => setPendingEnd("delete")}
+            >
+              {t("action.delete")}
+            </Button>
+            <Button variant="secondary" onClick={onClose}>
+              {t("action.close")}
+            </Button>
+          </>
+        }
       >
-        <h2 className="tf-dialog__title">
-          {instance.name || instance.caseDefinitionName || t("cases.fallbackName")}
-        </h2>
-        <p className="tf-dialog__description">
+        <p className="tf-muted">
           {instance.businessKey
             ? `${t("cases.ref", { businessKey: instance.businessKey })} · `
             : ""}
@@ -434,25 +452,10 @@ function CaseInspector({
           )}
         </AsyncBoundary>
 
-        <div className="tf-dialog__actions tf-dialog__actions--split">
-          <div className="tf-row-actions">
-            <Button
-              variant="danger"
-              disabled={busy !== null}
-              onClick={() => setPendingEnd("terminate")}
-            >
-              {t("action.terminate")}
-            </Button>
-            <Button variant="danger" disabled={busy !== null} onClick={() => setPendingEnd("delete")}>
-              {t("action.delete")}
-            </Button>
-          </div>
-          <Button variant="secondary" onClick={onClose}>
-            {t("action.close")}
-          </Button>
-        </div>
-      </div>
+      </Modal>
 
+      {/* Outside the Modal: a confirmation raised from a dialog is its own modal, and
+          nesting one in the other's body would trap focus in the wrong one. */}
       <ConfirmDialog
         open={pending !== null}
         title={
@@ -500,6 +503,6 @@ function CaseInspector({
         onCancel={() => setPendingEnd(null)}
         onConfirm={() => pendingEnd && void endCase(pendingEnd)}
       />
-    </div>
+    </>
   );
 }

@@ -8,6 +8,7 @@ import {
   DataTable,
   EmptyState,
   Icon,
+  Modal,
   NoResultsState,
   PageHeader,
   Pagination,
@@ -347,6 +348,8 @@ interface UserDialogProps {
   onSubmit: (values: IdmUser) => void;
 }
 
+const FORM_ID = "tf-user-form";
+
 function UserDialog({ title, user, busy, onCancel, onSubmit }: UserDialogProps) {
   const t = useT();
   const isEdit = Boolean(user);
@@ -368,23 +371,37 @@ function UserDialog({ title, user, busy, onCancel, onSubmit }: UserDialogProps) 
   const invalid = Boolean(idError || emailError || passwordError);
 
   return (
-    <div className="tf-dialog-backdrop" onMouseDown={onCancel}>
+    <Modal
+      open
+      size="sm"
+      title={title}
+      // Typed-in work: a stray backdrop click must not discard it.
+      dismissOnBackdrop={false}
+      onClose={onCancel}
+      actions={
+        <>
+          <Button variant="secondary" onClick={onCancel} disabled={busy}>
+            {t("dialog.cancel")}
+          </Button>
+          {/* The submit button sits in the modal's footer, outside the form, so it is
+              tied back by id — that is what keeps Enter and the button equivalent. */}
+          <Button type="submit" form={FORM_ID} loading={busy}>
+            {isEdit ? t("action.saveChanges") : t("users.create.submit")}
+          </Button>
+        </>
+      }
+    >
       <form
-        className="tf-dialog tf-dialog--form"
-        role="dialog"
-        aria-modal="true"
-        aria-label={title}
+        id={FORM_ID}
         // Native constraint validation would block submit before our own runs, and
         // its default messages are worse than the per-field ones below.
         noValidate
-        onMouseDown={(event) => event.stopPropagation()}
         onSubmit={(event) => {
           event.preventDefault();
           setSubmitted(true);
           if (!invalid) onSubmit(values);
         }}
       >
-        <h2 className="tf-dialog__title">{title}</h2>
 
         <TextInput
           label={t("users.field.id")}
@@ -428,15 +445,7 @@ function UserDialog({ title, user, busy, onCancel, onSubmit }: UserDialogProps) 
           onChange={(event) => setValues((v) => ({ ...v, password: event.target.value }))}
         />
 
-        <div className="tf-dialog__actions">
-          <Button variant="secondary" onClick={onCancel} disabled={busy}>
-            {t("dialog.cancel")}
-          </Button>
-          <Button type="submit" loading={busy}>
-            {isEdit ? t("action.saveChanges") : t("users.create.submit")}
-          </Button>
-        </div>
       </form>
-    </div>
+    </Modal>
   );
 }

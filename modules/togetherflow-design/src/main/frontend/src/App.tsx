@@ -1,4 +1,4 @@
-import { Suspense, lazy, useCallback, useMemo, useState } from "react";
+import { Suspense, useCallback, useMemo, useState } from "react";
 import {
   ApiClient,
   AppApi,
@@ -6,6 +6,7 @@ import {
   LoginScreen,
   ModelApi,
   IdmApi,
+  lazyWithRetry,
   ModelValidationApi,
   ProcessApi,
   Skeleton,
@@ -28,24 +29,35 @@ import { useIdentities } from "./features/bpmn/useIdentities";
 /**
  * bpmn-js and dmn-js are large. Loading them lazily keeps the library screen — the
  * first thing anyone sees — from paying for two canvas engines it does not render.
+ *
+ * `lazyWithRetry`, not `lazy`: a plain `lazy` caches its rejected promise, so an editor
+ * whose chunk fails to load once is dead until the user reloads by hand — and the error
+ * boundary's own Retry cannot fix it. That happens for real after a deploy replaces the
+ * hashed chunk names under an open tab.
  */
-const BpmnEditor = lazy(() =>
-  import("./features/bpmn/BpmnEditor").then((m) => ({ default: m.BpmnEditor })),
+const BpmnEditor = lazyWithRetry(
+  () => import("./features/bpmn/BpmnEditor").then((m) => ({ default: m.BpmnEditor })),
+  "BpmnEditor",
 );
-const DmnEditor = lazy(() =>
-  import("./features/dmn/DmnEditor").then((m) => ({ default: m.DmnEditor })),
+const DmnEditor = lazyWithRetry(
+  () => import("./features/dmn/DmnEditor").then((m) => ({ default: m.DmnEditor })),
+  "DmnEditor",
 );
-const CmmnEditor = lazy(() =>
-  import("./features/cmmn/CmmnEditor").then((m) => ({ default: m.CmmnEditor })),
+const CmmnEditor = lazyWithRetry(
+  () => import("./features/cmmn/CmmnEditor").then((m) => ({ default: m.CmmnEditor })),
+  "CmmnEditor",
 );
-const AppBuilder = lazy(() =>
-  import("./features/apps/AppBuilder").then((m) => ({ default: m.AppBuilder })),
+const AppBuilder = lazyWithRetry(
+  () => import("./features/apps/AppBuilder").then((m) => ({ default: m.AppBuilder })),
+  "AppBuilder",
 );
-const FormBuilder = lazy(() =>
-  import("./features/forms/FormBuilder").then((m) => ({ default: m.FormBuilder })),
+const FormBuilder = lazyWithRetry(
+  () => import("./features/forms/FormBuilder").then((m) => ({ default: m.FormBuilder })),
+  "FormBuilder",
 );
-const EventEditor = lazy(() =>
-  import("./features/events/EventEditor").then((m) => ({ default: m.EventEditor })),
+const EventEditor = lazyWithRetry(
+  () => import("./features/events/EventEditor").then((m) => ({ default: m.EventEditor })),
+  "EventEditor",
 );
 
 export interface AppProps {
@@ -124,11 +136,25 @@ export function App({ apps,
    * a process not deployed yet, so every field stays free text and a failed fetch costs
    * nothing but the convenience.
    */
+  /*
+   * Null until signed in. `useIdentities` prefetches on mount, and a hook runs whether or
+   * not the render below returns the login screen — so without this it fired three
+   * unauthenticated requests, the engine answered `401` with `WWW-Authenticate: Basic`,
+   * and the browser put its own credential dialog over our login page.
+   *
+   * `ApiClient` now refuses to send a request with no credentials, which stops the class
+   * of bug rather than this instance of it. Gating here as well is not redundant: it
+   * means the app makes no pointless calls at all, rather than making them and catching
+   * the refusal.
+   */
   const idmApi = useMemo(
-    () => (idmBase ? new IdmApi(makeClient(idmBase)) : null),
-    [makeClient, idmBase],
+    () => (idmBase && session ? new IdmApi(makeClient(idmBase)) : null),
+    [makeClient, idmBase, session],
   );
-  const processApi = useMemo(() => new ProcessApi(makeClient(apiBase)), [makeClient, apiBase]);
+  const processApi = useMemo(
+    () => (session ? new ProcessApi(makeClient(apiBase)) : null),
+    [makeClient, apiBase, session],
+  );
   const identities = useIdentities(idmApi, processApi);
 
   const appApi = useMemo(() => new AppApi(makeClient(appBase)), [makeClient, appBase]);

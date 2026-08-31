@@ -16,6 +16,7 @@ import "diagram-js-minimap/assets/diagram-js-minimap.css";
 import {
   ApiError,
   Button,
+  Modal,
   ConfirmDialog,
   ErrorState,
   Skeleton,
@@ -483,20 +484,14 @@ export function BpmnEditor({
       ) : null}
 
       {sourceXml !== null ? (
-        <div className="tf-dialog-backdrop" onMouseDown={() => setSourceXml(null)}>
-          <div
-            className="tf-dialog tf-dialog--wide"
-            role="dialog"
-            aria-modal="true"
-            aria-label={t("bpmn.xmlLabel")}
-            onMouseDown={(event) => event.stopPropagation()}
-          >
-            <h2 className="tf-dialog__title">{t("bpmn.xmlTitle")}</h2>
-            <p className="tf-dialog__description">
-              Exactly what will be deployed. Read-only — edit the diagram, not the text.
-            </p>
-            <pre className="tf-source">{sourceXml}</pre>
-            <div className="tf-dialog__actions">
+        <Modal
+          open
+          size="lg"
+          title={t("bpmn.xmlTitle")}
+          description={t("bpmn.xmlDescription")}
+          onClose={() => setSourceXml(null)}
+          actions={
+            <>
               <Button
                 variant="secondary"
                 onClick={() =>
@@ -512,9 +507,11 @@ export function BpmnEditor({
               <Button variant="secondary" onClick={() => setSourceXml(null)}>
                 {t("action.close")}
               </Button>
-            </div>
-          </div>
-        </div>
+            </>
+          }
+        >
+          <pre className="tf-source">{sourceXml}</pre>
+        </Modal>
       ) : null}
 
       {loadError ? (
