@@ -75,4 +75,20 @@ class ResignationAppDefinitionTest {
                 .contains(ResignationRoles.ASE, ResignationRoles.HRM, ResignationRoles.HEAD_OF_HR,
                         ResignationRoles.ACC_DIRECTOR, ResignationRoles.GAD);
     }
+
+    @Test
+    @DisplayName("the deployer deploys it, and a restart does not stack a second copy")
+    void theDeployerDeploysItOnceOnly() {
+        ResignationAppDeployer deployer = new ResignationAppDeployer(appEngine.getAppRepositoryService());
+
+        String first = deployer.deploy();
+        String second = deployer.deploy();
+
+        assertThat(second)
+                .as("duplicate filtering means a restart redeploys nothing")
+                .isEqualTo(first);
+        assertThat(appEngine.getAppRepositoryService().createAppDefinitionQuery()
+                .appDefinitionKey("resignationSalesApp").count())
+                .isEqualTo(1);
+    }
 }

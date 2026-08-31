@@ -1,11 +1,16 @@
 # TogetherFlow — Resignation (Sales)
 
 `docs/Resignation_Process.xlsx`, modelled: one case, five processes, fourteen forms, an app
-definition and twenty sample people.
+definition and twenty-two sample people — in the engine and in the identity provider.
 
 A **content module**. Most of what it ships is not Java. `cases/` and `processes/` sit on
 Flowable's own autodeployment paths, so adding this jar to an application deploys the models;
 the Java is only the part the models cannot express.
+
+This file is the developer-facing side: why the models are shaped as they are, and what it takes
+to deploy them. **[USER_MANUAL.md](USER_MANUAL.md) is the other side** — the fifteen steps, the
+form fields, the return rules and the nineteen positions, written for the people who hold a task
+rather than for whoever builds the thing.
 
 ## What the spreadsheet says, and where it went
 
@@ -89,7 +94,7 @@ Service tasks reach these by **bean name**, so renaming them breaks the models:
 | `resignationDocuments` | Returns the reference under which a generated document is filed. |
 
 Both are stand-ins, and deliberately visible ones — a demo should show *that* the notification
-happened at the right point, not quietly mail twenty invented addresses at bpl.net. Sending
+happened at the right point, not quietly mail twenty-two invented addresses at bpl.net. Sending
 real mail means declaring your own `resignationNotifier` bean; the autoconfiguration backs off
 and no model changes.
 
@@ -115,12 +120,12 @@ file is reached by a model. Recipients matter as much as assignees here — a no
 addressed to a group that does not exist deploys, runs and reaches no one, which is how a
 recipient of `acc` survived for a while against a group called `acc-officer`.
 
-**Off by default.** Adding this jar deploys models; writing twenty people into an application's
+**Off by default.** Adding this jar deploys models; writing twenty-two people into an application's
 directory is a different kind of act and somebody has to ask for it:
 
 ```properties
 togetherflow.resignation.sample-users.enabled=true
-togetherflow.resignation.sample-users.password=demo    # one weak password, for all twenty
+togetherflow.resignation.sample-users.password=demo    # one weak password, for all of them
 ```
 
 The seeder **never overwrites**: a user or group that already exists is left exactly as it is,
@@ -129,9 +134,56 @@ with a sample one is not quietly redefined. Deleting them again is not automated
 
 If you would rather not run the seeder, the JSON is plain enough to POST to the IDM API.
 
+### Signing in as them
+
+The seeder puts these people in the *engine*. Under `TF_AUTH_MODE=oidc` — which
+[OPERATIONS.md](../../docs/ui/OPERATIONS.md) makes the production default — that is only half
+the job: the browser authenticates against the identity provider, not against Flowable, and a
+person who exists in one store and not the other signs in fine and then finds an empty inbox.
+
+So all twenty-two are also in the checked-in realm at
+[`docker/config/keycloak-flowable.json`](../../docker/config/keycloak-flowable.json), each
+under **exactly** their engine id as `username`, in a Keycloak group per position. `AuthContext`
+maps the token's `preferred_username` onto the engine user id, so that spelling is the join
+between the two stores and a single dot's difference breaks it silently.
+
+`ResignationKeycloakRealmTest` holds the two files together — every sample user present and
+enabled in the realm, addresses equal, and realm group membership covering the engine
+memberships the models assign on. It reads a file outside the module, which is unusual; the
+alternative is a realm that drifts from the identities it exists to authenticate, discovered
+by a person clicking through a task list that should not be empty.
+
+The realm password is `demo`, the same default the engine-side seeder uses, so the two agree
+without anyone reconciling them. It is stored in plain text there — Keycloak hashes it on
+import — which is the right shape for a demo realm and the wrong shape for anything else.
+
 ## Running it
 
-Add the jar to an application that runs the process **and** CMMN engines. The models deploy
+### The short way: a REST app with the case already in it
+
+`flowable-app-rest` has a `resignation` profile that adds this jar, so the whole thing builds
+into the `flowable-rest` war the four TogetherFlow apps already talk to:
+
+```bash
+./mvnw install -Pdistro,resignation
+```
+
+That deploys the case, the five processes, the fourteen form models **and** the app definition
+on startup. `resignation` rather than `togetherflow` because the latter also builds the five
+frontends, each of which downloads a pinned Node - this profile is the content module alone.
+A plain `-Pdistro` build is unchanged: the dependency is behind the profile, so it is not
+merely unused there, it is not resolved there.
+
+The twenty-two people are still off by default. To get them, and a case you can actually walk
+through:
+
+```properties
+togetherflow.resignation.sample-users.enabled=true
+```
+
+### The general way
+
+Add the jar to any application that runs the process **and** CMMN engines. The models deploy
 themselves; then start a case as a member of `sales-ase`:
 
 ```
@@ -148,20 +200,29 @@ The authenticated user becomes `aseUserId`, which is who the sales clearance and
 record are assigned to.
 
 ```bash
-./mvnw install -Ptogetherflow -pl modules/togetherflow-resignation
+./mvnw install -Presignation -pl modules/togetherflow-resignation
 ```
 
-27 tests. `SalesResignationCaseTest` walks all fifteen rows of the spreadsheet on a real engine
-and insists at every step that **exactly one** task with that key is open, so a step reached
+35 tests, and they run in CI (`togetherflow-ui.yml`, the `java` job).
+`SalesResignationCaseTest` walks all fifteen rows of the spreadsheet on a real engine and
+insists at every step that **exactly one** task with that key is open, so a step reached
 early, late or twice fails there rather than looking like a passing test of a different
 process.
 
-## Two things that will not work out of the box
+## The app definition deploys itself
 
-- **The `.app` file is not autodeployed.** `FlowableAppProperties` scans `classpath*:/apps/`
-  for `**.zip` and `**.bar` only, so a bare `.app` next to them is deployed by hand or not at
-  all. `ResignationAppDefinitionTest` proves the file is deployable; nothing here deploys it
-  for you.
+`FlowableAppProperties` scans `classpath*:/apps/` for `**.zip` and `**.bar` only, so a bare
+`.app` sitting next to them is picked up by nothing. `ResignationAppDeployer` is the hand that
+deploys it - registered by the autoconfiguration wherever an app engine is actually present,
+with duplicate filtering on so a restart does not stack a second copy.
+
+It is guarded by `@ConditionalOnClass` as well as `@ConditionalOnBean`, because the app engine
+is a `provided` dependency: a host running only the process and CMMN engines has no
+`AppRepositoryService` class at all, and must back off rather than fail to start. Turn it off
+with `togetherflow.resignation.app-definition.deploy=false`.
+
+## One thing that will not work out of the box
+
 - **The forms will not render as forms.** This fork ships `flowable-form-api` and
   `flowable-form-model` but no form *engine*, so there is nothing to deploy a `.form` into and
   no endpoint to fetch one by key (ADR 0007 says as much). The tasks carry their `formKey`

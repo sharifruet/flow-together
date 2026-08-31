@@ -235,6 +235,24 @@
 				<module>modules/togetherflow-resignation</module>
 			</modules>
 		</profile>
+		<!--
+		    The Resignation (Sales) content on its own (docs/Resignation_Process.xlsx).
+
+		    It is already in `togetherflow` above, but that profile also builds the five
+		    frontends, each of which downloads a pinned Node and runs a JS build. This profile
+		    is the content module alone, so that
+
+		        ./mvnw install -Pdistro,resignation
+
+		    builds a flowable-rest with the case in it and pays for no npm. `flowable-app-rest`
+		    has a profile of the same id that adds the dependency.
+		-->
+		<profile>
+			<id>resignation</id>
+			<modules>
+				<module>modules/togetherflow-resignation</module>
+			</modules>
+		</profile>
 		<profile>
 			<id>deploy</id>
 			<modules>

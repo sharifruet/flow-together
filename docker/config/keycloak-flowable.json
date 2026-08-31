@@ -406,6 +406,253 @@
       "realmRoles": [],
       "clientRoles": {},
       "subGroups": []
+    },
+    {
+      "id": "7c91a3df-cb14-5d17-9b58-d291f647a743",
+      "name": "sales-field",
+      "path": "/sales-field",
+      "attributes": {
+        "position": [
+          "Sales - MPE / Sr. MPE"
+        ]
+      },
+      "realmRoles": [],
+      "clientRoles": {},
+      "subGroups": []
+    },
+    {
+      "id": "e88fb150-d3cf-5027-bc51-f017e873ff92",
+      "name": "sales-ase",
+      "path": "/sales-ase",
+      "attributes": {
+        "position": [
+          "Sales - Area Sales Executive"
+        ]
+      },
+      "realmRoles": [],
+      "clientRoles": {},
+      "subGroups": []
+    },
+    {
+      "id": "bca36285-b77c-58c0-8432-7322ab28cbaa",
+      "name": "sales-rse",
+      "path": "/sales-rse",
+      "attributes": {
+        "position": [
+          "Sales - Regional Sales Executive"
+        ]
+      },
+      "realmRoles": [],
+      "clientRoles": {},
+      "subGroups": []
+    },
+    {
+      "id": "e341978a-b933-5bf0-81b6-ce9072ff7564",
+      "name": "sales-zsi",
+      "path": "/sales-zsi",
+      "attributes": {
+        "position": [
+          "Sales - Zonal Sales In-charge"
+        ]
+      },
+      "realmRoles": [],
+      "clientRoles": {},
+      "subGroups": []
+    },
+    {
+      "id": "8eef262a-c746-514c-8deb-8f43b64e286c",
+      "name": "sales-sm",
+      "path": "/sales-sm",
+      "attributes": {
+        "position": [
+          "Sales - Sales Manager"
+        ]
+      },
+      "realmRoles": [],
+      "clientRoles": {},
+      "subGroups": []
+    },
+    {
+      "id": "c827a5a7-9283-5286-a707-1aa1b2531738",
+      "name": "sales-gm",
+      "path": "/sales-gm",
+      "attributes": {
+        "position": [
+          "Sales - General Manager"
+        ]
+      },
+      "realmRoles": [],
+      "clientRoles": {},
+      "subGroups": []
+    },
+    {
+      "id": "c239e28d-b463-564b-afa2-4ffa479aac3d",
+      "name": "sales-ssr",
+      "path": "/sales-ssr",
+      "attributes": {
+        "position": [
+          "SSR (Sales Admin)"
+        ]
+      },
+      "realmRoles": [],
+      "clientRoles": {},
+      "subGroups": []
+    },
+    {
+      "id": "fcfa9cc9-1b66-57db-8c31-f7cae20589a9",
+      "name": "director-mkt",
+      "path": "/director-mkt",
+      "attributes": {
+        "position": [
+          "Director, Marketing"
+        ]
+      },
+      "realmRoles": [],
+      "clientRoles": {},
+      "subGroups": []
+    },
+    {
+      "id": "7d29a5e1-ac86-5abf-8ca7-5173f544f390",
+      "name": "sales-simu",
+      "path": "/sales-simu",
+      "attributes": {
+        "position": [
+          "SIMU"
+        ]
+      },
+      "realmRoles": [],
+      "clientRoles": {},
+      "subGroups": []
+    },
+    {
+      "id": "7991edeb-52c8-594a-888c-a0173d8a84f6",
+      "name": "sales-ib",
+      "path": "/sales-ib",
+      "attributes": {
+        "position": [
+          "IB"
+        ]
+      },
+      "realmRoles": [],
+      "clientRoles": {},
+      "subGroups": []
+    },
+    {
+      "id": "5d8980fb-8284-5708-a122-8452c365f2dd",
+      "name": "sbm",
+      "path": "/sbm",
+      "attributes": {
+        "position": [
+          "SBM"
+        ]
+      },
+      "realmRoles": [],
+      "clientRoles": {},
+      "subGroups": []
+    },
+    {
+      "id": "feae6bb5-9685-5eea-b71d-43cfbbf7d1d7",
+      "name": "gad",
+      "path": "/gad",
+      "attributes": {
+        "position": [
+          "GAD (Motorcycle)"
+        ]
+      },
+      "realmRoles": [],
+      "clientRoles": {},
+      "subGroups": []
+    },
+    {
+      "id": "17b418e9-142a-57eb-911f-cf2ce8a5d460",
+      "name": "fca",
+      "path": "/fca",
+      "attributes": {
+        "position": [
+          "FCA"
+        ]
+      },
+      "realmRoles": [],
+      "clientRoles": {},
+      "subGroups": []
+    },
+    {
+      "id": "9a2f3ffe-4dc8-56cf-aafc-4122a4ae46ce",
+      "name": "hrm",
+      "path": "/hrm",
+      "attributes": {
+        "position": [
+          "HR Management"
+        ]
+      },
+      "realmRoles": [],
+      "clientRoles": {},
+      "subGroups": []
+    },
+    {
+      "id": "64d4a5b2-f17b-51e0-9877-c3dca0f52e09",
+      "name": "head-of-hr",
+      "path": "/head-of-hr",
+      "attributes": {
+        "position": [
+          "Head of HR"
+        ]
+      },
+      "realmRoles": [],
+      "clientRoles": {},
+      "subGroups": []
+    },
+    {
+      "id": "0f2cbe93-99e6-5797-89d5-6206fd508ee6",
+      "name": "acc-officer",
+      "path": "/acc-officer",
+      "attributes": {
+        "position": [
+          "Accounts - Officer"
+        ]
+      },
+      "realmRoles": [],
+      "clientRoles": {},
+      "subGroups": []
+    },
+    {
+      "id": "56b35343-39eb-5a44-93a5-406b5ac0edd3",
+      "name": "acc-manager",
+      "path": "/acc-manager",
+      "attributes": {
+        "position": [
+          "Accounts - Manager"
+        ]
+      },
+      "realmRoles": [],
+      "clientRoles": {},
+      "subGroups": []
+    },
+    {
+      "id": "8b842522-3f6e-5957-bf9f-f6d01cadd001",
+      "name": "acc-director",
+      "path": "/acc-director",
+      "attributes": {
+        "position": [
+          "Accounts - Director"
+        ]
+      },
+      "realmRoles": [],
+      "clientRoles": {},
+      "subGroups": []
+    },
+    {
+      "id": "f3e3cfd5-1039-58cb-a1fc-133d8c503772",
+      "name": "reception",
+      "path": "/reception",
+      "attributes": {
+        "position": [
+          "Reception desk"
+        ]
+      },
+      "realmRoles": [],
+      "clientRoles": {},
+      "subGroups": []
     }
   ],
   "defaultRoles": [
@@ -559,6 +806,776 @@
       "notBefore": 0,
       "groups": [
         "/flowableUsers"
+      ]
+    },
+    {
+      "id": "a680a99c-b354-5e06-82d7-067711dc17f4",
+      "username": "rakib.hasan",
+      "enabled": true,
+      "totp": false,
+      "emailVerified": true,
+      "firstName": "Rakib",
+      "lastName": "Hasan",
+      "email": "rakib.hasan@bpl.net",
+      "credentials": [
+        {
+          "type": "password",
+          "value": "demo",
+          "temporary": false
+        }
+      ],
+      "disableableCredentialTypes": [],
+      "requiredActions": [],
+      "realmRoles": [
+        "access-task",
+        "offline_access",
+        "uma_authorization"
+      ],
+      "clientRoles": {
+        "account": [
+          "view-profile",
+          "manage-account"
+        ]
+      },
+      "notBefore": 0,
+      "groups": [
+        "/flowableUsers",
+        "/sales-field"
+      ]
+    },
+    {
+      "id": "af5b10eb-4714-5ee7-b21e-5d7561f8c4ed",
+      "username": "nusrat.jahan",
+      "enabled": true,
+      "totp": false,
+      "emailVerified": true,
+      "firstName": "Nusrat",
+      "lastName": "Jahan",
+      "email": "nusrat.jahan@bpl.net",
+      "credentials": [
+        {
+          "type": "password",
+          "value": "demo",
+          "temporary": false
+        }
+      ],
+      "disableableCredentialTypes": [],
+      "requiredActions": [],
+      "realmRoles": [
+        "access-task",
+        "offline_access",
+        "uma_authorization"
+      ],
+      "clientRoles": {
+        "account": [
+          "view-profile",
+          "manage-account"
+        ]
+      },
+      "notBefore": 0,
+      "groups": [
+        "/flowableUsers",
+        "/sales-field"
+      ]
+    },
+    {
+      "id": "e0b4db21-8b1d-5f9d-a892-df8b28e5c292",
+      "username": "imran.kabir",
+      "enabled": true,
+      "totp": false,
+      "emailVerified": true,
+      "firstName": "Imran",
+      "lastName": "Kabir",
+      "email": "imran.kabir@bpl.net",
+      "credentials": [
+        {
+          "type": "password",
+          "value": "demo",
+          "temporary": false
+        }
+      ],
+      "disableableCredentialTypes": [],
+      "requiredActions": [],
+      "realmRoles": [
+        "access-task",
+        "offline_access",
+        "uma_authorization"
+      ],
+      "clientRoles": {
+        "account": [
+          "view-profile",
+          "manage-account"
+        ]
+      },
+      "notBefore": 0,
+      "groups": [
+        "/flowableUsers",
+        "/sales-ase"
+      ]
+    },
+    {
+      "id": "533c78f8-fbee-5009-b5a2-c9ad451b82e6",
+      "username": "shakil.ahmed",
+      "enabled": true,
+      "totp": false,
+      "emailVerified": true,
+      "firstName": "Shakil",
+      "lastName": "Ahmed",
+      "email": "shakil.ahmed@bpl.net",
+      "credentials": [
+        {
+          "type": "password",
+          "value": "demo",
+          "temporary": false
+        }
+      ],
+      "disableableCredentialTypes": [],
+      "requiredActions": [],
+      "realmRoles": [
+        "access-task",
+        "offline_access",
+        "uma_authorization"
+      ],
+      "clientRoles": {
+        "account": [
+          "view-profile",
+          "manage-account"
+        ]
+      },
+      "notBefore": 0,
+      "groups": [
+        "/flowableUsers",
+        "/sales-rse"
+      ]
+    },
+    {
+      "id": "ee0e80bc-4143-5c30-ae96-3e23ae59c729",
+      "username": "tanvir.alam",
+      "enabled": true,
+      "totp": false,
+      "emailVerified": true,
+      "firstName": "Tanvir",
+      "lastName": "Alam",
+      "email": "tanvir.alam@bpl.net",
+      "credentials": [
+        {
+          "type": "password",
+          "value": "demo",
+          "temporary": false
+        }
+      ],
+      "disableableCredentialTypes": [],
+      "requiredActions": [],
+      "realmRoles": [
+        "access-task",
+        "offline_access",
+        "uma_authorization"
+      ],
+      "clientRoles": {
+        "account": [
+          "view-profile",
+          "manage-account"
+        ]
+      },
+      "notBefore": 0,
+      "groups": [
+        "/flowableUsers",
+        "/sales-zsi"
+      ]
+    },
+    {
+      "id": "8a4be38e-33aa-50e3-989a-7c89e7e51300",
+      "username": "mahmud.hossain",
+      "enabled": true,
+      "totp": false,
+      "emailVerified": true,
+      "firstName": "Mahmud",
+      "lastName": "Hossain",
+      "email": "mahmud.hossain@bpl.net",
+      "credentials": [
+        {
+          "type": "password",
+          "value": "demo",
+          "temporary": false
+        }
+      ],
+      "disableableCredentialTypes": [],
+      "requiredActions": [],
+      "realmRoles": [
+        "access-task",
+        "offline_access",
+        "uma_authorization"
+      ],
+      "clientRoles": {
+        "account": [
+          "view-profile",
+          "manage-account"
+        ]
+      },
+      "notBefore": 0,
+      "groups": [
+        "/flowableUsers",
+        "/sales-sm"
+      ]
+    },
+    {
+      "id": "fef5a2ab-296e-5fd9-8097-fe007a44a5c3",
+      "username": "farhana.akter",
+      "enabled": true,
+      "totp": false,
+      "emailVerified": true,
+      "firstName": "Farhana",
+      "lastName": "Akter",
+      "email": "farhana.akter@bpl.net",
+      "credentials": [
+        {
+          "type": "password",
+          "value": "demo",
+          "temporary": false
+        }
+      ],
+      "disableableCredentialTypes": [],
+      "requiredActions": [],
+      "realmRoles": [
+        "access-task",
+        "offline_access",
+        "uma_authorization"
+      ],
+      "clientRoles": {
+        "account": [
+          "view-profile",
+          "manage-account"
+        ]
+      },
+      "notBefore": 0,
+      "groups": [
+        "/flowableUsers",
+        "/sales-gm"
+      ]
+    },
+    {
+      "id": "4abea6b7-b9a8-549c-b923-18244b53f4f3",
+      "username": "sabbir.rahman",
+      "enabled": true,
+      "totp": false,
+      "emailVerified": true,
+      "firstName": "Sabbir",
+      "lastName": "Rahman",
+      "email": "sabbir.rahman@bpl.net",
+      "credentials": [
+        {
+          "type": "password",
+          "value": "demo",
+          "temporary": false
+        }
+      ],
+      "disableableCredentialTypes": [],
+      "requiredActions": [],
+      "realmRoles": [
+        "access-task",
+        "offline_access",
+        "uma_authorization"
+      ],
+      "clientRoles": {
+        "account": [
+          "view-profile",
+          "manage-account"
+        ]
+      },
+      "notBefore": 0,
+      "groups": [
+        "/flowableUsers",
+        "/sales-ssr"
+      ]
+    },
+    {
+      "id": "d06b8667-e9c4-58ea-b9a2-43da505b8fb0",
+      "username": "kamrul.islam",
+      "enabled": true,
+      "totp": false,
+      "emailVerified": true,
+      "firstName": "Kamrul",
+      "lastName": "Islam",
+      "email": "kamrul.islam@bpl.net",
+      "credentials": [
+        {
+          "type": "password",
+          "value": "demo",
+          "temporary": false
+        }
+      ],
+      "disableableCredentialTypes": [],
+      "requiredActions": [],
+      "realmRoles": [
+        "access-task",
+        "offline_access",
+        "uma_authorization"
+      ],
+      "clientRoles": {
+        "account": [
+          "view-profile",
+          "manage-account"
+        ]
+      },
+      "notBefore": 0,
+      "groups": [
+        "/flowableUsers",
+        "/director-mkt"
+      ]
+    },
+    {
+      "id": "0ba7b13d-d2b4-5c5c-a458-4207872b7682",
+      "username": "nazmul.haque",
+      "enabled": true,
+      "totp": false,
+      "emailVerified": true,
+      "firstName": "Nazmul",
+      "lastName": "Haque",
+      "email": "nazmul.haque@bpl.net",
+      "credentials": [
+        {
+          "type": "password",
+          "value": "demo",
+          "temporary": false
+        }
+      ],
+      "disableableCredentialTypes": [],
+      "requiredActions": [],
+      "realmRoles": [
+        "access-task",
+        "offline_access",
+        "uma_authorization"
+      ],
+      "clientRoles": {
+        "account": [
+          "view-profile",
+          "manage-account"
+        ]
+      },
+      "notBefore": 0,
+      "groups": [
+        "/flowableUsers",
+        "/sales-simu"
+      ]
+    },
+    {
+      "id": "4b52fb56-8f4d-5f43-8ef1-4982ddf70559",
+      "username": "rumana.parvin",
+      "enabled": true,
+      "totp": false,
+      "emailVerified": true,
+      "firstName": "Rumana",
+      "lastName": "Parvin",
+      "email": "rumana.parvin@bpl.net",
+      "credentials": [
+        {
+          "type": "password",
+          "value": "demo",
+          "temporary": false
+        }
+      ],
+      "disableableCredentialTypes": [],
+      "requiredActions": [],
+      "realmRoles": [
+        "access-task",
+        "offline_access",
+        "uma_authorization"
+      ],
+      "clientRoles": {
+        "account": [
+          "view-profile",
+          "manage-account"
+        ]
+      },
+      "notBefore": 0,
+      "groups": [
+        "/flowableUsers",
+        "/sales-ib"
+      ]
+    },
+    {
+      "id": "bce74bcf-c882-577d-85b9-2ee8068c9340",
+      "username": "jahid.hasan",
+      "enabled": true,
+      "totp": false,
+      "emailVerified": true,
+      "firstName": "Jahid",
+      "lastName": "Hasan",
+      "email": "jahid.hasan@bpl.net",
+      "credentials": [
+        {
+          "type": "password",
+          "value": "demo",
+          "temporary": false
+        }
+      ],
+      "disableableCredentialTypes": [],
+      "requiredActions": [],
+      "realmRoles": [
+        "access-task",
+        "offline_access",
+        "uma_authorization"
+      ],
+      "clientRoles": {
+        "account": [
+          "view-profile",
+          "manage-account"
+        ]
+      },
+      "notBefore": 0,
+      "groups": [
+        "/flowableUsers",
+        "/sbm"
+      ]
+    },
+    {
+      "id": "1d05501d-91c1-50df-8b02-fdd296b5aaf1",
+      "username": "moinul.chowdhury",
+      "enabled": true,
+      "totp": false,
+      "emailVerified": true,
+      "firstName": "Moinul",
+      "lastName": "Chowdhury",
+      "email": "moinul.chowdhury@bpl.net",
+      "credentials": [
+        {
+          "type": "password",
+          "value": "demo",
+          "temporary": false
+        }
+      ],
+      "disableableCredentialTypes": [],
+      "requiredActions": [],
+      "realmRoles": [
+        "access-task",
+        "offline_access",
+        "uma_authorization"
+      ],
+      "clientRoles": {
+        "account": [
+          "view-profile",
+          "manage-account"
+        ]
+      },
+      "notBefore": 0,
+      "groups": [
+        "/flowableUsers",
+        "/gad"
+      ]
+    },
+    {
+      "id": "c9f870b6-f12e-5482-a62e-2b556901e7b9",
+      "username": "arif.mahmud",
+      "enabled": true,
+      "totp": false,
+      "emailVerified": true,
+      "firstName": "Arif",
+      "lastName": "Mahmud",
+      "email": "arif.mahmud@bpl.net",
+      "credentials": [
+        {
+          "type": "password",
+          "value": "demo",
+          "temporary": false
+        }
+      ],
+      "disableableCredentialTypes": [],
+      "requiredActions": [],
+      "realmRoles": [
+        "access-task",
+        "offline_access",
+        "uma_authorization"
+      ],
+      "clientRoles": {
+        "account": [
+          "view-profile",
+          "manage-account"
+        ]
+      },
+      "notBefore": 0,
+      "groups": [
+        "/flowableUsers",
+        "/fca"
+      ]
+    },
+    {
+      "id": "4b066bd1-403a-5317-887c-8f240c665413",
+      "username": "shirin.akhter",
+      "enabled": true,
+      "totp": false,
+      "emailVerified": true,
+      "firstName": "Shirin",
+      "lastName": "Akhter",
+      "email": "shirin.akhter@bpl.net",
+      "credentials": [
+        {
+          "type": "password",
+          "value": "demo",
+          "temporary": false
+        }
+      ],
+      "disableableCredentialTypes": [],
+      "requiredActions": [],
+      "realmRoles": [
+        "access-task",
+        "offline_access",
+        "uma_authorization"
+      ],
+      "clientRoles": {
+        "account": [
+          "view-profile",
+          "manage-account"
+        ]
+      },
+      "notBefore": 0,
+      "groups": [
+        "/flowableUsers",
+        "/hrm"
+      ]
+    },
+    {
+      "id": "d20cafec-6439-5793-821e-09d77f5b709b",
+      "username": "ismail.jamil",
+      "enabled": true,
+      "totp": false,
+      "emailVerified": true,
+      "firstName": "Ismail",
+      "lastName": "Jamil",
+      "email": "ismail.jamil@bpl.net",
+      "credentials": [
+        {
+          "type": "password",
+          "value": "demo",
+          "temporary": false
+        }
+      ],
+      "disableableCredentialTypes": [],
+      "requiredActions": [],
+      "realmRoles": [
+        "access-task",
+        "offline_access",
+        "uma_authorization"
+      ],
+      "clientRoles": {
+        "account": [
+          "view-profile",
+          "manage-account"
+        ]
+      },
+      "notBefore": 0,
+      "groups": [
+        "/flowableUsers",
+        "/hrm"
+      ]
+    },
+    {
+      "id": "290c4a12-0703-5b3a-a30a-3155bd7382ff",
+      "username": "rezaul.karim",
+      "enabled": true,
+      "totp": false,
+      "emailVerified": true,
+      "firstName": "Rezaul",
+      "lastName": "Karim",
+      "email": "rezaul.karim@bpl.net",
+      "credentials": [
+        {
+          "type": "password",
+          "value": "demo",
+          "temporary": false
+        }
+      ],
+      "disableableCredentialTypes": [],
+      "requiredActions": [],
+      "realmRoles": [
+        "access-task",
+        "offline_access",
+        "uma_authorization"
+      ],
+      "clientRoles": {
+        "account": [
+          "view-profile",
+          "manage-account"
+        ]
+      },
+      "notBefore": 0,
+      "groups": [
+        "/flowableUsers",
+        "/head-of-hr"
+      ]
+    },
+    {
+      "id": "f6a34371-b290-5a1a-a085-99760c01a4a2",
+      "username": "pritam.saha",
+      "enabled": true,
+      "totp": false,
+      "emailVerified": true,
+      "firstName": "Pritam",
+      "lastName": "Saha",
+      "email": "pritam.saha@bpl.net",
+      "credentials": [
+        {
+          "type": "password",
+          "value": "demo",
+          "temporary": false
+        }
+      ],
+      "disableableCredentialTypes": [],
+      "requiredActions": [],
+      "realmRoles": [
+        "access-task",
+        "offline_access",
+        "uma_authorization"
+      ],
+      "clientRoles": {
+        "account": [
+          "view-profile",
+          "manage-account"
+        ]
+      },
+      "notBefore": 0,
+      "groups": [
+        "/flowableUsers",
+        "/acc-officer"
+      ]
+    },
+    {
+      "id": "6f3d0b62-2dd3-5567-a574-94686cd1f3a3",
+      "username": "tanjila.rahman",
+      "enabled": true,
+      "totp": false,
+      "emailVerified": true,
+      "firstName": "Tanjila",
+      "lastName": "Rahman",
+      "email": "tanjila.rahman@bpl.net",
+      "credentials": [
+        {
+          "type": "password",
+          "value": "demo",
+          "temporary": false
+        }
+      ],
+      "disableableCredentialTypes": [],
+      "requiredActions": [],
+      "realmRoles": [
+        "access-task",
+        "offline_access",
+        "uma_authorization"
+      ],
+      "clientRoles": {
+        "account": [
+          "view-profile",
+          "manage-account"
+        ]
+      },
+      "notBefore": 0,
+      "groups": [
+        "/flowableUsers",
+        "/acc-officer"
+      ]
+    },
+    {
+      "id": "c781f30b-e94c-5f3b-a7ee-68e8ed4102d8",
+      "username": "habibur.rahman",
+      "enabled": true,
+      "totp": false,
+      "emailVerified": true,
+      "firstName": "Habibur",
+      "lastName": "Rahman",
+      "email": "habibur.rahman@bpl.net",
+      "credentials": [
+        {
+          "type": "password",
+          "value": "demo",
+          "temporary": false
+        }
+      ],
+      "disableableCredentialTypes": [],
+      "requiredActions": [],
+      "realmRoles": [
+        "access-task",
+        "offline_access",
+        "uma_authorization"
+      ],
+      "clientRoles": {
+        "account": [
+          "view-profile",
+          "manage-account"
+        ]
+      },
+      "notBefore": 0,
+      "groups": [
+        "/flowableUsers",
+        "/acc-manager"
+      ]
+    },
+    {
+      "id": "bd3754ca-00b0-5f5a-90e5-14efbd84c15b",
+      "username": "shamima.nasrin",
+      "enabled": true,
+      "totp": false,
+      "emailVerified": true,
+      "firstName": "Shamima",
+      "lastName": "Nasrin",
+      "email": "shamima.nasrin@bpl.net",
+      "credentials": [
+        {
+          "type": "password",
+          "value": "demo",
+          "temporary": false
+        }
+      ],
+      "disableableCredentialTypes": [],
+      "requiredActions": [],
+      "realmRoles": [
+        "access-task",
+        "offline_access",
+        "uma_authorization"
+      ],
+      "clientRoles": {
+        "account": [
+          "view-profile",
+          "manage-account"
+        ]
+      },
+      "notBefore": 0,
+      "groups": [
+        "/flowableUsers",
+        "/acc-director"
+      ]
+    },
+    {
+      "id": "97485dd6-24eb-5598-ba98-cb2803fa2aa5",
+      "username": "reception.desk",
+      "enabled": true,
+      "totp": false,
+      "emailVerified": true,
+      "firstName": "Reception",
+      "lastName": "Desk",
+      "email": "reception@bpl.net",
+      "credentials": [
+        {
+          "type": "password",
+          "value": "demo",
+          "temporary": false
+        }
+      ],
+      "disableableCredentialTypes": [],
+      "requiredActions": [],
+      "realmRoles": [
+        "access-task",
+        "offline_access",
+        "uma_authorization"
+      ],
+      "clientRoles": {
+        "account": [
+          "view-profile",
+          "manage-account"
+        ]
+      },
+      "notBefore": 0,
+      "groups": [
+        "/flowableUsers",
+        "/reception"
       ]
     }
   ],

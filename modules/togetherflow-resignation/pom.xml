@@ -57,6 +57,17 @@
             <artifactId>flowable-engine</artifactId>
             <scope>provided</scope>
         </dependency>
+        <!--
+            For the one artefact Flowable's autodeployment does not pick up: the `.app`
+            definition, which `ResignationAppDeployer` deploys itself. `provided` and guarded
+            by @ConditionalOnClass, so a host running only the process and CMMN engines is
+            unaffected - it simply does not get the app definition it has nowhere to put.
+        -->
+        <dependency>
+            <groupId>org.flowable</groupId>
+            <artifactId>flowable-app-engine-api</artifactId>
+            <scope>provided</scope>
+        </dependency>
         <dependency>
             <groupId>com.fasterxml.jackson.core</groupId>
             <artifactId>jackson-databind</artifactId>

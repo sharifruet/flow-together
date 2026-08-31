@@ -15,10 +15,12 @@ package org.togetherflow.resignation;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.Mockito.mock;
 
+import org.flowable.app.api.AppRepositoryService;
 import org.flowable.engine.IdentityService;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.springframework.boot.autoconfigure.AutoConfigurations;
+import org.springframework.boot.test.context.FilteredClassLoader;
 import org.springframework.boot.test.context.runner.ApplicationContextRunner;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
@@ -77,6 +79,52 @@ class ResignationAutoConfigurationTest {
     void doesNotSeedWithoutAnIdentityService() {
         runner.withPropertyValues("togetherflow.resignation.sample-users.enabled=true")
                 .run(context -> assertThat(context).doesNotHaveBean("resignationSampleIdentityRunner"));
+    }
+
+    @Test
+    @DisplayName("an app engine on the classpath gets the app definition deployed")
+    void deploysTheAppDefinitionWhereThereIsAnAppEngine() {
+        runner.withUserConfiguration(AppRepositoryServiceConfiguration.class)
+                .run(context -> assertThat(context).hasBean("resignationAppDefinitionRunner"));
+    }
+
+    @Test
+    @DisplayName("a host that runs no app engine is left alone")
+    void doesNotDeployTheAppDefinitionWithoutAnAppEngine() {
+        runner.run(context -> assertThat(context).doesNotHaveBean("resignationAppDefinitionRunner"));
+    }
+
+    /**
+     * The app engine is a {@code provided} dependency, so the interesting case is not "no bean"
+     * but "no class". Without the {@code @ConditionalOnClass} guard this run fails to load the
+     * autoconfiguration at all rather than backing off, which is the whole reason it is there.
+     */
+    @Test
+    @DisplayName("a host without the app engine on its classpath still gets the rest")
+    void backsOffCleanlyWhenTheAppEngineIsNotOnTheClasspath() {
+        runner.withClassLoader(new FilteredClassLoader(AppRepositoryService.class))
+                .run(context -> {
+                    assertThat(context).hasNotFailed();
+                    assertThat(context).hasBean("resignationNotifier").hasBean("resignationDocuments");
+                    assertThat(context).doesNotHaveBean("resignationAppDefinitionRunner");
+                });
+    }
+
+    @Test
+    @DisplayName("deploying the app definition can be turned off")
+    void doesNotDeployTheAppDefinitionWhenTurnedOff() {
+        runner.withUserConfiguration(AppRepositoryServiceConfiguration.class)
+                .withPropertyValues("togetherflow.resignation.app-definition.deploy=false")
+                .run(context -> assertThat(context).doesNotHaveBean("resignationAppDefinitionRunner"));
+    }
+
+    @Configuration(proxyBeanMethods = false)
+    static class AppRepositoryServiceConfiguration {
+
+        @Bean
+        AppRepositoryService appRepositoryService() {
+            return mock(AppRepositoryService.class);
+        }
     }
 
     @Configuration(proxyBeanMethods = false)

@@ -412,6 +412,31 @@
     </build>
 
     <profiles>
+        <!--
+            The Resignation (Sales) content (docs/Resignation_Process.xlsx). Behind the same
+            `resignation` profile that puts the module in the reactor, so a plain `-Pdistro`
+            build of this app is byte-for-byte what it was: the dependency is not merely
+            unused there, it is not resolved there.
+
+            Build both together - `./mvnw install -Pdistro,resignation` - and Maven orders
+            togetherflow-resignation ahead of this module itself.
+
+            What it adds to the running app: the case, the five processes and the fourteen
+            form models autodeploy from the jar; `ResignationAppDeployer` deploys the app
+            definition, which Flowable's own autodeployment does not scan for. The twenty-two
+            sample people stay off until `togetherflow.resignation.sample-users.enabled` says
+            otherwise - see modules/togetherflow-resignation/README.md.
+        -->
+        <profile>
+            <id>resignation</id>
+            <dependencies>
+                <dependency>
+                    <groupId>org.flowable</groupId>
+                    <artifactId>togetherflow-resignation</artifactId>
+                    <version>${project.version}</version>
+                </dependency>
+            </dependencies>
+        </profile>
         <profile>
             <id>postgresql</id>
             <dependencies>

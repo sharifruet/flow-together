@@ -12,9 +12,11 @@
  */
 package org.togetherflow.resignation;
 
+import org.flowable.app.api.AppRepositoryService;
 import org.flowable.engine.IdentityService;
 import org.springframework.boot.autoconfigure.AutoConfiguration;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnBean;
+import org.springframework.boot.autoconfigure.condition.ConditionalOnClass;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnMissingBean;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.boot.context.properties.EnableConfigurationProperties;
@@ -61,5 +63,25 @@ public class ResignationAutoConfiguration {
     public CommandLineRunner resignationSampleIdentityRunner(IdentityService identityService,
             ResignationSampleDataProperties properties) {
         return args -> new ResignationSampleIdentity(identityService, properties.getPassword()).apply();
+    }
+
+    /**
+     * Deploys the app definition, which Flowable's own autodeployment does not pick up.
+     *
+     * <p>{@link ConditionalOnClass} as well as {@link ConditionalOnBean}: the app engine is a
+     * {@code provided} dependency here, so a host that runs only the process and CMMN engines
+     * has no {@code AppRepositoryService} class at all, and a bean method mentioning one would
+     * fail to load rather than back off quietly.
+     *
+     * <p>A {@link CommandLineRunner} for the same reason as the seeder above - the repository
+     * tables belong to the engine, and this has to run after the engine has built them.
+     */
+    @Bean
+    @ConditionalOnClass(AppRepositoryService.class)
+    @ConditionalOnBean(AppRepositoryService.class)
+    @ConditionalOnProperty(prefix = "togetherflow.resignation.app-definition", name = "deploy",
+            havingValue = "true", matchIfMissing = true)
+    public CommandLineRunner resignationAppDefinitionRunner(AppRepositoryService appRepositoryService) {
+        return args -> new ResignationAppDeployer(appRepositoryService).deploy();
     }
 }
