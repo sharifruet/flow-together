@@ -12,13 +12,14 @@ import {
   ConfirmDialog,
   DataTable,
   DropdownMenu,
-  Modal,
   EmptyState,
   Icon,
+  Modal,
   NoResultsState,
   PageHeader,
   Pagination,
   TextInput,
+  useWorkspace,
   formatDateTime,
   useAsync,
   useI18n,
@@ -70,6 +71,17 @@ export interface ModelLibraryProps {
 
 export function ModelLibrary({ modelApi, onOpen, onCount, refreshToken }: ModelLibraryProps) {
   const { t, locale } = useI18n();
+  /*
+   * What the caller may do in the active workspace (ADR 0017). Hiding an action is a
+   * courtesy — the workspace service refuses it server-side either way — but offering
+   * someone a Delete that always fails is worse than not offering it.
+   *
+   * With the module absent every capability answers true, so a deployment without
+   * workspaces is unchanged.
+   */
+  const { can, workspaceId } = useWorkspace();
+  const mayEdit = can("EDIT");
+  const mayDelete = can("DELETE");
   const { push } = useToast();
   const list = useListState<LibraryView>({
     defaults: DEFAULT_VIEW,
@@ -114,7 +126,14 @@ export function ModelLibrary({ modelApi, onOpen, onCount, refreshToken }: ModelL
 
   const { data, error, loading, refetch } = useAsync(
     (signal) => modelApi.list(query, signal),
-    [modelApi, query, reloadToken, refreshToken],
+    /*
+     * `workspaceId` is a dependency even though it is not in `query`: the guard filters
+     * the response by the caller's role in the active workspace (ADR 0017), so switching
+     * workspace changes what comes back from an identical request. The API client reads
+     * it through a ref, precisely so that *this* list refetches on a switch and the
+     * workspace-independent queries elsewhere do not.
+     */
+    [modelApi, query, reloadToken, refreshToken, workspaceId],
   );
 
   useEffect(() => {
@@ -287,6 +306,7 @@ export function ModelLibrary({ modelApi, onOpen, onCount, refreshToken }: ModelL
             {/* W2.3 (I5): a flag in metaInfo. The engine never reads metaInfo, which is
                 what makes it usable for this — and why W3.1 must not use it for
                 workspaces, where the lack of enforcement would matter. */}
+            {mayEdit ? (
             <Button
               variant="ghost"
               disabled={busy}
@@ -304,21 +324,26 @@ export function ModelLibrary({ modelApi, onOpen, onCount, refreshToken }: ModelL
             >
               {readMeta(model).template ? t("library.template.clear") : t("library.template.mark")}
             </Button>
+            ) : null}
             <Button variant="ghost" disabled={busy} onClick={() => void exportOne(model)}>
               {t("action.export")}
             </Button>
-            <Button variant="ghost" disabled={busy} onClick={() => void duplicate(model)}>
-              {t("action.duplicate")}
-            </Button>
-            <Button variant="ghost" onClick={() => setPendingDelete(model)}>
-              {t("action.delete")}
-            </Button>
+            {mayEdit ? (
+              <Button variant="ghost" disabled={busy} onClick={() => void duplicate(model)}>
+                {t("action.duplicate")}
+              </Button>
+            ) : null}
+            {mayDelete ? (
+              <Button variant="ghost" onClick={() => setPendingDelete(model)}>
+                {t("action.delete")}
+              </Button>
+            ) : null}
           </div>
         ),
       },
     ],
     // eslint-disable-next-line react-hooks/exhaustive-deps
-    [busy, onOpen],
+    [busy, onOpen, mayEdit, mayDelete],
   );
 
   return (
@@ -334,6 +359,8 @@ export function ModelLibrary({ modelApi, onOpen, onCount, refreshToken }: ModelL
           ) : undefined
         }
         actions={
+          <>
+          {mayEdit ? (
           <>
           <Button onClick={() => setCreating("bpmn")}>
             <Icon name="add" size={16} />
@@ -375,6 +402,8 @@ export function ModelLibrary({ modelApi, onOpen, onCount, refreshToken }: ModelL
               if (file) void importFile(file);
             }}
           />
+          </>
+          ) : null}
           </>
         }
       />
@@ -678,14 +707,22 @@ function NewModelDialog({
    * tied back to it by id. `form="…"` on a submit button is what makes Enter-to-submit and
    * the button do the same thing when they are not nested.
    */
-  const formId = "tf-new-model-form";
 
   return (
+    /*
+     * The shared `Modal` (W1.4), not hand-rolled `.tf-dialog` markup.
+     *
+     * This wrote that markup directly, and the classes it named were removed when `Modal`
+     * replaced them — so the "dialog" rendered as an ordinary block at the very bottom of
+     * the page, under the table and the pager. Clicking New case looked like nothing had
+     * happened, because with more than a couple of models the form was below the fold and
+     * focus never moved. F6 asked for exactly one modal implementation for this reason.
+     */
     <Modal
       open
-      size="sm"
       title={t(`library.newTitle.${kind}`)}
-      // Typed-in work: a stray backdrop click must not discard it.
+      size="sm"
+      // Typed input: a stray backdrop click must not discard it.
       dismissOnBackdrop={false}
       onClose={onCancel}
       actions={
@@ -693,14 +730,14 @@ function NewModelDialog({
           <Button variant="secondary" onClick={onCancel} disabled={busy}>
             {t("dialog.cancel")}
           </Button>
-          <Button type="submit" form={formId} loading={busy}>
+          <Button type="submit" form={FORM_ID} loading={busy}>
             {t("library.createAndOpen")}
           </Button>
         </>
       }
     >
       <form
-        id={formId}
+        id={FORM_ID}
         noValidate
         onSubmit={(event) => {
           event.preventDefault();
@@ -738,6 +775,9 @@ function NewModelDialog({
     </Modal>
   );
 }
+
+/** Ties the Modal's footer submit button to the form it sits outside of. */
+const FORM_ID = "tf-new-model-form";
 
 export function slugify(value: string): string {
   const cleaned = value

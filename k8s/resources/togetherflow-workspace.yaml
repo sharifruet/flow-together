@@ -1,0 +1,123 @@
+# TogetherFlow Workspace — optional workspaces and design-time permissions (ADR 0017).
+#
+# Apply this ONLY where Design should have workspaces. Without it Design shows one flat
+# model library and no switcher, which is what every deployment had before it existed.
+#
+# IMPORTANT, and the whole reason this service is worth deploying: the guard holds only
+# where `flowable-rest` is NOT independently reachable by the browser. The Service below
+# is what Design should be pointed at (TF_WORKSPACE_BASE), and the engine's own Service
+# should stay cluster-internal. Publish both and a determined user simply calls the
+# engine directly — see the module README.
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: togetherflow-workspace-config
+  labels:
+    app: togetherflow-workspace
+data:
+  # Reachable from this pod, not from the browser. That asymmetry is the deployment's
+  # job; nothing in the service can enforce it.
+  TOGETHERFLOW_WORKSPACE_FLOWABLEBASEURL: "http://flowable-rest:8080/flowable-rest/service"
+  # Models predating this service belong to no workspace. Visible by default: failing
+  # closed would make an existing library vanish on upgrade. Set false once assigned.
+  TOGETHERFLOW_WORKSPACE_UNASSIGNEDMODELSVISIBLE: "true"
+  SPRING_DATASOURCE_URL: "jdbc:postgresql://postgres:5432/flowable"
+  SPRING_DATASOURCE_DRIVERCLASSNAME: "org.postgresql.Driver"
+  # Set for OIDC; leaving it unset falls back to HTTP Basic, which ADR 0006 fences to
+  # local development only.
+  SPRING_SECURITY_OAUTH2_RESOURCESERVER_JWT_ISSUERURI: ""
+  # Git connectivity (ADR 0018). Off by default; the panel is absent rather than empty.
+  TOGETHERFLOW_WORKSPACE_GIT_ENABLED: "false"
+  TOGETHERFLOW_WORKSPACE_GIT_WORKDIR: "/var/lib/togetherflow/git"
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: togetherflow-workspace
+  labels:
+    app: togetherflow-workspace
+spec:
+  # Stateless: everything it knows is in the database, so replicas need no coordination
+  # (§13.4 Statelessness).
+  replicas: 2
+  selector:
+    matchLabels:
+      app: togetherflow-workspace
+  template:
+    metadata:
+      labels:
+        app: togetherflow-workspace
+    spec:
+      securityContext:
+        runAsNonRoot: true
+      containers:
+        - name: togetherflow-workspace
+          image: flowable/togetherflow-workspace:latest
+          ports:
+            - name: http
+              containerPort: 8092
+          envFrom:
+            - configMapRef:
+                name: togetherflow-workspace-config
+            - secretRef:
+                # Database credentials, never a ConfigMap (§13.1 Secrets). Created out of
+                # band:
+                #   kubectl create secret generic togetherflow-workspace-secrets \
+                #     --from-literal=SPRING_DATASOURCE_USERNAME=... \
+                #     --from-literal=SPRING_DATASOURCE_PASSWORD=...
+                name: togetherflow-workspace-secrets
+                optional: true
+          resources:
+            requests:
+              memory: 256Mi
+              cpu: 100m
+            limits:
+              memory: 512Mi
+              cpu: 500m
+          livenessProbe:
+            httpGet:
+              path: /actuator/health/liveness
+              port: http
+            initialDelaySeconds: 20
+            periodSeconds: 30
+          readinessProbe:
+            httpGet:
+              path: /actuator/health/readiness
+              port: http
+            initialDelaySeconds: 10
+            periodSeconds: 10
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            capabilities:
+              drop: ["ALL"]
+          volumeMounts:
+            - name: tmp
+              mountPath: /tmp
+            - name: git
+              mountPath: /var/lib/togetherflow/git
+      volumes:
+        # A read-only root filesystem still needs somewhere for the JVM to write.
+        - name: tmp
+          emptyDir: {}
+        # Git working copies. An emptyDir is correct only while Git is disabled: with it
+        # on, every replica restart re-clones every connected workspace. Swap this for a
+        # PersistentVolumeClaim — ReadWriteMany, since the replicas above share it — when
+        # enabling TOGETHERFLOW_WORKSPACE_GIT_ENABLED.
+        - name: git
+          emptyDir: {}
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: togetherflow-workspace
+  labels:
+    app: togetherflow-workspace
+spec:
+  selector:
+    app: togetherflow-workspace
+  ports:
+    - name: http
+      port: 8092
+      targetPort: http

@@ -19,6 +19,7 @@ import {
   useContext,
   useEffect,
   useMemo,
+  useRef,
   useState,
   type ReactNode,
 } from "react";
@@ -111,11 +112,41 @@ export function useRegisterShortcuts(shortcuts: Shortcut[]): void {
   const register = context?.register;
   const unregister = context?.unregister;
 
+  /*
+   * Re-register on the bindings' *shape*, never on the array's identity.
+   *
+   * Registering sets state on the provider, which re-renders every child, which rebuilds
+   * whatever array the child passed. Depending on that array's identity therefore closes
+   * a loop the moment any ancestor hands down an inline callback — which is the ordinary
+   * way to write a parent — and React stops it with "Maximum update depth exceeded".
+   * Found by running the app: every unit test passes a stable `vi.fn()` and so never
+   * completes the circuit.
+   *
+   * The signature covers everything the provider actually uses a registration for: which
+   * keys are bound, what the help dialog prints, and whether the binding is live.
+   */
+  const signature = shortcuts
+    .map((shortcut) => `${shortcut.key}|${shortcut.description ?? ""}|${shortcut.when !== false}`)
+    .join(";");
+
+  // `run` is read through a ref, so a re-render that only changed a closure still runs
+  // the current handler without re-registering.
+  const latest = useRef(shortcuts);
+  useEffect(() => {
+    latest.current = shortcuts;
+  });
+
   useEffect(() => {
     if (!register || !unregister) return;
-    register(key, shortcuts);
+    register(
+      key,
+      latest.current.map((shortcut, index) => ({
+        ...shortcut,
+        run: (event: KeyboardEvent) => latest.current[index]?.run(event),
+      })),
+    );
     return () => unregister(key);
-  }, [register, unregister, key, shortcuts]);
+  }, [register, unregister, key, signature]);
 }
 
 /** Everything currently registered — for anything that wants to render its own help. */

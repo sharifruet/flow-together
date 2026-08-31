@@ -1,0 +1,40 @@
+# Defaults for the workspace service (ADR 0017). Every one is overridable by environment
+# variable in the usual Spring Boot way; the container sets them that way.
+server:
+  port: 8092
+
+management:
+  endpoints:
+    web:
+      exposure:
+        # Health only. This service knows who may edit which model; its configuration and
+        # environment are not something to publish on an unauthenticated endpoint.
+        include: health
+  endpoint:
+    health:
+      probes:
+        enabled: true
+
+togetherflow:
+  workspace:
+    table-prefix: TF_
+    # Points at the engine this service guards. For the guard to mean anything, this
+    # address should be reachable from here and NOT from the browser — see the README.
+    flowable-base-url: http://flowable-rest:8080/flowable-rest/service
+    # Models predating this module belong to no workspace; hiding them on upgrade would
+    # be an outage dressed as a security improvement.
+    unassigned-models-visible: true
+    groups-claim: groups
+    git:
+      # Off unless a deployment asks for it: the panel is then absent rather than empty.
+      enabled: false
+      # Working copies. One directory per workspace; a container needs this on a volume,
+      # because a checkout rebuilt on every restart makes the first status slow and the
+      # first pull a full clone.
+      work-dir: /var/lib/togetherflow/git
+      # One identity for every remote, from configuration. Per-workspace credentials
+      # would mean this service storing other people's tokens (ADR 0018).
+      username: ""
+      token: ""
+      author-name: TogetherFlow
+      author-email: togetherflow@localhost

@@ -839,6 +839,25 @@ a.tf-menu__item:hover {
 .tf-modal:focus {
   outline: none;
 }
+/* A consequence the reader should see before acting, inside a dialog's body. */
+.tf-modal__warning {
+  margin: var(--tf-space-3) 0 0;
+  padding: var(--tf-space-2) var(--tf-space-3);
+  border-left: 3px solid var(--tf-warning);
+  background: var(--tf-warning-bg);
+  border-radius: var(--tf-radius-sm);
+  font-size: var(--tf-text-sm);
+  color: var(--tf-text);
+}
+
+/*
+ * A dialog whose destructive actions sit apart from its dismiss button — Control's case
+ * detail puts Terminate and Delete on the left, Close on the right, so the two are not
+ * adjacent targets.
+ */
+.tf-modal__actions > .tf-row-actions:first-child {
+  margin-right: auto;
+}
 .tf-modal--sm {
   max-width: 460px;
 }
@@ -1055,9 +1074,36 @@ a.tf-menu__item:hover {
   color: var(--tf-accent);
 }
 
-.tf-checkbox {
+/*
+ * `.tf-checkbox` is used on two different elements, and sizing it as though it were
+ * always the input broke every place it is not.
+ *
+ * On a bare `<input>` (the table's row selection) it sizes the control. On a `<label>`
+ * wrapping one — which is how Control's filters, job queues and definitions use it — the
+ * same rule crushed the label to a 16px box and its text wrapped out underneath it.
+ * Scoped by element so both readings are explicit and no markup has to change.
+ */
+input.tf-checkbox {
   width: 16px;
   height: 16px;
+  accent-color: var(--tf-accent);
+  cursor: pointer;
+}
+
+label.tf-checkbox {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--tf-space-2);
+  cursor: pointer;
+  /* Aligns with the inputs beside it in a `align-items: flex-end` filter bar. */
+  min-height: 36px;
+  white-space: nowrap;
+}
+label.tf-checkbox input[type="checkbox"] {
+  width: 16px;
+  height: 16px;
+  margin: 0;
+  flex: none;
   accent-color: var(--tf-accent);
   cursor: pointer;
 }

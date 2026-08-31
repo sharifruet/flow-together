@@ -227,6 +227,13 @@
 				    unless `togetherflow.events.recorder.enabled` says otherwise.
 				-->
 				<module>modules/togetherflow-event-recorder</module>
+
+				<!--
+				    Optional workspace + design-time permission service (ADR 0017).
+				    Without it Design has one flat library and no workspaces, which is
+				    exactly the behaviour every existing deployment already has.
+				-->
+				<module>modules/togetherflow-workspace</module>
 				<!--
 				    The Resignation (Sales) case, its processes, forms, app definition and
 				    sample identities (docs/Resignation_Process.xlsx). Content rather than

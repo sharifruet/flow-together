@@ -39,8 +39,8 @@ export function ShortcutHelp({ shortcuts, open, onClose }: ShortcutHelpProps) {
   return (
     <Modal
       open={open}
-      size="sm"
       title={t("shortcuts.title")}
+      size="sm"
       onClose={onClose}
       actions={
         <Button ref={closeRef} onClick={onClose}>

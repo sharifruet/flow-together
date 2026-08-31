@@ -434,8 +434,6 @@ interface GroupDialogProps {
   onSubmit: (values: IdmGroup) => void;
 }
 
-const FORM_ID = "tf-group-form";
-
 function GroupDialog({ title, group, busy, onCancel, onSubmit }: GroupDialogProps) {
   const t = useT();
   const isEdit = Boolean(group);
@@ -450,9 +448,9 @@ function GroupDialog({ title, group, busy, onCancel, onSubmit }: GroupDialogProp
   return (
     <Modal
       open
-      size="sm"
       title={title}
-      // Typed-in work: a stray backdrop click must not discard it.
+      size="sm"
+      // Typed input: a stray backdrop click must not discard it.
       dismissOnBackdrop={false}
       onClose={onCancel}
       actions={
@@ -469,8 +467,8 @@ function GroupDialog({ title, group, busy, onCancel, onSubmit }: GroupDialogProp
     >
       <form
         id={FORM_ID}
-        // Native constraint validation would block submit before our own runs, and
-        // its default messages are worse than the per-field ones below.
+        // Native constraint validation would block submit before our own runs, and its
+        // default messages are worse than the per-field ones below.
         noValidate
         onSubmit={(event) => {
           event.preventDefault();
@@ -501,8 +499,10 @@ function GroupDialog({ title, group, busy, onCancel, onSubmit }: GroupDialogProp
           hint={t("groups.field.type.hint")}
           onChange={(event) => setValues((v) => ({ ...v, type: event.target.value }))}
         />
-
       </form>
     </Modal>
   );
 }
+
+/** Ties the Modal footer's submit button to the form it sits outside of. */
+const FORM_ID = "tf-group-form";

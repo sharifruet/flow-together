@@ -70,9 +70,9 @@ export function UserProfile({ profileApi, user, readOnly, onClose }: UserProfile
     <>
       <Modal
         open
-        size="lg"
         title={[user.firstName, user.lastName].filter(Boolean).join(" ") || user.id}
         description={user.id}
+        size="lg"
         onClose={onClose}
         actions={
           <Button variant="secondary" onClick={onClose}>
@@ -183,7 +183,6 @@ export function UserProfile({ profileApi, user, readOnly, onClose }: UserProfile
             ) : null}
           </div>
         </section>
-
       </Modal>
 
       {/* Outside the Modal on purpose: a confirmation raised *from* a dialog is its own

@@ -348,8 +348,6 @@ interface UserDialogProps {
   onSubmit: (values: IdmUser) => void;
 }
 
-const FORM_ID = "tf-user-form";
-
 function UserDialog({ title, user, busy, onCancel, onSubmit }: UserDialogProps) {
   const t = useT();
   const isEdit = Boolean(user);
@@ -373,9 +371,9 @@ function UserDialog({ title, user, busy, onCancel, onSubmit }: UserDialogProps) 
   return (
     <Modal
       open
-      size="sm"
       title={title}
-      // Typed-in work: a stray backdrop click must not discard it.
+      size="sm"
+      // Typed input: a stray backdrop click must not discard it.
       dismissOnBackdrop={false}
       onClose={onCancel}
       actions={
@@ -393,8 +391,8 @@ function UserDialog({ title, user, busy, onCancel, onSubmit }: UserDialogProps) 
     >
       <form
         id={FORM_ID}
-        // Native constraint validation would block submit before our own runs, and
-        // its default messages are worse than the per-field ones below.
+        // Native constraint validation would block submit before our own runs, and its
+        // default messages are worse than the per-field ones below.
         noValidate
         onSubmit={(event) => {
           event.preventDefault();
@@ -444,8 +442,10 @@ function UserDialog({ title, user, busy, onCancel, onSubmit }: UserDialogProps) 
           error={submitted ? passwordError : undefined}
           onChange={(event) => setValues((v) => ({ ...v, password: event.target.value }))}
         />
-
       </form>
     </Modal>
   );
 }
+
+/** Ties the Modal footer's submit button to the form it sits outside of. */
+const FORM_ID = "tf-user-form";

@@ -23,6 +23,33 @@ export interface AppDraft {
   tags?: string[];
   /** Lower sorts first in the library. Unset sorts after everything numbered. */
   displayOrder?: number;
+  /**
+   * App-level variables (W3.3), matching Flowable Design's own app editor.
+   *
+   * Draft-only, like `tags` and `displayOrder` above: this distribution's app engine
+   * reads none of them, so they document what an app expects rather than seeding it at
+   * deployment. The builder says so on screen rather than implying otherwise — a
+   * variable that looks configured but is never set is worse than one that is absent.
+   */
+  variables?: AppVariable[];
+}
+
+export interface AppVariable {
+  name: string;
+  type: "string" | "integer" | "double" | "boolean" | "date";
+  /**
+   * `value` is overwritten on every deployment; `default` is only applied where the
+   * variable has no value yet. Flowable Design draws the same distinction, and it is the
+   * one that decides whether redeploying an app resets what people changed at runtime.
+   */
+  mode: "value" | "default";
+  value?: string;
+  description?: string;
+}
+
+/** A variable name the engine and its expressions can use — same rule as a field id. */
+export function isValidVariableName(name: string): boolean {
+  return /^[A-Za-z_][A-Za-z0-9_]*$/.test(name);
 }
 
 export function emptyAppDraft(key: string, name: string): AppDraft {

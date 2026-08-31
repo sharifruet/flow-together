@@ -21,6 +21,7 @@ try {
           idmBase={config.idmBase}
           appBase={config.appBase}
           eventBase={config.eventBase}
+          workspaceBase={config.workspaceBase}
         />
       </AppRoot>
     </StrictMode>,

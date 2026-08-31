@@ -318,13 +318,26 @@ function CaseInspector({
 
   return (
     <>
-      <Modal
-        open
-        size="lg"
-        title={instance.name || instance.caseDefinitionName || t("cases.fallbackName")}
-        onClose={onClose}
-        actions={
-          <>
+    <Modal
+      open
+      title={instance.name || instance.caseDefinitionName || t("cases.fallbackName")}
+      description={
+        <>
+          {instance.businessKey
+            ? `${t("cases.ref", { businessKey: instance.businessKey })} · `
+            : ""}
+          {instance.id} ·{" "}
+          {t("cases.startedAt", { when: formatDateTime(instance.startTime, locale) })}
+          {instance.startUserId ? t("cases.startedBy", { userId: instance.startUserId }) : ""}
+        </>
+      }
+      size="lg"
+      onClose={onClose}
+      actions={
+        <>
+          {/* The destructive pair sits left of the close button — see
+              `.tf-modal__actions > .tf-row-actions` in the theme. */}
+          <div className="tf-row-actions">
             <Button
               variant="danger"
               disabled={busy !== null}
@@ -332,27 +345,16 @@ function CaseInspector({
             >
               {t("action.terminate")}
             </Button>
-            <Button
-              variant="danger"
-              disabled={busy !== null}
-              onClick={() => setPendingEnd("delete")}
-            >
+            <Button variant="danger" disabled={busy !== null} onClick={() => setPendingEnd("delete")}>
               {t("action.delete")}
             </Button>
-            <Button variant="secondary" onClick={onClose}>
-              {t("action.close")}
-            </Button>
-          </>
-        }
-      >
-        <p className="tf-muted">
-          {instance.businessKey
-            ? `${t("cases.ref", { businessKey: instance.businessKey })} · `
-            : ""}
-          {instance.id} ·{" "}
-          {t("cases.startedAt", { when: formatDateTime(instance.startTime, locale) })}
-          {instance.startUserId ? t("cases.startedBy", { userId: instance.startUserId }) : ""}
-        </p>
+          </div>
+          <Button variant="secondary" onClick={onClose}>
+            {t("action.close")}
+          </Button>
+        </>
+      }
+    >
 
         <h3 className="tf-detail__section-title">{t("cases.section.progress")}</h3>
         <AsyncBoundary
@@ -451,8 +453,7 @@ function CaseInspector({
             </dl>
           )}
         </AsyncBoundary>
-
-      </Modal>
+    </Modal>
 
       {/* Outside the Modal: a confirmation raised from a dialog is its own modal, and
           nesting one in the other's body would trap focus in the wrong one. */}

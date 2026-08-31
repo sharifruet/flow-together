@@ -41,6 +41,7 @@ import {
 import { useConflictPrompt } from "../editors/ConflictPrompt";
 import { EditorMenuBar } from "../editors/EditorMenuBar";
 import { FieldProperties } from "./FieldProperties";
+import { dataModelOf, dataModelProblems } from "./formDataModel";
 import {
   PALETTE,
   OPTION_TYPES,
@@ -227,7 +228,7 @@ export function FormBuilder({
    * purpose — a required field, a visibility rule or a pattern is only really authored
    * once you have watched it behave.
    */
-  const [tab, setTab] = useState<"fields" | "preview">("fields");
+  const [tab, setTab] = useState<"fields" | "preview" | "data">("fields");
   const signature = useMemo(() => fieldIdsInOrder(form).join("|"), [form]);
   const [preview, setPreview] = useState<{ signature: string; values: FormValues }>({
     signature: "",
@@ -358,6 +359,17 @@ export function FormBuilder({
             <button
               type="button"
               role="tab"
+              aria-selected={tab === "data"}
+              className={["tf-chip", tab === "data" ? "tf-chip--active" : ""]
+                .filter(Boolean)
+                .join(" ")}
+              onClick={() => setTab("data")}
+            >
+              {t("form.tab.data")}
+            </button>
+            <button
+              type="button"
+              role="tab"
               aria-selected={tab === "preview"}
               className={["tf-chip", tab === "preview" ? "tf-chip--active" : ""]
                 .filter(Boolean)
@@ -368,7 +380,9 @@ export function FormBuilder({
             </button>
           </div>
 
-          {tab === "preview" ? (
+          {tab === "data" ? (
+            <DataModelView form={form} />
+          ) : tab === "preview" ? (
             <section className="tf-form-preview" aria-label={t("form.preview.label")}>
               <p className="tf-form-preview__note">{t("form.preview.note")}</p>
               {fields.length === 0 ? (
@@ -775,6 +789,70 @@ export function FormBuilder({
 
       {/* Reload-or-overwrite, when someone else saved this model (W1.1). */}
       {conflict.prompt}
+    </section>
+  );
+}
+
+/**
+ * What this form writes (W3.3).
+ *
+ * Derived rather than declared: a form field's id *is* the process variable name, so the
+ * data model is a property of the fields, not a second thing to keep in step with them.
+ * What an author cannot see today is the consequence of that — which variables the form
+ * produces, at what type, and where two fields quietly write the same one.
+ */
+function DataModelView({ form }: { form: FormModelResponse }) {
+  const t = useT();
+  const entries = dataModelOf(form);
+  const problems = dataModelProblems(form);
+
+  return (
+    <section className="tf-data-model" aria-label={t("form.data.label")}>
+      <p className="tf-form-preview__note">{t("form.data.note")}</p>
+
+      {problems.length > 0 ? (
+        <ul className="tf-data-model__problems" role="alert">
+          {problems.map((problem, index) => (
+            <li key={`${problem.kind}-${problem.name}-${index}`}>
+              {t(`form.data.problem.${problem.kind}`, { name: problem.name })}
+            </li>
+          ))}
+        </ul>
+      ) : null}
+
+      {entries.length === 0 ? (
+        <p className="tf-muted">{t("form.data.empty")}</p>
+      ) : (
+        <table className="tf-table">
+          <caption className="tf-visually-hidden">{t("form.data.label")}</caption>
+          <thead>
+            <tr>
+              <th scope="col">{t("form.data.variable")}</th>
+              <th scope="col">{t("form.data.type")}</th>
+              <th scope="col">{t("form.data.required")}</th>
+              <th scope="col">{t("form.data.writtenBy")}</th>
+            </tr>
+          </thead>
+          <tbody>
+            {entries.map((entry) => (
+              <tr key={entry.name}>
+                <td className="tf-mono">{entry.name || t("form.data.unnamed")}</td>
+                <td>{entry.type}</td>
+                <td>{entry.required ? t("action.required") : ""}</td>
+                <td>
+                  {entry.writtenBy.length > 1 ? (
+                    <Badge tone="danger" subtle>
+                      {entry.writtenBy.join(", ")}
+                    </Badge>
+                  ) : (
+                    entry.writtenBy[0]
+                  )}
+                </td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      )}
     </section>
   );
 }

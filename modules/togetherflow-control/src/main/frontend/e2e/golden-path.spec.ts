@@ -24,13 +24,28 @@ async function signIn(page: Page) {
   await expect(page.getByTestId("togetherflow-brand")).toBeVisible();
 }
 
+/**
+ * Navigates by clicking the rail.
+ *
+ * Two things this suite predates: nav items are `<Link>`s rather than buttons since W1.3
+ * (F1), and their accessible name carries the count badge as well as the label
+ * ("Instances 3 Instances") — so both an anchored pattern and a `button` role match
+ * nothing. A `page.goto` is not the alternative: the session is held in memory (ADR
+ * 0006), so a full page load lands back on the sign-in screen.
+ */
+async function goTo(page: Page, section: RegExp) {
+  await page.getByRole("link", { name: section }).first().click();
+}
+
 test.describe("TogetherFlow Control golden path", () => {
   test.beforeEach(async ({ page }) => {
     await signIn(page);
   });
 
   test("lists process instances and opens one", async ({ page }) => {
-    await expect(page.getByRole("heading", { name: "Process instances" })).toBeVisible();
+    // W2.1 made the overview the landing screen, so this navigates rather than assuming.
+    await goTo(page, /^Instances/);
+    await expect(page.getByRole("heading", { name: /Process instances/ })).toBeVisible();
 
     const row = page.locator("table tbody tr").first();
     const hasInstances = await row.isVisible().catch(() => false);
@@ -43,7 +58,7 @@ test.describe("TogetherFlow Control golden path", () => {
   });
 
   test("shows every job queue, and offers bulk actions only on a selection", async ({ page }) => {
-    await page.getByRole("button", { name: "Jobs" }).click();
+    await goTo(page, /^Jobs/);
 
     for (const queue of ["Async", "Timers", "Suspended", "Dead letter", "History"]) {
       await expect(page.getByRole("tab", { name: queue })).toBeVisible();
@@ -54,7 +69,7 @@ test.describe("TogetherFlow Control golden path", () => {
   });
 
   test("retries a job, confirming first", async ({ page }) => {
-    await page.getByRole("button", { name: "Jobs" }).click();
+    await goTo(page, /^Jobs/);
 
     const firstJob = page.getByRole("checkbox", { name: /^select job/i }).first();
     const hasJobs = await firstJob.isVisible().catch(() => false);
@@ -73,7 +88,7 @@ test.describe("TogetherFlow Control golden path", () => {
   });
 
   test("browses the engine's own tables read-only", async ({ page }) => {
-    await page.getByRole("button", { name: "System" }).click();
+    await goTo(page, /^System/);
     await page.getByRole("tab", { name: "Database" }).click();
 
     const table = page.locator(".tf-card").first();
@@ -85,7 +100,7 @@ test.describe("TogetherFlow Control golden path", () => {
   test("refuses to offer suspend on a case definition, which the engine cannot do", async ({
     page,
   }) => {
-    await page.getByRole("button", { name: "Definitions" }).click();
+    await goTo(page, /^Definitions/);
     await page.getByRole("tab", { name: "Cases" }).click();
     // §7.2 is explicit that this action must not be offered for case definitions.
     await expect(page.getByRole("button", { name: /^suspend$/i })).toHaveCount(0);

@@ -1,6 +1,13 @@
 // Local development configuration only; the container overwrites this at startup.
 window.__TOGETHERFLOW_CONFIG__ = {
   apiBase: "/process-api",
+  /*
+   * Workspaces (ADR 0017) are off by default here, matching every deployment that does
+   * not run the service: one flat model library, no switcher. Uncomment to develop
+   * against a local `togetherflow-workspace` on :8092 — the dev proxy already routes
+   * `/workspace-api` there.
+   */
+  // workspaceBase: "/workspace-api",
   idmBase: "/idm-api",
   dmnBase: "/dmn-api",
   cmmnBase: "/cmmn-api",

@@ -60,6 +60,14 @@ export interface RuntimeConfig {
    * view entirely rather than showing a feed that would always be empty.
    */
   eventRecorder: string;
+  /**
+   * Base URL of `togetherflow-workspace` (ADR 0017). Empty — the default — means the
+   * module is not deployed, and Design shows one flat library with no workspace
+   * switcher: exactly the behaviour every deployment had before it existed. An absent
+   * service and an empty workspace list mean very different things, so this is not
+   * inferred from an empty response.
+   */
+  workspaceBase: string;
   identity: {
     /**
      * True when identities come from a read-only directory (LDAP) rather than the
@@ -96,6 +104,7 @@ declare global {
       apps?: AppLinks;
       attachmentGateway?: string;
       eventRecorder?: string;
+      workspaceBase?: string;
       identity?: { readOnly?: boolean };
       observability?: { errorEndpoint?: string; release?: string };
       locale?: string;
@@ -126,6 +135,7 @@ export function readRuntimeConfig(): RuntimeConfig {
   const apps: AppLinks = raw.apps ?? {};
   const attachmentGateway = raw.attachmentGateway ?? "";
   const eventRecorder = raw.eventRecorder ?? "";
+  const workspaceBase = raw.workspaceBase ?? "";
   const identity = { readOnly: raw.identity?.readOnly === true };
   const observability = {
     errorEndpoint: raw.observability?.errorEndpoint || undefined,
@@ -148,6 +158,7 @@ export function readRuntimeConfig(): RuntimeConfig {
       apps,
       attachmentGateway,
       eventRecorder,
+      workspaceBase,
       identity,
       observability,
       locale,
@@ -177,6 +188,7 @@ export function readRuntimeConfig(): RuntimeConfig {
     apps,
     attachmentGateway,
     eventRecorder,
+    workspaceBase,
     identity,
     observability,
     locale,

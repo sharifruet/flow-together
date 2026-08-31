@@ -22,6 +22,9 @@ import { ErrorBoundary } from "../components/ErrorBoundary";
 import { I18nProvider, mergeCatalogues, type Catalogues } from "../i18n/I18nContext";
 import { ShortcutProvider } from "../shortcuts/ShortcutContext";
 import { RouterProvider } from "../routing/RouterContext";
+import { WorkspaceProvider } from "../workspace/WorkspaceContext";
+import { WorkspaceApi } from "../api/workspaces";
+import { ApiClient } from "../api/client";
 import { commonMessages } from "../i18n/messages";
 import {
   configureErrorReporting,
@@ -62,6 +65,7 @@ export function AppRoot({ app, config, messages, children }: AppRootProps) {
         <AuthProvider baseUrl={config.apiBase} mode={config.auth.mode} oidc={config.auth.oidc}>
           <TenantProvider>
             <ToastProvider>
+              <WorkspaceBridge base={config.workspaceBase}>
               <ErrorReportingBridge
                 app={app}
                 endpoint={config.observability.errorEndpoint}
@@ -75,12 +79,46 @@ export function AppRoot({ app, config, messages, children }: AppRootProps) {
               <ShortcutProvider>
                 <ErrorBoundary boundary={app}>{children}</ErrorBoundary>
               </ShortcutProvider>
+              </WorkspaceBridge>
             </ToastProvider>
           </TenantProvider>
         </AuthProvider>
       </RouterProvider>
     </I18nProvider>
   );
+}
+
+/**
+ * Mounts the workspace context, but only where the service is configured (ADR 0017).
+ *
+ * Inside `AuthProvider` because the client needs the caller's credentials, and it builds
+ * its own `ApiClient` rather than taking one: three of the four apps never construct one
+ * at this level, and making them would be a provider serving a feature they do not have.
+ */
+function WorkspaceBridge({ base, children }: { base: string; children: ReactNode }) {
+  const { session, getAuthHeaders, signOut } = useAuth();
+  const { tenantId } = useTenant();
+
+  const api = useMemo(() => {
+    /*
+     * Not before there is a session. Built eagerly, the provider's first fetch goes out
+     * while the login screen is still up, comes back 401, and the status sticks at
+     * "unavailable" — so a perfectly healthy service is reported as broken for the whole
+     * session. `session.userId` is in the dependencies so signing in rebuilds the client
+     * and the fetch runs with credentials.
+     */
+    if (!base || !session) return undefined;
+    return new WorkspaceApi(
+      new ApiClient({
+        baseUrl: base,
+        getAuthHeaders,
+        getTenantId: () => tenantId,
+        onUnauthorized: signOut,
+      }),
+    );
+  }, [base, session, getAuthHeaders, tenantId, signOut]);
+
+  return <WorkspaceProvider api={api}>{children}</WorkspaceProvider>;
 }
 
 /**

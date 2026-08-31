@@ -800,9 +800,9 @@ export function CmmnEditor({
       {sourceXml !== null ? (
         <Modal
           open
-          size="lg"
           title={t("cmmn.xmlTitle")}
           description={t("cmmn.xmlDescription")}
+          size="lg"
           onClose={() => setSourceXml(null)}
           actions={
             <>

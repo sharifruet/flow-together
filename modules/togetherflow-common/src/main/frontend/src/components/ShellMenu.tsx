@@ -244,10 +244,10 @@ function ChangePasswordDialog({
   return (
     <Modal
       open
-      size="sm"
       title={t("password.title")}
       description={t("password.description", { userId })}
-      // Typed-in credentials: a stray backdrop click must not discard them.
+      size="sm"
+      // Typed credentials: a stray backdrop click must not discard them.
       dismissOnBackdrop={false}
       onClose={onClose}
       actions={
@@ -261,25 +261,24 @@ function ChangePasswordDialog({
         </>
       }
     >
-        <TextInput
-          label={t("password.new")}
-          type="password"
-          autoComplete="new-password"
-          value={password}
-          disabled={busy}
-          error={tooShort ? t("password.tooShort", { min: MIN_PASSWORD_LENGTH }) : undefined}
-          onChange={(event) => setPassword(event.target.value)}
-        />
-        <TextInput
-          label={t("password.confirm")}
-          type="password"
-          autoComplete="new-password"
-          value={confirmation}
-          disabled={busy}
-          error={mismatch ? t("password.mismatch") : undefined}
-          onChange={(event) => setConfirmation(event.target.value)}
-        />
-
+      <TextInput
+        label={t("password.new")}
+        type="password"
+        autoComplete="new-password"
+        value={password}
+        disabled={busy}
+        error={tooShort ? t("password.tooShort", { min: MIN_PASSWORD_LENGTH }) : undefined}
+        onChange={(event) => setPassword(event.target.value)}
+      />
+      <TextInput
+        label={t("password.confirm")}
+        type="password"
+        autoComplete="new-password"
+        value={confirmation}
+        disabled={busy}
+        error={mismatch ? t("password.mismatch") : undefined}
+        onChange={(event) => setConfirmation(event.target.value)}
+      />
     </Modal>
   );
 }

@@ -279,7 +279,7 @@ function ProcessDefinitions({ repositoryApi }: { repositoryApi: RepositoryApi })
             />
             {t("definitions.suspend.cascadeLabel")}
           </label>
-          <p className="tf-dialog__warning" role="note">
+          <p className="tf-modal__warning" role="note">
             {cascade ? t("definitions.suspend.cascade") : t("definitions.suspend.noCascade")}
           </p>
         </Modal>

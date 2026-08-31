@@ -22,12 +22,14 @@ import org.springframework.boot.security.autoconfigure.actuate.web.servlet.Endpo
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.security.authentication.AuthenticationProvider;
+import org.springframework.http.HttpStatus;
 import org.springframework.security.config.Customizer;
 import org.springframework.security.config.annotation.web.builders.HttpSecurity;
 import org.springframework.security.config.annotation.web.configuration.EnableWebSecurity;
 import org.springframework.security.config.annotation.web.configurers.CsrfConfigurer;
 import org.springframework.security.config.http.SessionCreationPolicy;
 import org.springframework.security.web.SecurityFilterChain;
+import org.springframework.security.web.authentication.HttpStatusEntryPoint;
 import org.springframework.security.web.servlet.util.matcher.PathPatternRequestMatcher;
 
 @Configuration(proxyBeanMethods = false)
@@ -88,7 +90,18 @@ public class SecurityConfiguration {
             .authorizeHttpRequests(authorizeRequests -> authorizeRequests.anyRequest().authenticated());
         }
 
-        httpSecurity.httpBasic(Customizer.withDefaults());
+        /*
+         * Basic, but the `WWW-Authenticate` challenge is opt-in (see
+         * RestAppProperties#isAuthenticationChallenge). Sent on an XHR it makes the
+         * browser open its own credential dialog and block the request behind it, which
+         * in Firefox means the request never settles at all.
+         */
+        if (restAppProperties.isAuthenticationChallenge()) {
+            httpSecurity.httpBasic(Customizer.withDefaults());
+        } else {
+            httpSecurity.httpBasic(basic ->
+                    basic.authenticationEntryPoint(new HttpStatusEntryPoint(HttpStatus.UNAUTHORIZED)));
+        }
 
         return http.build();
     }

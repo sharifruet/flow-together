@@ -288,7 +288,7 @@ export function Deployments({ repositoryApi, selectedId, onSelect }: Deployments
             />
             {t("deployments.delete.cascadeLabel")}
           </label>
-          <p className="tf-dialog__warning" role="note">
+          <p className="tf-modal__warning" role="note">
             {cascade ? t("deployments.delete.cascade") : t("deployments.delete.noCascade")}
           </p>
         </Modal>

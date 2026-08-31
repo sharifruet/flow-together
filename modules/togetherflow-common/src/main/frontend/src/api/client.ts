@@ -37,6 +37,14 @@ export interface ApiClientOptions {
   getAuthHeaders?: AuthHeaderProvider;
   /** Active tenant, applied as a filter by the resource wrappers (§8 multi-tenancy). */
   getTenantId?: () => string | undefined;
+  /**
+   * Active workspace, sent as `X-Workspace-Id` (ADR 0017).
+   *
+   * A header rather than a query parameter because it applies to writes as much as
+   * reads: creating a model has to say which workspace it lands in, and a POST body is
+   * the engine's shape, not ours to add a field to.
+   */
+  getWorkspaceId?: () => string | undefined;
   onUnauthorized?: () => void;
   fetchImpl?: typeof fetch;
   /** Per-request deadline. Overridable per call. */
@@ -259,6 +267,8 @@ export class ApiClient {
       "X-Correlation-Id": correlationId,
       ...(this.options.getAuthHeaders?.() ?? {}),
     };
+    const workspaceId = this.options.getWorkspaceId?.();
+    if (workspaceId) headers["X-Workspace-Id"] = workspaceId;
     if (attempt > 1) headers["X-Retry-Attempt"] = String(attempt);
 
     const isMultipart = options.body instanceof FormData;

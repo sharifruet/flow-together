@@ -109,7 +109,7 @@ is a four-file edit that will silently diverge on the first one that gets missed
 **Do.** Move that block into `togetherflow-common/src/theme/`, imported by
 `AppRoot`. **Accept when**: `grep -l "tf-shell__header" **/styles/*.css` returns nothing.
 
-### F6 — One real modal, with a focus trap.
+### F6 — One real modal, with a focus trap. *(**closed**: built in W1.4, but sixteen call sites were left on the deleted CSS — all now converted, see [§Q](#q-running-the-stack--what-only-launching-it-found))*
 **Gap.** `ConfirmDialog` focuses the confirm button and closes on Escape, but has **no
 focus trap** (Tab walks straight into the page behind), no focus restore on close, no body
 scroll lock, and leaves the background exposed to assistive tech (no `inert`/
@@ -307,7 +307,7 @@ history" are routine compliance asks (§13.7) and today produce the app chrome o
 
 ## G. Verification
 
-### G1 — Visual regression covers one app, three screens, and is stale. *(suites built in W1.5 — baselines still outstanding, see [§J](#j-wave-1--completed))*
+### G1 — Visual regression covers one app, three screens, and is stale. *(**closed** — see [§N](#n-closing-the-remaining-items))*
 **Gap.** Only `togetherflow-work` has `playwright.visual.config.ts`; baselines exist for
 login, inbox and task-detail at three widths plus one dark variant. Control, Identity and
 Design have none. The inbox baseline shows neither the definition/due/priority filter bar
@@ -458,7 +458,8 @@ TogetherFlow gates Design with one privilege check in the shell — anyone who c
 can edit and delete anything in it. §13.1 requires the server to enforce what the UI
 hides, and `/repository/models` has no per-model authorization to enforce.
 
-**I12 — Git connectivity.** Absent entirely: commit, pull, revert, branch create/switch,
+**I12 — Git connectivity.** *(**closed** by W3.2 — see [§O](#o-w32--git-connectivity).)*
+Absent entirely: commit, pull, revert, branch create/switch,
 PR, stash/restore, a per-model changed/added/removed list with diffs, and connection setup
 against a provider, repo, branch and sub-path. Models here live only in the engine's
 database. After workspaces, this is the feature that most marks the two apart.
@@ -755,3 +756,403 @@ All seven items, in the plan's order.
 
 **B4** (⌘K palette) and **F7–F10** were never in Wave 2's scope. Wave 1's outstanding
 visual-regression baselines are still outstanding — see [§J](#j-wave-1--completed).
+
+
+---
+
+## L. W3.1 — completed
+
+**Done 2026-08-28.** Workspaces and design-time permissions
+([ADR 0017](adr/0017-workspaces-own-storage-and-enforcement.md)), closing
+[§I.10](#i2-needs-backend-surface-this-fork-does-not-have) and §I.11.
+
+### The decision E0.3 was waiting on
+
+Neither option the plan offered. A `metaInfo` convention was rejected on the strength of
+W2.3's own note — model templates work *because* nothing enforces `metaInfo`, and a
+workspace nobody enforces is exactly what §13.1 says is not a boundary. The engine schema
+was rejected because it means per-dialect DDL, a `FlowableVersions` entry gated by
+`SqlUpgradeValidationTest`, and a permanent divergence from upstream for a concept upstream
+lacks. Instead: its own storage and its own enforcement in an optional module, on the
+precedent ADR 0015 set.
+
+### Backend — `togetherflow-workspace`
+
+Workspaces with visibility and a one-level shared-workspace link; members by user **or
+group** holding reader / modeler / owner; and a **guarded model API** mounted on Flowable's
+own `/repository/models/**` paths, so Design changes a base URL and nothing else. Each call
+resolves the model's workspace, checks the role, then forwards carrying the caller's own
+credentials — Flowable still applies its auth on top.
+
+Four decisions worth keeping:
+
+- **Capability-shaped, not role-shaped.** Call sites test `Capability.DELETE`, never
+  `role == OWNER`, so a custom role added later cannot be silently excluded by a check
+  written against a name.
+- **The list filter corrects `total` and `size`.** A page of 25 filtering to 3 while still
+  claiming 4,000 results gives a pager that offers empty pages.
+- **The last owner cannot be removed.** A workspace with no owner can never be renamed,
+  re-membered or deleted, and nothing in the UI would explain why.
+- **Unassigned models stay visible by default.** Every model predating the module is
+  unassigned; failing closed would make an existing library vanish on upgrade — an outage
+  dressed as a security improvement.
+
+**The limitation is in the README, not buried:** the guard holds only where `flowable-rest`
+is not itself reachable from the browser. That is a topology requirement the module cannot
+enforce, and ADR 0017 records the migration path (a Spring Security filter, with this module
+as its policy store).
+
+### Frontend
+
+`workspaceBase` in the runtime config (empty = not deployed), a workspace context beside
+the tenant one, a switcher in the shell, capability gating in the model library, and a
+Workspaces admin screen for members and sharing.
+
+The context keeps **three states distinguishable**, which is the part most likely to be
+collapsed by a later change: *not deployed* (no switcher, every capability permitted —
+a deployment without workspaces has no workspace rules), *deployed and empty*, and
+*unreachable* (says so, permits nothing). Conflating the first and third is how a broken
+deployment comes to look like a deliberately simpler one.
+
+The active workspace is **derived, not corrected in an effect** — a remembered workspace
+the user has lost access to falls back to the first visible one without a render in which
+the two disagree, and without overwriting the stored preference in case access returns.
+
+### Verification
+
+22 Java tests (`verify` green, checkstyle included); frontend 409 common / 565 design /
+85 work / 80 control / 41 identity, with typecheck, lint, build and bundle budgets green
+for all four apps. Design's `assets/index` budget went 42 → 44 kB, justified in
+`bundle-budget.json`: the admin screen is lazily loaded, and what grew is the context and
+switcher every page load needs.
+
+
+---
+
+## M. Review of Waves 1–3
+
+**Done 2026-08-28.** A read of the code rather than of the write-ups. Waves 1 and 2 held
+up: the migration dialog does discard a stale verdict when the *target* changes as well as
+when a mapping does, variable writes do go through the single-variable resource, and the
+change-state dialog is shaped like the engine's request rather than around a friendlier
+metaphor that would misdescribe it. Three defects and two omissions came out of it.
+
+### Defects fixed
+
+1. **Deployments were routed into the workspace guard** *(introduced by W3.1, caught in
+   review)*. `ModelApi.deploy` posts to `/repository/deployments` on the same client as
+   the model repository, and W3.1 had repointed that client at the guard — which proxies
+   `/repository/models` and nothing else, so every BPMN deploy would have 404'd wherever
+   workspaces were enabled. `ModelApi` now takes a separate process client, and a
+   regression test pins that the deploy URL is the engine's.
+2. **The workspace service could not start.** `FlowableClient` injected a
+   `RestClient.Builder`, which is not auto-configured here; the context failed to load.
+   Every other test called the classes directly, so nothing caught it — a
+   `@SpringBootTest` now does, and the client builds its own.
+3. **The i18n fallback resolved no plural key** — found earlier, in §H, and repeated here
+   because it is the same class of bug: a path with no test that only fails outside the
+   unit tests.
+
+### Omissions closed
+
+- **Tests for the destructive Wave 2 surface.** Control's migration, change-state and
+  variable editors and Work's ad-hoc task dialog had none between them — the four things
+  in Wave 2 that mutate live process state. Now 24 tests, covering the stale-verdict
+  guard, the "request that would do nothing" refusal, type-preserving variable writes,
+  and read-only mode.
+- **W3.1 was unshippable.** The service had no Dockerfile, no k8s manifest, no CI job and
+  no release entry, and Design's container had no way to be told where it lives. All five
+  added; the release workflow's single gateway job became a matrix over both Java
+  services, because two copies of sixty lines is how one of them quietly stops being
+  signed.
+
+### Still open after this pass
+
+Both closed immediately afterwards — see [§N](#n-closing-the-remaining-items).
+
+
+---
+
+## N. Closing the remaining items
+
+**Done 2026-08-28.**
+
+### G1 / W1.5 — visual baselines, closed
+
+36 baselines across all four apps, and each suite re-run clean afterwards so they are
+known deterministic rather than merely written.
+
+**Generating them found that two of the four suites had never run.** They were authored
+in W1.5 and, with no baselines, nothing had ever executed them:
+
+- **Control's suite hung on every screen.** `signIn()` waited for `tbody tr`, but W2.1
+  made the *overview* the landing screen — count tiles, no table. It then screenshotted
+  whatever was on screen without navigating to the section it named.
+- **Both Control's and Identity's suites lost their session.** They navigated with
+  `page.goto("/jobs")`, and the session is held in memory (ADR 0006), so a full page load
+  lands back on the sign-in screen. Navigation is now a click on the rail — client-side,
+  session intact, and what a user does anyway.
+- **The rail links did not match.** A nav link's accessible name carries its count badge
+  as well as its label ("Instances 3 Instances"), so an anchored `/^Instances$/` matched
+  nothing.
+
+Worth naming as a pattern: an assertion suite with no baseline is not a weaker version of
+one with baselines — it is a suite that has never been executed, and its bugs are
+undiscovered rather than absent.
+
+### Untested overview screens, closed
+
+Control's `Dashboard` (4 tests) and Work's `Reports` (3). The scoping test on Reports is
+the one that matters: a tile that quietly dropped its assignee filter would still render
+a plausible number, so every query is asserted to carry the signed-in user.
+
+Both screens degrade per tile rather than per screen — an unreachable CMMN engine costs
+the case count, not the dashboard — and both render an unreadable count as an em dash with
+the reason on hover, because "unknown" shown as `0` is the kind of quiet wrong answer an
+operator acts on.
+
+
+---
+
+## O. W3.2 — Git connectivity
+
+**Done 2026-08-28.** [ADR 0018](adr/0018-git-in-the-workspace-service.md).
+
+### What it syncs, and why not what Enterprise syncs
+
+Flowable Design connects an **app** to a repository. This syncs a **workspace**, because
+in this fork an "app" is a deployable bundle assembled from models (§7.4.5) — re-derived
+whenever its contents change, and shareable between apps — whereas a workspace is the
+durable grouping with stable membership and a stable model set. Syncing bundles would mean
+two apps each claiming the same model.
+
+### Built
+
+Connect (which **imports** the repository's models rather than only cloning), status with
+branch, ahead/behind and per-model pending changes, commit, push, pull-and-import, revert,
+branch create and switch, per-model unified diff, and disconnect. A Git panel in Design's
+workspace screen, gated on the same workspace roles as everything else.
+
+Three decisions worth keeping:
+
+- **Files are named by model key, not id.** A repository of UUIDs cannot be reviewed, and
+  review is most of the point. A canonical `togetherflow-manifest.json` beside them says
+  which model each file is, so a pull needs no parsing.
+- **Commits are authored by the person, committed by the service.** A history where every
+  commit is authored by "TogetherFlow" cannot be reviewed by author.
+- **Connecting imports first.** Without it, a workspace connected to a populated
+  repository reports every model in it as a pending *deletion* — and the obvious next
+  click erases the repository. This was found by a test, not by reasoning.
+
+### Not built, deliberately
+
+**Pull requests** — provider API surface, different for GitHub, GitLab and Bitbucket, with
+no provider abstraction in this fork to hang it on. **Stash** — expressible in JGit, worth
+little beside committing on a branch. Both are listed rather than half-built.
+
+### On testability
+
+I said earlier this chunk could not be exercised here without a hosted Git service. That
+was wrong: a bare repository on disk reached over `file://` is a real remote to JGit, and
+clone, commit, push, fetch and merge all behave as they would against a hosted one. The 17
+Git tests run against one — including a teammate pushing from a second clone, which is how
+the pull path is covered.
+
+### Verification
+
+40 Java tests (`verify` green, checkstyle included), 574 in Design including 14 for the
+panel. Two defects were found by the tests during the build: an empty workspace wrote an
+empty manifest, which made a clean checkout look dirty and then blocked the very pull that
+would have filled it; and connecting did not import, with the consequence above.
+
+
+---
+
+## P. W3.3 and W3.4 — the last of Wave 3
+
+**Done 2026-08-28.**
+
+### W3.3 — data model, translations, preview
+
+**The data model is derived, not declared.** Flowable Design binds components to a
+declared model with `{{expression}}` bindings; inventing one here would repeat exactly
+what W2.3 warned about, because a form field's id *is* the process variable name and a
+parallel schema nothing enforces looks like a feature while delivering none of it. So the
+form builder gains a **Data** tab showing what the form actually writes — variable, engine
+type, required, and which fields write it — and reports the three ways that can be wrong:
+two fields writing one variable (the last submitted wins, silently), an id an expression
+cannot use (`${amount-due}` is a subtraction, so it evaluates to something surprising
+rather than failing), and a field with no id at all.
+
+**Per-model translations** for form labels, in the same `params` convention as ADR 0012's
+visibility rule. The field's own name stays the source *and* the fallback, so an
+untranslated field reads as it was written rather than as a key or a blank, and removing a
+language is safe. ADR 0013's layer translates the UI; this is the first thing that
+translates model content.
+
+**App-level variables**, matching Enterprise's value/default distinction — the one that
+decides whether redeploying resets what people changed at runtime. Marked draft-only in
+the UI, like `tags` and `displayOrder` before them, because this distribution's app engine
+reads none of them and a variable that looks configured but is never set is worse than one
+that is absent.
+
+**Runtime preview**: after a deploy, an offer to start a real instance. There is no
+sandbox in this distribution, so the dialog says that in as many words *before* the button
+rather than under it, and nothing starts without an explicit click.
+
+### W3.4 — as much of the gate as can be automated
+
+- **Scale**: the shared table is tested at 5,000 rows — a large page must not become a
+  large DOM, the scroll height must stay honest, and the true row count must reach
+  assistive tech. That last one **failed**, and was a real defect: a virtualized table
+  announced only its rendered window, so a screen reader was told there were 60 rows when
+  there were 5,000, with no way to discover otherwise. `aria-rowcount` and `aria-rowindex`
+  now carry the truth.
+- **Keyboard-only**: the inbox triage path walked with no mouse — j/k movement, the ends
+  clamping rather than wrapping, tab reaching every row, Enter opening one.
+
+### What still needs a person, and cannot be faked
+
+**G2's manual screen-reader pass.** Automated axe checks and the keyboard tests above
+cover the mechanical half; nothing here can stand in for hearing what NVDA or VoiceOver
+actually says.
+
+**G3's usability study.** §14.5 asks for the target persona to use each app and surface
+friction. No test substitutes for that, and claiming otherwise would be the exact failure
+§14.5 exists to prevent.
+
+**Load testing against realistic volume.** The table's behaviour is now pinned in
+isolation; an engine with a million historic instances behaves differently, and that
+belongs in an environment rather than a unit test.
+
+
+---
+
+## Q. Running the stack — what only launching it found
+
+**Done 2026-08-29.** The apps and both services were started against a real engine and
+driven in a browser. Nothing below was visible from the code, the tests, or the
+screenshots taken in a single engine.
+
+### Firefox hung on every guarded request
+
+`WWW-Authenticate: Basic` on a 401 makes a browser open its **own** native credential
+dialog and block the XHR behind it. Firefox never settled the request; Chromium does not
+do this at all, which is why a Chromium-only pass — unit tests, e2e, and every visual
+baseline — saw nothing. The workspace service and this fork's `flowable-app-rest` now
+answer a bare 401 (the latter behind
+`flowable.rest.app.authentication-challenge`, default off, so the browser prompt can be
+restored for poking at the API by hand).
+
+The user-visible consequence in the app was worse than a hang: a **wrong password** in
+Firefox produced the browser's dialog instead of the login screen's own "Incorrect
+username or password", so the app's error path never ran. Verified fixed in Firefox.
+
+### The e2e suites had been dead since Wave 1
+
+Fifteen golden-path tests failed across the four apps — in **both** engines, so not a
+Firefox matter. Two causes, both introduced by work that never re-ran them:
+
+- **W1.3 turned nav items into links.** Every `getByRole("button", { name: "Jobs" })`
+  matched nothing. Control was 0 for 5.
+- **W2.1 made the overview Control's landing screen**, so tests that assumed they arrived
+  at a list waited for a table that was not there.
+
+Also: a nav link's accessible name carries its count badge ("Instances 3 Instances"), so
+anchored patterns match nothing, and `page.goto` mid-test lands back on the sign-in screen
+because the session is held in memory (ADR 0006). Control is green again; the other three
+carry the same two causes and the same fixes.
+
+### One class, two elements, six broken layouts
+
+`.tf-checkbox` was sized as though it were always the `<input>` — but Control applies it
+to the `<label>` wrapping one, so the label was crushed to a 16px box with its text
+wrapped out underneath. Visible in the instances filter bar the moment anyone looked at
+it. Scoped by element (`input.tf-checkbox` / `label.tf-checkbox`) so both readings are
+explicit and no markup changed.
+
+The visual suite then failed on exactly the screens with checkboxes, which is the first
+time G1's baselines have caught a real change rather than merely existing. Re-approved
+deliberately.
+
+### Firefox added to the functional e2e matrix
+
+`playwright.config.ts` for all four apps now runs chromium **and** firefox, with the
+visual specs excluded (`testIgnore`) because font rasterisation differs between engines
+and per-engine baselines would double the review cost of every UI change to catch nothing.
+REQUIREMENTS §8 promises four evergreen browsers; this is the first step toward meaning it.
+
+### Two more, from reading a console log
+
+**The shipped typeface never loaded in development.** F4 self-hosts Inter in the shared
+theme, and the production build emits and references it correctly — but Vite refuses to
+serve a *static asset* from outside the project root, so in dev every app 403'd on the
+woff2 and fell back to the system font. Every developer has been designing against a
+typeface the product does not use. `server.fs.allow` now covers the shared module.
+
+**Three authenticated requests fired on the sign-in screen.** Design calls
+`useIdentities` at app level, above the `if (!session) return <LoginScreen/>` — so its
+effects ran while signed out and produced three 401s per visit, each surfacing in the
+console as an error nobody could act on. The hook already treats an absent API as "no
+suggestions", so passing it nothing while signed out is the whole fix. Design was the only
+app with an app-level fetch; the other three were already clean.
+
+Verified in Firefox: the login screen and the signed-in library now produce **no console
+errors, no failed requests and no 4xx at all**.
+
+### Every dialog in the product was broken
+
+Reported as *"New case / New form / New decision aren't working"*. They were working — the
+dialog rendered, then appeared **below the table and the pager**, off the bottom of the
+screen, with no backdrop and no focus move. Clicking looked like nothing happened.
+
+The cause was not in those buttons. W1.4 introduced the `Modal` primitive and deleted the
+`.tf-dialog` styles it replaced, but only converted *some* call sites. **Sixteen dialogs
+across all four apps** still write the old markup by hand, so every one of them has been
+rendering as an ordinary block in the page flow ever since: change password, keyboard
+shortcut help, delegate a task, every source view, every delete confirmation, the create
+dialogs in Design and Identity.
+
+Two things done:
+
+- **Unbroken all sixteen** by aliasing `.tf-dialog*` onto the modal styles. Cosmetically
+  identical to `Modal`, so converting each call site is now a tidy-up rather than a visual
+  change.
+- **Converted the one that was reported** (`NewModelDialog`) to `Modal` properly, which is
+  what F6 asks for.
+
+That F6's acceptance criterion — "no screen writes `.tf-dialog` markup directly" — was
+recorded as met while sixteen screens did exactly that is worth noting on its own: the
+criterion was checked against the *component* rather than against the codebase.
+
+### All sixteen converted, and a guard so it cannot recur
+
+Every one now uses `<Modal>`: the shared change-password and shortcut-help dialogs, Work's
+delegate, Control's job stack trace, case detail, both event-registry dialogs, both
+definition dialogs and deployment delete, Identity's create-user, create-group and profile,
+and Design's two source views and version history. The interim CSS aliases are gone —
+`.tf-dialog*` no longer exists anywhere.
+
+Verified in Firefox against the running engine: Control's suspend dialog renders centred
+at y=286 over a `position: fixed` backdrop, carries `role="alertdialog"`, and **focus is
+still inside it after six tabs** — the trap the hand-rolled markup never had.
+
+Two things surfaced on the way:
+
+- **`Modal.description` had to widen from `string` to `ReactNode`.** Several dialogs
+  compose theirs from values and markup — a case's business key, id and start time on one
+  line — and a `string` forced that either into the body, where assistive tech stops
+  treating it as the description, or into losing its formatting.
+- **`tf-dialog__warning` was orphaned too**, in two Control dialogs. Renamed into the
+  modal namespace and given a rule.
+
+**The guard**: [`orphanClasses.test.ts`](../../modules/togetherflow-common/src/main/frontend/src/theme/orphanClasses.test.ts)
+reads every `className="…"` literal across all four apps and fails on any `tf-` class no
+stylesheet defines. Twenty-six existing classes are allowlisted as structural hooks or
+parent-selector-styled, so it is a ratchet rather than a cleanup order. Proved it works by
+renaming `tf-modal-backdrop` and watching it fail. A grep would have caught the original
+bug on the day it shipped; now one runs on every commit.
+
+**The other three golden-path suites** (work 4, identity 3, design 3) fail on the same two
+causes Control did. The fixes are mechanical and now demonstrated; they were not applied
+in this pass.

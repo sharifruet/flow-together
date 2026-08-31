@@ -5,12 +5,12 @@ import {
   Badge,
   Button,
   Icon,
-  Modal,
   Tabs,
   TextInput,
   UserChip,
   ConfirmDialog,
   EmptyState,
+  Modal,
   FormRenderer,
   fieldIdsInOrder,
   formValuesToVariables,
@@ -800,10 +800,10 @@ export function TaskDetail({
               {delegating ? (
                 <Modal
                   open
-                  size="sm"
                   title={t("task.delegate.title")}
                   description={t("task.delegate.description")}
-                  // Typed-in work: a stray backdrop click must not discard it.
+                  size="sm"
+                  // Typed input: a stray backdrop click must not discard it.
                   dismissOnBackdrop={false}
                   onClose={() => setDelegating(false)}
                   actions={
