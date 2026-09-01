@@ -394,8 +394,9 @@ all.
   email address.
 - All sample accounts share one password, `demo`. They exist so a walkthrough has somebody to
   be, and are not intended for anything else.
-- The sample people are **off by default**. An administrator turns them on with
-  `togetherflow.resignation.sample-users.enabled=true`.
+- The sample people are not created until somebody asks. An administrator runs
+  [`deploy.sh`](deploy.sh), which posts them to the IDM API and never overwrites an account
+  that already exists.
 - If you can sign in but your task list is empty, you are almost certainly in the right identity
   provider and the wrong group — check [Who does what](#who-does-what).
 

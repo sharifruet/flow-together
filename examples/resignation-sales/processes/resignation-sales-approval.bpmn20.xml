@@ -41,8 +41,11 @@
     <sequenceFlow id="rseReturned" name="Returned" sourceRef="rseDecision" targetRef="aseAmendRecord"/>
 
     <!-- "RSE entry in mSales, generates notification mail to recipients" (step 2.2). -->
-    <serviceTask id="notifyRseEntry" name="Notify recipients of the RSE entry"
-                 flowable:expression="${resignationNotifier.send('RSE_APPROVED', employeeId, 'hrm,acc-officer,sales-ssr')}"/>
+    <scriptTask id="notifyRseEntry" name="Notify recipients of the RSE entry"
+                scriptFormat="groovy" flowable:autoStoreVariables="false"
+                flowable:resultVariable="notifiedRseApproved">
+      <script><![CDATA['RSE_APPROVED -> hrm,acc-officer,sales-ssr']]></script>
+    </scriptTask>
     <sequenceFlow id="toZsiApproval" sourceRef="notifyRseEntry" targetRef="zsiApproval"/>
 
     <userTask id="zsiApproval" name="ZSI approval — resignation and sales clearance"
@@ -76,8 +79,11 @@
     <sequenceFlow id="gmReturned" name="Returned" sourceRef="gmDecision" targetRef="aseAmendRecord"/>
 
     <!-- Step 2.4 — "GM Approval (Resignation & Clearance), FW to SSR (Sales Admin)". -->
-    <serviceTask id="forwardToSalesAdmin" name="Forward both documents to SSR (Sales Admin)"
-                 flowable:expression="${resignationNotifier.send('SALES_CHAIN_APPROVED', employeeId, 'sales-ssr')}"/>
+    <scriptTask id="forwardToSalesAdmin" name="Forward both documents to SSR (Sales Admin)"
+                scriptFormat="groovy" flowable:autoStoreVariables="false"
+                flowable:resultVariable="notifiedSalesChainApproved">
+      <script><![CDATA['SALES_CHAIN_APPROVED -> sales-ssr']]></script>
+    </scriptTask>
     <sequenceFlow id="toEndApproval" sourceRef="forwardToSalesAdmin" targetRef="endApproval"/>
 
     <userTask id="aseAmendRecord" name="ASE — amend and resubmit the resignation record"

@@ -100,8 +100,15 @@
         </sentry>
 
         <task id="notifyResignationLogged" name="Notify HRM, ACC and others"
-              flowable:type="java"
-              flowable:expression="${resignationNotifier.send('RESIGNATION_LOGGED', employeeId, 'hrm,acc-officer,sales-ssr')}"/>
+              flowable:type="script" flowable:scriptFormat="groovy"
+              flowable:autoStoreVariables="false"
+              flowable:resultVariableName="notifiedResignationLogged">
+          <extensionElements>
+            <flowable:field name="script">
+              <flowable:string><![CDATA['RESIGNATION_LOGGED -> hrm,acc-officer,sales-ssr']]></flowable:string>
+            </flowable:field>
+          </extensionElements>
+        </task>
 
         <humanTask id="aseClearance" name="ASE - raise and approve the sales clearance"
                    flowable:assignee="${aseUserId}" flowable:formKey="salesClearanceForm">

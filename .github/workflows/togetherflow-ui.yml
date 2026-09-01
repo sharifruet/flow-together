@@ -273,15 +273,11 @@ jobs:
   java:
     name: Java modules
     runs-on: ubuntu-latest
-    # The four TogetherFlow Java modules — the optional attachment gateway, the optional
-    # event recorder, the Resignation (Sales) content and the workspace service. None was
-    # covered by anything: the verify matrix above is frontend-only, and
-    # togetherflow-docker-release.yml only ever runs `package -DskipTests`. Their tests and
-    # their checkstyle therefore ran on nobody's machine.
-    #
-    # The resignation module runs models on a real engine, and it is also where the Keycloak
-    # realm is held to the sample identities — a check that reads docker/config/, so it only
-    # means anything when it runs on a full checkout, which is here.
+    # The three TogetherFlow Java modules — the optional attachment gateway, the optional
+    # event recorder and the workspace service. None was covered by anything: the verify
+    # matrix above is frontend-only, and togetherflow-docker-release.yml only ever runs
+    # `package -DskipTests`. Their tests and their checkstyle therefore ran on nobody's
+    # machine.
     steps:
       - uses: actions/checkout@v4
 
@@ -297,12 +293,12 @@ jobs:
       # Two steps rather than one `-am verify`: `-am` pulls in reactor dependencies
       # (flowable-engine, flowable-cmmn-engine and friends), and running `verify` across those
       # would execute the engine's own test suites, which is not what this job is for. Build
-      # the dependencies without tests, then verify only the four modules. `-am` also brings
+      # the dependencies without tests, then verify only the three modules. `-am` also brings
       # in build-tools, which is where the checkstyle configuration comes from.
       - name: Build dependencies
         run: >-
           ./mvnw -B -ntp -Ptogetherflow
-          -pl modules/togetherflow-attachment-gateway,modules/togetherflow-event-recorder,modules/togetherflow-resignation,modules/togetherflow-workspace
+          -pl modules/togetherflow-attachment-gateway,modules/togetherflow-event-recorder,modules/togetherflow-workspace
           -am install -Dmaven.test.skip=true
 
       # `verify`, not `test`: checkstyle is bound to verify, so `test` would leave it
@@ -310,7 +306,7 @@ jobs:
       - name: Test and checkstyle
         run: >-
           ./mvnw -B -ntp -Ptogetherflow
-          -pl modules/togetherflow-attachment-gateway,modules/togetherflow-event-recorder,modules/togetherflow-resignation,modules/togetherflow-workspace
+          -pl modules/togetherflow-attachment-gateway,modules/togetherflow-event-recorder,modules/togetherflow-workspace
           verify
 
       - name: Upload surefire reports on failure

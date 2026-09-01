@@ -77,13 +77,18 @@
               flowable:candidateGroups="acc-officer" flowable:formKey="finalSettlementForm"/>
     <sequenceFlow id="toRegisterSettlement" sourceRef="completeFinalSettlement" targetRef="registerSettlementDocument"/>
 
-    <serviceTask id="registerSettlementDocument" name="Register the final settlement statement in the case file"
-                 flowable:expression="${resignationDocuments.register('FINAL_SETTLEMENT_STATEMENT', employeeId)}"
-                 flowable:resultVariableName="finalSettlementRef"/>
+    <scriptTask id="registerSettlementDocument" name="Register the final settlement statement in the case file"
+                scriptFormat="groovy" flowable:autoStoreVariables="false"
+                flowable:resultVariable="finalSettlementRef">
+      <script><![CDATA['doc:FINAL_SETTLEMENT_STATEMENT:' + employeeId]]></script>
+    </scriptTask>
     <sequenceFlow id="toNotifyHrmFinalCopy" sourceRef="registerSettlementDocument" targetRef="sendFinalCopyToHrm"/>
 
-    <serviceTask id="sendFinalCopyToHrm" name="Send the final copy to HRM"
-                 flowable:expression="${resignationNotifier.send('FINAL_SETTLEMENT_COMPLETED', employeeId, 'hrm')}"/>
+    <scriptTask id="sendFinalCopyToHrm" name="Send the final copy to HRM"
+                scriptFormat="groovy" flowable:autoStoreVariables="false"
+                flowable:resultVariable="notifiedFinalSettlementCompleted">
+      <script><![CDATA['FINAL_SETTLEMENT_COMPLETED -> hrm']]></script>
+    </scriptTask>
     <sequenceFlow id="toEndSettlement" sourceRef="sendFinalCopyToHrm" targetRef="endSettlement"/>
 
     <endEvent id="endSettlement" name="Final settlement complete"/>

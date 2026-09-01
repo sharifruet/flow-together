@@ -40,8 +40,11 @@
               flowable:candidateGroups="director-mkt" flowable:formKey="signatureForm"/>
     <sequenceFlow id="toForwardLetter" sourceRef="directorMarketingSignature" targetRef="forwardLetterToHrm"/>
 
-    <serviceTask id="forwardLetterToHrm" name="Forward the signed resignation letter to HRM"
-                 flowable:expression="${resignationNotifier.send('RESIGNATION_LETTER_SIGNED', employeeId, 'hrm')}"/>
+    <scriptTask id="forwardLetterToHrm" name="Forward the signed resignation letter to HRM"
+                scriptFormat="groovy" flowable:autoStoreVariables="false"
+                flowable:resultVariable="notifiedResignationLetterSigned">
+      <script><![CDATA['RESIGNATION_LETTER_SIGNED -> hrm']]></script>
+    </scriptTask>
     <sequenceFlow id="letterTrackToJoin" sourceRef="forwardLetterToHrm" targetRef="routingJoin"/>
 
     <!-- Track 2: the sales clearance. -->
@@ -61,8 +64,11 @@
     <parallelGateway id="clearanceJoin" name="SIMU and IB cleared"/>
     <sequenceFlow id="toForwardClearance" sourceRef="clearanceJoin" targetRef="forwardClearanceToSbm"/>
 
-    <serviceTask id="forwardClearanceToSbm" name="Forward the sales clearance to SBM"
-                 flowable:expression="${resignationNotifier.send('SALES_CLEARANCE_FORWARDED', employeeId, 'sbm')}"/>
+    <scriptTask id="forwardClearanceToSbm" name="Forward the sales clearance to SBM"
+                scriptFormat="groovy" flowable:autoStoreVariables="false"
+                flowable:resultVariable="notifiedSalesClearanceForwarded">
+      <script><![CDATA['SALES_CLEARANCE_FORWARDED -> sbm']]></script>
+    </scriptTask>
     <sequenceFlow id="clearanceTrackToJoin" sourceRef="forwardClearanceToSbm" targetRef="routingJoin"/>
 
     <parallelGateway id="routingJoin" name="Both documents dispatched"/>

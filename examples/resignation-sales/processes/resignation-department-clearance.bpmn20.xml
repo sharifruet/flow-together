@@ -31,13 +31,18 @@
     </userTask>
     <sequenceFlow id="toRegisterClearance" sourceRef="issueClearance" targetRef="registerClearanceDocument"/>
 
-    <serviceTask id="registerClearanceDocument" name="Register the clearance in the case file"
-                 flowable:expression="${resignationDocuments.register(clearanceType, employeeId)}"
-                 flowable:resultVariableName="clearanceDocumentRef"/>
+    <scriptTask id="registerClearanceDocument" name="Register the clearance in the case file"
+                scriptFormat="groovy" flowable:autoStoreVariables="false"
+                flowable:resultVariable="clearanceDocumentRef">
+      <script><![CDATA['doc:' + clearanceType + ':' + employeeId]]></script>
+    </scriptTask>
     <sequenceFlow id="toNotifyHrmClearance" sourceRef="registerClearanceDocument" targetRef="notifyHrmOfClearance"/>
 
-    <serviceTask id="notifyHrmOfClearance" name="Forward the clearance to HRM"
-                 flowable:expression="${resignationNotifier.send('CLEARANCE_ISSUED', employeeId, 'hrm')}"/>
+    <scriptTask id="notifyHrmOfClearance" name="Forward the clearance to HRM"
+                scriptFormat="groovy" flowable:autoStoreVariables="false"
+                flowable:resultVariable="notifiedClearanceIssued">
+      <script><![CDATA['CLEARANCE_ISSUED -> hrm']]></script>
+    </scriptTask>
     <sequenceFlow id="toEndClearance" sourceRef="notifyHrmOfClearance" targetRef="endClearance"/>
 
     <endEvent id="endClearance" name="Clearance with HRM"/>

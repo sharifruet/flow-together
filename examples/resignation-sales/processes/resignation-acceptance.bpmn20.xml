@@ -26,9 +26,11 @@
     <startEvent id="startAcceptance" name="All clearances received"/>
     <sequenceFlow id="toGenerateLetter" sourceRef="startAcceptance" targetRef="generateAcceptanceLetter"/>
 
-    <serviceTask id="generateAcceptanceLetter" name="Generate the acceptance of resignation letter"
-                 flowable:expression="${resignationDocuments.register('ACCEPTANCE_OF_RESIGNATION', employeeId)}"
-                 flowable:resultVariableName="acceptanceLetterRef"/>
+    <scriptTask id="generateAcceptanceLetter" name="Generate the acceptance of resignation letter"
+                scriptFormat="groovy" flowable:autoStoreVariables="false"
+                flowable:resultVariable="acceptanceLetterRef">
+      <script><![CDATA['doc:ACCEPTANCE_OF_RESIGNATION:' + employeeId]]></script>
+    </scriptTask>
     <sequenceFlow id="toHeadOfHrSignature" sourceRef="generateAcceptanceLetter" targetRef="headOfHrSignature"/>
 
     <userTask id="headOfHrSignature" name="Head of HR — sign the acceptance of resignation"
@@ -62,12 +64,18 @@
         resignation. It falls back to the payroll id so a case started without it still says
         who the letter was for rather than notifying nobody.
     -->
-    <serviceTask id="sendAcceptanceToEmployee" name="Send the acceptance letter to the employee"
-                 flowable:expression="${resignationNotifier.send('ACCEPTANCE_SENT_TO_EMPLOYEE', employeeId, variables:getOrDefault(employeeUserId, employeeId))}"/>
+    <scriptTask id="sendAcceptanceToEmployee" name="Send the acceptance letter to the employee"
+                scriptFormat="groovy" flowable:autoStoreVariables="false"
+                flowable:resultVariable="notifiedAcceptanceSentToEmployee">
+      <script><![CDATA['ACCEPTANCE_SENT_TO_EMPLOYEE -> ' + (execution.getVariable('employeeUserId') ?: employeeId)]]></script>
+    </scriptTask>
     <sequenceFlow id="toCirculateAcceptance" sourceRef="sendAcceptanceToEmployee" targetRef="circulateAcceptanceLetter"/>
 
-    <serviceTask id="circulateAcceptanceLetter" name="Circulate the acceptance letter to SSR Admin and reception"
-                 flowable:expression="${resignationNotifier.send('ACCEPTANCE_CIRCULATED', employeeId, 'sales-ssr,reception')}"/>
+    <scriptTask id="circulateAcceptanceLetter" name="Circulate the acceptance letter to SSR Admin and reception"
+                scriptFormat="groovy" flowable:autoStoreVariables="false"
+                flowable:resultVariable="notifiedAcceptanceCirculated">
+      <script><![CDATA['ACCEPTANCE_CIRCULATED -> sales-ssr,reception']]></script>
+    </scriptTask>
     <sequenceFlow id="toUpdateClearanceStatus" sourceRef="circulateAcceptanceLetter" targetRef="updateClearanceStatusRecord"/>
 
     <userTask id="updateClearanceStatusRecord" name="HRM — update the employee clearance status record"
@@ -75,8 +83,11 @@
     <sequenceFlow id="toShareWithAcc" sourceRef="updateClearanceStatusRecord" targetRef="shareDocumentsWithAcc"/>
 
     <!-- Step 1.7 — all six documents go to ACC for the final settlement calculation. -->
-    <serviceTask id="shareDocumentsWithAcc" name="Send the six documents to ACC for final settlement"
-                 flowable:expression="${resignationNotifier.send('DOCUMENTS_SHARED_WITH_ACC', employeeId, 'acc-officer,acc-manager')}"/>
+    <scriptTask id="shareDocumentsWithAcc" name="Send the six documents to ACC for final settlement"
+                scriptFormat="groovy" flowable:autoStoreVariables="false"
+                flowable:resultVariable="notifiedDocumentsSharedWithAcc">
+      <script><![CDATA['DOCUMENTS_SHARED_WITH_ACC -> acc-officer,acc-manager']]></script>
+    </scriptTask>
     <sequenceFlow id="toEndAcceptance" sourceRef="shareDocumentsWithAcc" targetRef="endAcceptance"/>
 
     <endEvent id="endAcceptance" name="Resignation accepted"/>
