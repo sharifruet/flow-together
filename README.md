@@ -1,62 +1,37 @@
-Flowable
-========
+TogetherFlow
+============
 
-[![Maven Central](https://img.shields.io/maven-central/v/org.flowable/flowable-engine?label=Maven%20Central)](https://central.sonatype.com/search?q=g:org.flowable%20%26%26%20%28a:flowable-engine%20a:flowable-cmmn-engine%20a:flowable-dmn-engine%29)
-[![Docker](https://shields.io/docker/pulls/flowable/flowable-rest)](https://hub.docker.com/r/flowable/flowable-rest)
-[![License](https://img.shields.io/badge/License-Apache%202.0-blue.svg)](https://github.com/flowable/flowable-engine/blob/main/LICENSE)
+[![License](https://img.shields.io/badge/License-Apache%202.0-blue.svg)](LICENSE)
 
-![Flowable Actions CI](https://github.com/flowable/flowable-engine/actions/workflows/main.yml/badge.svg?branch=main)
+A workflow platform built on [Flowable](https://github.com/flowable/flowable-engine): the
+BPMN, CMMN, DMN, App and IDM engines, plus **four React applications** that give business
+users, operators, administrators and modellers a product to work in.
 
-Homepage: https://www.flowable.org/
+The engines are Flowable's, unchanged in shape. What this repository adds is everything
+above them.
 
-**This fork** also carries the TogetherFlow apps (Work, Control, Identity, Design). To run the engine and those four React apps on your machine, see [Running TogetherFlow locally](#running-togetherflow-locally) at the bottom of this file.
+## The four applications
 
-## flowable / flowəb(ə)l /
-* a compact and highly efficient workflow and Business Process Management (BPM) platform for developers, system admins and business users.
-* a lightning fast, tried and tested BPMN process engine, CMMN case engine and DMN rule engine written in Java.  It is Apache 2.0 licensed open source, with a committed community.
-* can run embedded in a Java application, or as a service on a server, a cluster, and in the cloud.  It integrates perfectly with Spring.  With a rich Java and REST API, it is the ideal engine for orchestrating human or system activities.
+| App | What it is for | Talks to |
+|---|---|---|
+| **Work** | Task and case inbox — the screen a business user lives in | process, CMMN |
+| **Control** | Runtime operations: instances, jobs, deployments, migration | process, CMMN, DMN, event registry |
+| **Identity** | Users, groups and privileges | process, IDM |
+| **Design** | Model authoring across BPMN, CMMN, DMN, apps, forms and events | process, CMMN, DMN, app, event registry |
 
-## Introduction
+They share `togetherflow-common` — a typed REST client, auth and tenant context, the design
+system, i18n, the app shell and the cross-cutting production concerns. Nothing is generated
+from a vendor SDK; the shared library is the product's own.
 
-### License
-
-Flowable is distributed under the Apache V2 license (http://www.apache.org/licenses/LICENSE-2.0.html).
-
-### Download
-
-The Flowable downloads can be found on https://www.flowable.org/downloads.html.
-
-### Sources
-
-The distribution contains most of the sources as jar files. The source code of Flowable can be found on https://github.com/flowable/flowable-engine.
-
-### JDK 17+
-
-Flowable V7 runs on a Java higher than or equal to version 17. Use the JDK packaged with your Linux distribution or go to [adoptium.net](https://adoptium.net/) and click on the *Latest LTS Release* button. There are installation instructions on that page as well. To verify that your installation was successful, run `java -version` on the command line. That should print the installed version of your JDK.
-
-[Flowable V6](https://github.com/flowable/flowable-engine/tree/flowable6.x) is still maintained and supports Java 8+.
-
-### Flowable Design
-
-Flowable offers a free to use Flowable Cloud Design application, which you can use to model CMMN, BPMN, DMN and other model types. You can register via the Flowable account registration page to get started https://www.flowable.com/account/open-source.
-
-### Contributing
-
-Contributing to Flowable: https://github.com/flowable/flowable-engine/wiki.
-
-### Reporting problems
-
-Every self-respecting developer should have read this link on how to ask smart questions: http://www.catb.org/~esr/faqs/smart-questions.html.
-
-After you've done that you can post questions and comments on https://forum.flowable.org and create issues in https://github.com/flowable/flowable-engine/issues.
-
+**1,265 frontend tests** pass across the five modules (common 433, design 591, control 103,
+work 97, identity 41).
 
 ---
 
 ## Running TogetherFlow locally
 
-The engine plus the four React apps — Work, Control, Identity and Design. Each app's own
-README covers it in more depth; this is the whole stack in one place.
+The engine plus all four apps. Each app's own README goes deeper; this is the whole stack in
+one place.
 
 ### Prerequisites
 
@@ -71,24 +46,52 @@ README covers it in more depth; this is the whole stack in one place.
 
 ### 1. The backend
 
-Build the REST app once, then run the war directly:
+**No Docker and no database server needed.** The war embeds H2 and creates the database on
+first run, so two commands get you a working engine:
 
 ```bash
 ./mvnw install -Pdistro,quick                              # -Pquick skips tests + checkstyle
 java -jar modules/flowable-app-rest/target/flowable-rest.war
 ```
 
-Or skip the build and use the published image:
+It starts in a few seconds at **http://localhost:8080/flowable-rest**; sign in as
+**`rest-admin` / `test`**. The war already contains six demo processes, so the screens are
+not empty before you deploy anything.
+
+On the *first* run against an empty database the admin user is created a moment after the
+`Started FlowableRestApplication` line, so a request fired immediately can still come back
+401. Give it a second and try again.
+
+The database is a **file**, at `~/flowable-db/ossdb.mv.db` — it survives restarts, which is
+what you want while developing, and is also the thing to delete when you want a clean slate:
+
+```bash
+# a different port, and a database of its own
+java -jar modules/flowable-app-rest/target/flowable-rest.war \
+  --server.port=8081 \
+  --spring.datasource.url='jdbc:h2:~/flowable-db/scratch;DB_CLOSE_DELAY=-1'
+
+rm -rf ~/flowable-db          # start over from an empty engine
+```
+
+One H2 file takes one engine: a second instance pointed at the same URL fails on the lock.
+Give each its own `--spring.datasource.url`, as above.
+
+H2 is the only driver in the war (`WEB-INF/lib/h2-2.4.240.jar`). To run against Postgres or
+MySQL, put that driver on the classpath and pass `--spring.datasource.url`,
+`--spring.datasource.username` and `--spring.datasource.password` the same way.
+
+**Docker instead**, if you would rather not build:
 
 ```bash
 docker run -d --name tf-engine -p 8080:8080 flowable/flowable-rest
 ```
 
-Either way the engine is at **http://localhost:8080/flowable-rest**, and you sign in as
-**`rest-admin` / `test`**.
+#### The engine's REST layout
 
-Its servlet layout is not the Flowable default, which matters whenever you call it by hand:
-BPMN is mounted at `/service`, and every other engine under its own prefix.
+This app does not use Flowable's default servlet paths, which matters whenever you call it
+by hand or point an app somewhere new: BPMN is mounted at `/service`, every other engine
+under its own prefix.
 
 | Engine | Path |
 |---|---|
@@ -160,7 +163,77 @@ has the detail, and `USER_MANUAL.md` beside it walks all fifteen steps.
 | Symptom | Cause |
 |---|---|
 | `Port 8080 was already in use` | An engine is already running — reuse it, or pass `--server.port=8081` |
+| `Database may be already in use` | Another engine holds that H2 file. Give this one its own `--spring.datasource.url` |
 | 401 on every REST call | Wrong credentials: this app's admin is `rest-admin`, not `admin` |
+| 401 only on the very first run | The admin user is still being created — retry in a second |
 | 403 after a successful sign-in | The user has no `access-rest-api` privilege. Grant it in Identity → Privileges |
 | Vitest exits with `styleText` | Node is older than 22 — see Prerequisites |
 | Apps load but every request 404s | The engine is mounted somewhere else; set `TF_API_CONTEXT` |
+
+---
+
+## Building
+
+The UI modules sit behind an opt-in profile, so an engine-only build never downloads Node:
+
+```bash
+./mvnw install -DskipTests                  # engines only
+./mvnw install -Ptogetherflow               # engines + the apps
+./mvnw install -Pdistro,quick               # + the REST app war, no tests or checkstyle
+```
+
+Per-app scripts, from any `src/main/frontend`:
+
+| Command | What it does |
+|---|---|
+| `npm run dev` | Vite dev server with the REST proxy |
+| `npm run build` | Typecheck, then production build into `dist/` |
+| `npm test` | Component tests (Vitest + Testing Library) |
+| `npm run typecheck` | `tsc --noEmit` |
+| `npm run lint` | ESLint |
+| `npm run e2e` | Playwright golden path — needs a real backend |
+
+## Repository layout
+
+```
+modules/flowable-*              the engines, from upstream Flowable
+modules/flowable-app-rest       the deployable REST app (flowable-rest.war)
+modules/togetherflow-common     shared library for the four apps
+modules/togetherflow-{work,control,identity,design}
+                                the four React applications
+examples/resignation-sales      a complete worked process, deployable over REST
+docs/ui                         requirements, operations, status, ADRs
+k8s/                            Helm chart and plain manifests
+```
+
+Three optional backend modules, none part of a default install:
+
+- `togetherflow-attachment-gateway` — attachment storage when the engine's own database is
+  not where the bytes should live.
+- `togetherflow-event-recorder` — a jar for the application hosting the event registry,
+  giving Control a log of inbound events the engine does not itself keep.
+- `togetherflow-workspace` — workspaces and design-time permissions for Design. Absent,
+  Design shows one flat model library, which is the supported default.
+
+## Documentation
+
+| Document | What it covers |
+|---|---|
+| [docs/ui/REQUIREMENTS.md](docs/ui/REQUIREMENTS.md) | What is required, and why |
+| [docs/ui/OPERATIONS.md](docs/ui/OPERATIONS.md) | Running it in production: config, health, failure modes |
+| [docs/ui/STATUS.md](docs/ui/STATUS.md) | What is built, what is verified, what is not |
+| [docs/ui/adr/](docs/ui/adr/) | Architecture decisions, 0001–0018 |
+| [CLAUDE.md](CLAUDE.md) | Engine internals: the command pattern, persistence, the agenda |
+
+## Upstream
+
+This is a fork of [flowable/flowable-engine](https://github.com/flowable/flowable-engine).
+The engine modules track upstream; `modules/togetherflow-*`, `examples/` and `docs/ui/` are
+this repository's own. Flowable's own documentation is at
+[flowable.org](https://www.flowable.org/) and its downloads at
+[flowable.org/downloads.html](https://www.flowable.org/downloads.html).
+
+## License
+
+Apache License 2.0 — see [LICENSE](LICENSE). Flowable is Apache 2.0 licensed, and this fork
+keeps that license unchanged.
