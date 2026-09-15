@@ -673,40 +673,41 @@ export function TaskDetail({
                 ) : null}
               </Tabs>
 
-              <footer className="tf-detail__actions">
-                {isUnassigned ? (
-                  <Button
-                    loading={busy}
-                    onClick={() =>
-                      runAction(t("task.action.claimed"), async () => {
-                        await taskApi.claim(current.id, userId);
-                        reload();
-                        onChanged();
-                      })
-                    }
-                  >
-                    {t("task.action.claim")}
-                  </Button>
-                ) : null}
+              {/*
+                The action bar is pinned to the bottom of the pane (see
+                `.tf-detail__actions` in work.css), and split so that finishing the task
+                cannot be crowded out.
 
-                {isAssignedToMe ? (
-                  <>
-                    <Button
-                      variant="secondary"
-                      loading={busy}
-                      onClick={() =>
-                        runAction(t("task.action.unclaimed"), async () => {
-                          await taskApi.unclaim(current.id);
-                          reload();
-                          onChanged();
-                        })
-                      }
-                    >
-                      {t("task.action.unclaim")}
-                    </Button>
-                    <Button variant="secondary" loading={busy} onClick={() => setDelegating(true)}>
-                      {t("task.action.delegate")}
-                    </Button>
+                Before: one flex row of up to four buttons, Complete last. In a 420px pane
+                it wrapped onto a second line, and that line sat below Variables, Comments
+                and History — measured at y=932 in a 900px-tall viewport, so the one thing
+                a task inbox exists for was off screen behind three sections that were
+                usually empty.
+
+                Now: secondary actions group left, the completing action sits right and
+                alone. When the pane is too narrow the secondary group wraps within
+                itself; the primary never moves.
+              */}
+              <footer className="tf-detail__actions">
+                <div className="tf-detail__actions-secondary">
+                  {isAssignedToMe ? (
+                    <>
+                      <Button
+                        variant="secondary"
+                        loading={busy}
+                        onClick={() =>
+                          runAction(t("task.action.unclaimed"), async () => {
+                            await taskApi.unclaim(current.id);
+                            reload();
+                            onChanged();
+                          })
+                        }
+                      >
+                        {t("task.action.unclaim")}
+                      </Button>
+                      <Button variant="secondary" loading={busy} onClick={() => setDelegating(true)}>
+                        {t("task.action.delegate")}
+                      </Button>
                     {/*
                       W2.2: Save, beside Complete — "the most-missed everyday affordance
                       in the list". Flowable Work's default outcomes are Complete *and*
@@ -714,42 +715,62 @@ export function TaskDetail({
                       It is not an engine action — there is no "save" verb — but a
                       variable write, which is what completing does minus the completion.
                     */}
-                    <Button
-                      variant="secondary"
-                      loading={savingDraft}
-                      disabled={busy}
-                      onClick={() => {
-                        setSavingDraft(true);
-                        const values = usingForm && form
-                          ? formValuesToVariables(form, formValues)
-                          : toRestVariables(variables);
-                        void taskApi
-                          .saveVariables(current.id, values)
-                          .then(() => {
-                            push({ tone: "success", message: t("task.action.saved") });
-                            onChanged();
-                          })
-                          .catch((cause) => {
-                            const apiError = cause instanceof ApiError ? cause : undefined;
-                            push({
-                              tone: "error",
-                              message: apiError?.message ?? t("task.action.saveFailed"),
-                              reference: apiError?.correlationId,
-                            });
-                          })
-                          .finally(() => setSavingDraft(false));
-                      }}
-                    >
-                      <Icon name="save" size={16} />
-                      {t("task.action.save")}
-                    </Button>
+                      <Button
+                        variant="secondary"
+                        loading={savingDraft}
+                        disabled={busy}
+                        onClick={() => {
+                          setSavingDraft(true);
+                          const values = usingForm && form
+                            ? formValuesToVariables(form, formValues)
+                            : toRestVariables(variables);
+                          void taskApi
+                            .saveVariables(current.id, values)
+                            .then(() => {
+                              push({ tone: "success", message: t("task.action.saved") });
+                              onChanged();
+                            })
+                            .catch((cause) => {
+                              const apiError = cause instanceof ApiError ? cause : undefined;
+                              push({
+                                tone: "error",
+                                message: apiError?.message ?? t("task.action.saveFailed"),
+                                reference: apiError?.correlationId,
+                              });
+                            })
+                            .finally(() => setSavingDraft(false));
+                        }}
+                      >
+                        <Icon name="save" size={16} />
+                        {t("task.action.save")}
+                      </Button>
+                    </>
+                  ) : null}
+                </div>
 
-                    {/*
-                      A form may name its own outcomes ("Approve", "Reject"). Each is a
-                      distinct submit that records which was chosen, so they replace the
-                      generic Complete rather than sitting beside it.
-                    */}
-                    {outcomes.length > 0 ? (
+                <div className="tf-detail__actions-primary">
+                  {isUnassigned ? (
+                    <Button
+                      loading={busy}
+                      onClick={() =>
+                        runAction(t("task.action.claimed"), async () => {
+                          await taskApi.claim(current.id, userId);
+                          reload();
+                          onChanged();
+                        })
+                      }
+                    >
+                      {t("task.action.claim")}
+                    </Button>
+                  ) : null}
+
+                  {/*
+                    A form may name its own outcomes ("Approve", "Reject"). Each is a
+                    distinct submit that records which was chosen, so they replace the
+                    generic Complete rather than sitting beside it.
+                  */}
+                  {isAssignedToMe ? (
+                    outcomes.length > 0 ? (
                       outcomes.map((outcome) => (
                         <Button
                           key={outcome.id ?? outcome.name}
@@ -768,33 +789,33 @@ export function TaskDetail({
                       >
                         {t("task.action.complete")}
                       </Button>
-                    )}
-                  </>
-                ) : null}
+                    )
+                  ) : null}
 
-                {/*
-                  A delegated task sits with the delegate until they hand it back.
-                  Resolving returns it to the owner — it does not complete it.
-                */}
-                {current.delegationState === "pending" && current.assignee === userId ? (
-                  <Button
-                    loading={busy}
-                    onClick={() =>
-                      runAction(
-                        t("task.action.handedBack", {
-                          owner: current.owner ?? t("task.action.owner"),
-                        }),
-                        async () => {
-                          await taskApi.resolve(current.id);
-                          reload();
-                          onChanged();
-                        },
-                      )
-                    }
-                  >
-                    {t("task.action.handBack", { owner: current.owner ?? t("task.action.owner") })}
-                  </Button>
-                ) : null}
+                  {/*
+                    A delegated task sits with the delegate until they hand it back.
+                    Resolving returns it to the owner — it does not complete it.
+                  */}
+                  {current.delegationState === "pending" && current.assignee === userId ? (
+                    <Button
+                      loading={busy}
+                      onClick={() =>
+                        runAction(
+                          t("task.action.handedBack", {
+                            owner: current.owner ?? t("task.action.owner"),
+                          }),
+                          async () => {
+                            await taskApi.resolve(current.id);
+                            reload();
+                            onChanged();
+                          },
+                        )
+                      }
+                    >
+                      {t("task.action.handBack", { owner: current.owner ?? t("task.action.owner") })}
+                    </Button>
+                  ) : null}
+                </div>
               </footer>
 
               {delegating ? (

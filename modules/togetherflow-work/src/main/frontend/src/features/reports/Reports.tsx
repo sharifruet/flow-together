@@ -120,36 +120,33 @@ export function Reports({ taskApi, historyApi, userId }: ReportsProps) {
             ];
 
             return (
-              <>
-                <ul className="tf-cards">
-                  {tiles.map((tile) => (
-                    <li key={tile.id}>
-                      <Link to={tile.to} className="tf-tile">
-                        <span className="tf-tile__icon">
-                          <Icon name={tile.icon} size={20} />
-                        </span>
-                        <span className="tf-tile__count">
-                          {tile.count === undefined ? (
-                            // Unknown is not zero.
-                            <span className="tf-muted" title={t("reports.unavailable")}>
-                              —
-                            </span>
-                          ) : (
-                            tile.count
-                          )}
-                        </span>
-                        <span className="tf-tile__label">{tile.label}</span>
-                        {tile.count !== undefined && tile.count > 0 && tile.tone !== "neutral" ? (
-                          <Badge tone={tile.tone} subtle>
-                            {t("reports.needsAttention")}
-                          </Badge>
-                        ) : null}
-                      </Link>
-                    </li>
-                  ))}
-                </ul>
-                <p className="tf-muted tf-reports__note">{t("reports.note")}</p>
-              </>
+              <ul className="tf-cards">
+                {tiles.map((tile) => (
+                  <li key={tile.id}>
+                    <Link to={tile.to} className="tf-tile">
+                      <span className="tf-tile__icon">
+                        <Icon name={tile.icon} size={20} />
+                      </span>
+                      <span className="tf-tile__count">
+                        {tile.count === undefined ? (
+                          // Unknown is not zero.
+                          <span className="tf-muted" title={t("reports.unavailable")}>
+                            —
+                          </span>
+                        ) : (
+                          tile.count
+                        )}
+                      </span>
+                      <span className="tf-tile__label">{tile.label}</span>
+                      {tile.count !== undefined && tile.count > 0 && tile.tone !== "neutral" ? (
+                        <Badge tone={tile.tone} subtle>
+                          {t("reports.needsAttention")}
+                        </Badge>
+                      ) : null}
+                    </Link>
+                  </li>
+                ))}
+              </ul>
             );
           }}
         </AsyncBoundary>

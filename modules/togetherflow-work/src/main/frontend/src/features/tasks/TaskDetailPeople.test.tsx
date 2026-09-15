@@ -119,10 +119,18 @@ describe("TaskDetail — audit trail", () => {
    * `enableHistoricTaskLogging` is false by default, so an empty list is the norm and
    * means "this engine records nothing", not "nothing happened". Saying the wrong one
    * would send an operator hunting for a bug that isn't there.
+   *
+   * What changed: the distinction is still drawn, but without naming the engine flag —
+   * this screen belongs to whoever is doing the task, not to whoever configured the
+   * engine. So the assertion is on the *meaning* (there is a way to turn this on, and
+   * someone else does it) rather than on the identifier that used to carry it.
    */
-  it("explains that an engine records nothing unless task logging is enabled", async () => {
+  it("distinguishes an unrecorded history from an uneventful one", async () => {
     renderDetail(stubApi());
-    expect(await screen.findByText(/enableHistoricTaskLogging/)).toBeInTheDocument();
+    expect(await screen.findByText(/ask an administrator to switch task history on/i))
+      .toBeInTheDocument();
+    // The engine's own vocabulary must not reach this screen.
+    expect(screen.queryByText(/enableHistoricTaskLogging/)).not.toBeInTheDocument();
   });
 
   it("shows entries when the engine does record them", async () => {

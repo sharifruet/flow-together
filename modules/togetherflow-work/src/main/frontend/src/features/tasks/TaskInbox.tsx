@@ -121,6 +121,13 @@ export function TaskInbox({
   const { setStart } = list;
   const savedViews = useSavedViews<InboxView>("work.inbox");
   const [creatingTask, setCreatingTask] = useState(false);
+  /*
+   * Closed on arrival, including when a filter is already in force from the URL or a
+   * saved view — the chips below the toggle report those, so opening the panel would
+   * spend the first screen on controls to tell the reader something they can already
+   * see. It is a place to change a filter, not to be told there is one.
+   */
+  const [filtersOpen, setFiltersOpen] = useState(false);
 
   // Type-ahead filtering rather than submit-and-wait (§14.4).
   const debouncedSearch = useDebouncedValue(view.search.trim(), 250);
@@ -295,20 +302,31 @@ export function TaskInbox({
           );
         },
       },
-      {
-        key: "status",
-        header: t("inbox.column.status"),
-        width: "120px",
-        // Only meaningful on the historic filters; a runtime task is always open.
-        render: (task) =>
-          task.endTime ? (
-            <Badge tone="neutral">{t("inbox.status.completed")}</Badge>
-          ) : (
-            <Badge tone="success" dot>
-              {t("inbox.status.open")}
-            </Badge>
-          ),
-      },
+      /*
+       * Only on the historic filters, where a row can actually be either.
+       *
+       * The comment here used to say "a runtime task is always open" and render the
+       * column anyway — so on the default inbox it was 120px of green "Open" repeated
+       * once per row, telling the reader something every row already guaranteed. A
+       * column that cannot vary is not information.
+       */
+      ...(historic
+        ? [
+            {
+              key: "status",
+              header: t("inbox.column.status"),
+              width: "120px",
+              render: (task: TaskResponse) =>
+                task.endTime ? (
+                  <Badge tone="neutral">{t("inbox.status.completed")}</Badge>
+                ) : (
+                  <Badge tone="neutral" dot>
+                    {t("inbox.status.open")}
+                  </Badge>
+                ),
+            },
+          ]
+        : []),
       {
         key: "priority",
         header: t("inbox.column.priority"),
@@ -322,7 +340,7 @@ export function TaskInbox({
         ),
       },
     ],
-    [t, locale],
+    [t, locale, historic],
   );
 
   const clearFilters = list.clearFilters;
@@ -361,6 +379,41 @@ export function TaskInbox({
     view.definitionKey !== "" ||
     view.due !== "any" ||
     view.priority !== "any";
+
+  /**
+   * What is narrowing the list right now, as chips the reader can undo one at a time.
+   *
+   * This is what earns the right to collapse the filter bar: the controls fold away, but
+   * every filter in force stays visible and individually removable. The tab and the
+   * search box are not here — they have their own visible controls a few pixels above,
+   * and repeating them would be noise.
+   */
+  const activeFilters = useMemo(() => {
+    const chips: { id: string; label: string; clear: () => void }[] = [];
+    if (view.definitionKey !== "") {
+      const match = (definitions.data?.data ?? []).find((one) => one.key === view.definitionKey);
+      chips.push({
+        id: "definitionKey",
+        label: `${t("inbox.definition.label")}: ${match?.name || view.definitionKey}`,
+        clear: () => update({ definitionKey: "" }),
+      });
+    }
+    if (view.due !== "any") {
+      chips.push({
+        id: "due",
+        label: `${t("inbox.due.label")}: ${t(`inbox.due.${view.due}`)}`,
+        clear: () => update({ due: "any" }),
+      });
+    }
+    if (view.priority !== "any") {
+      chips.push({
+        id: "priority",
+        label: `${t("inbox.priority.label")}: ${t(`format.priority.${view.priority}`)}`,
+        clear: () => update({ priority: "any" }),
+      });
+    }
+    return chips;
+  }, [view.definitionKey, view.due, view.priority, definitions.data, t, update]);
 
   return (
     <section className="tf-inbox" aria-label={t("inbox.label")}>
@@ -423,8 +476,55 @@ export function TaskInbox({
         </div>
       </header>
 
-      {/* §7.1's remaining filters: process/case definition, due date, priority. */}
-      <div className="tf-filter-bar">
+      {/*
+        §7.1's remaining filters: process/case definition, due date, priority.
+
+        They used to sit open above the table, three labelled selects plus Save-this-view
+        on their own strip. With the tabs above and the table's own toolbar below, that
+        made three control bars stacked over a four-row list — and on a phone it pushed
+        the first task to roughly 660px down the page, so the inbox opened on its own
+        settings rather than on any work.
+
+        Now they are behind one control, and anything actually applied stays on screen as
+        a chip you can remove. Collapsing must not hide state: a filter you cannot see is
+        a list you do not trust.
+      */}
+      <div className="tf-inbox__refine">
+        <button
+          type="button"
+          className={["tf-chip", activeFilters.length > 0 ? "tf-chip--active" : ""]
+            .filter(Boolean)
+            .join(" ")}
+          aria-expanded={filtersOpen}
+          aria-controls="tf-inbox-filters"
+          onClick={() => setFiltersOpen((open) => !open)}
+        >
+          <Icon name="filter" size={16} />
+          {t("inbox.refine.toggle")}
+          {activeFilters.length > 0 ? ` (${activeFilters.length})` : ""}
+        </button>
+
+        {activeFilters.map((active) => (
+          <button
+            key={active.id}
+            type="button"
+            className="tf-chip tf-chip--removable"
+            onClick={active.clear}
+          >
+            <span>{active.label}</span>
+            <Icon name="close" size={14} />
+            <span className="tf-visually-hidden">{t("inbox.refine.remove")}</span>
+          </button>
+        ))}
+
+        {activeFilters.length > 0 ? (
+          <Button variant="ghost" onClick={clearFilters}>
+            {t("states.noResults.clear")}
+          </Button>
+        ) : null}
+      </div>
+
+      <div className="tf-filter-bar" id="tf-inbox-filters" hidden={!filtersOpen}>
         {processApi ? (
           <label className="tf-filter-bar__field">
             <span className="tf-filter-bar__label">{t("inbox.definition.label")}</span>

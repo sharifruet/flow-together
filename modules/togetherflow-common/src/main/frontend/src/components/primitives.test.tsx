@@ -17,6 +17,7 @@ import { RouterProvider } from "../routing/RouterContext";
 import { expectNoA11yViolations } from "../testing/a11y";
 import { Avatar, UserChip, initialsFor } from "./Avatar";
 import { Badge, toneForPriority, toneForState } from "./Badge";
+import { priorityLabel } from "../format";
 import { Breadcrumb } from "./Breadcrumb";
 import { Card } from "./Card";
 import { DropdownMenu } from "./DropdownMenu";
@@ -63,9 +64,20 @@ describe("Badge (C3)", () => {
 
   it("bands priority, because the raw int means nothing without the scale", () => {
     expect(toneForPriority(80)).toBe("danger");
-    expect(toneForPriority(50)).toBe("warning");
+    // 50 is the engine's default, so most tasks carry it. Colouring the common case as a
+    // warning spends the reader's attention on nothing and devalues the real one.
+    expect(toneForPriority(50)).toBe("neutral");
     expect(toneForPriority(10)).toBe("neutral");
     expect(toneForPriority(undefined)).toBe("neutral");
+  });
+
+  it("agrees with the label about where 'high' starts", () => {
+    // These two used to disagree — 70 here, 75 in `priorityKey` — so a task at 72 read
+    // "Normal" in danger red. Pinned at the boundary so they cannot drift apart again.
+    expect(priorityLabel(74)).toBe("Normal");
+    expect(toneForPriority(74)).toBe("neutral");
+    expect(priorityLabel(75)).toBe("High");
+    expect(toneForPriority(75)).toBe("danger");
   });
 });
 

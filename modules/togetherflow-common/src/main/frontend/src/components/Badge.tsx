@@ -11,6 +11,7 @@
  */
 
 import type { ReactNode } from "react";
+import { priorityKey } from "../format";
 
 export type BadgeTone = "neutral" | "info" | "success" | "warning" | "danger";
 
@@ -92,10 +93,19 @@ export function toneForState(state: string | undefined | null): BadgeTone {
  * Flowable priority is an unbounded int; the convention the engine's own tooling uses is
  * 0–100 with 50 as normal. Bands rather than the raw number, because "80" tells a user
  * nothing without the scale.
+ *
+ * **Only "high" reaches for colour.** 50 is the engine's default, so it is what most
+ * tasks carry — and it used to render amber. A list where three rows in four wear a
+ * warning colour has taught the reader to ignore the colour by the time they reach the
+ * row that actually needs it. Normal and low are quiet; the word still distinguishes
+ * them, which is the rule this file opens with.
+ *
+ * Delegating the band to `priorityKey` is the other half. The two used to disagree —
+ * `priorityKey` calls 75 the start of "high", this called it 70 — so a task at 72 was
+ * labelled "Normal" and coloured as a danger. One source of truth means the colour and
+ * the word cannot say different things again.
  */
 export function toneForPriority(priority: number | undefined): BadgeTone {
   if (priority === undefined) return "neutral";
-  if (priority >= 70) return "danger";
-  if (priority >= 50) return "warning";
-  return "neutral";
+  return priorityKey(priority) === "high" ? "danger" : "neutral";
 }

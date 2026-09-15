@@ -3,10 +3,19 @@
 /* Work layout */
 .tf-work-layout {
   display: grid;
-  grid-template-columns: minmax(0, 1fr) minmax(0, 420px);
+  /*
+   * The detail pane grows with the viewport instead of sitting at a flat 420px: at
+   * 1440px it takes ~480px, which is what stopped the action bar wrapping and the tab
+   * strip clipping "Documents" mid-word.
+   */
+  grid-template-columns: minmax(0, 1fr) minmax(360px, 34%);
   gap: var(--tf-space-4);
   padding: var(--tf-space-4);
   align-items: start;
+}
+/* Nothing open: the list gets the whole canvas. See the comment in App.tsx. */
+.tf-work-layout--single {
+  grid-template-columns: minmax(0, 1fr);
 }
 @media (max-width: 1024px) {
   .tf-work-layout {
@@ -40,6 +49,27 @@
   min-width: 200px;
   max-width: 280px;
 }
+/*
+ * The one row that survives when the filter panel is closed: the toggle, plus a chip for
+ * each filter actually in force. Small enough that the task list still starts within the
+ * first screen on a phone, which was the whole point.
+ */
+.tf-inbox__refine {
+  display: flex;
+  align-items: center;
+  gap: var(--tf-space-2);
+  flex-wrap: wrap;
+  margin-bottom: var(--tf-space-3);
+}
+/* Carries its own dismiss, so it reads as something you can take off again. */
+.tf-chip--removable {
+  gap: var(--tf-space-1);
+  color: var(--tf-text);
+}
+.tf-chip--removable:hover {
+  border-color: var(--tf-danger);
+  color: var(--tf-danger);
+}
 
 .tf-task-cell {
   display: flex;
@@ -72,7 +102,19 @@
 /* Detail */
 .tf-detail {
   position: sticky;
-  top: calc(var(--tf-header-height) + var(--tf-space-4));
+  /*
+   * Offset from the *scrollport*, which is `main.tf-shell__main` — it carries the
+   * `overflow-y: auto` and already begins below the app header. So this is the gutter
+   * alone: adding `--tf-header-height` here counted the header twice and pinned the pane
+   * a header's height too low, pushing its bottom past the viewport. Harmless while the
+   * pane simply ran off the end; not harmless now the action bar lives at that edge,
+   * because the thing clipped was "Complete task".
+   *
+   * `max-height` is the same budget from the other side: the scrollport is
+   * `100vh - header` tall, and `--tf-space-6` is this gutter twice, so the pane is inset
+   * by an equal gap top and bottom.
+   */
+  top: var(--tf-space-4);
   max-height: calc(100vh - var(--tf-header-height) - var(--tf-space-6));
   overflow-y: auto;
 }
@@ -145,14 +187,50 @@
 .tf-detail__note--error {
   color: var(--tf-danger);
 }
+/*
+ * Pinned to the bottom of the pane, because completing the task is the reason the pane
+ * is open. `.tf-detail` is the scroll container (sticky, capped height, overflow-y), so
+ * the footer sticks against its padding box — the negative margins pull it out to the
+ * pane's edges and the padding puts the inset back, so content scrolls *under* an opaque
+ * bar rather than appearing in the gap beside it.
+ */
 .tf-detail__actions {
+  position: sticky;
+  bottom: calc(-1 * var(--tf-space-4));
+  z-index: 1;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--tf-space-2);
+  flex-wrap: wrap;
+  margin: var(--tf-space-5) calc(-1 * var(--tf-space-4)) calc(-1 * var(--tf-space-4));
+  padding: var(--tf-space-3) var(--tf-space-4);
+  border-top: 1px solid var(--tf-border);
+  background: var(--tf-bg-raised);
+}
+/* Everything that is not "finish this task", kept together and allowed to wrap. */
+.tf-detail__actions-secondary,
+.tf-detail__actions-primary {
   display: flex;
   gap: var(--tf-space-2);
-  justify-content: flex-end;
-  margin-top: var(--tf-space-5);
-  padding-top: var(--tf-space-4);
-  border-top: 1px solid var(--tf-border);
   flex-wrap: wrap;
+  align-items: center;
+}
+/* The completing action never shrinks and never wraps away from its own row. */
+.tf-detail__actions-primary {
+  margin-left: auto;
+  justify-content: flex-end;
+}
+/* An empty group must not open a gap that makes the bar look broken. */
+.tf-detail__actions-secondary:empty,
+.tf-detail__actions-primary:empty {
+  display: none;
+}
+@media (max-width: 1024px) {
+  /* The pane is no longer its own scroll container here, so there is nothing to stick to. */
+  .tf-detail__actions {
+    position: static;
+  }
 }
 .tf-detail--empty {
   display: grid;
@@ -242,6 +320,17 @@
   padding: 0;
   display: grid;
   gap: var(--tf-space-2);
+}
+/*
+ * The picker uses the screen it is given. One 760px column of full-width cards left
+ * roughly 45% of a 1440px display empty and pushed the sixth process below the fold for
+ * no reason — these are short, independent choices, so they tile.
+ */
+.tf-start--picker {
+  max-width: none;
+}
+.tf-start--picker .tf-definitions {
+  grid-template-columns: repeat(auto-fill, minmax(min(100%, 280px), 1fr));
 }
 .tf-definition {
   width: 100%;
@@ -661,7 +750,4 @@
   flex-direction: column;
   min-height: 0;
 }
-.tf-reports__note {
-  max-width: 68ch;
-  font-size: var(--tf-text-sm);
-}
+/* `.tf-reports__note` removed with the note it styled — see the i18n catalogue. */

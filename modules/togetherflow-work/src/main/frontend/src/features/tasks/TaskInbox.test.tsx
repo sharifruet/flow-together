@@ -165,3 +165,66 @@ describe("TaskInbox", () => {
     expect(onSelectTask).toHaveBeenCalledWith(expect.objectContaining({ id: "task-1" }));
   });
 });
+
+/**
+ * The filter panel folds away so the list starts on the first screen — on a phone it used
+ * to begin roughly 660px down, below three strips of controls.
+ *
+ * The risk that trade makes is hidden state: a list quietly narrowed by a filter nobody
+ * can see is worse than a crowded one. So these check both halves — the controls collapse,
+ * and anything in force stays visible and removable.
+ */
+describe("TaskInbox — collapsible filters", () => {
+  /**
+   * Anchored, because once a filter is applied "Clear filters" is on screen too and a
+   * loose /filters/ matches both.
+   */
+  const toggle = () => screen.getByRole("button", { name: /^filters/i });
+
+  /** Applies the Due filter the way a person does: open the panel, choose, close it. */
+  async function applyOverdue() {
+    await userEvent.click(toggle());
+    await userEvent.selectOptions(screen.getByLabelText("Due"), "overdue");
+    await userEvent.click(toggle());
+  }
+
+  it("keeps the filter controls out of the way until they are asked for", async () => {
+    renderInbox(stubApi(vi.fn().mockResolvedValue(page([task()]))));
+    await screen.findByText("Approve invoice");
+
+    expect(toggle()).toHaveAttribute("aria-expanded", "false");
+    // `hidden` rather than unmounted, so the selects keep their state across a toggle.
+    expect(document.getElementById("tf-inbox-filters")).toHaveAttribute("hidden");
+
+    await userEvent.click(toggle());
+    expect(toggle()).toHaveAttribute("aria-expanded", "true");
+    expect(document.getElementById("tf-inbox-filters")).not.toHaveAttribute("hidden");
+  });
+
+  it("shows a filter that is in force even while the panel is shut", async () => {
+    renderInbox(stubApi(vi.fn().mockResolvedValue(page([task()]))));
+    await screen.findByText("Approve invoice");
+    await applyOverdue();
+
+    // Collapsing may not hide state: the panel is closed, the filter is still announced.
+    expect(document.getElementById("tf-inbox-filters")).toHaveAttribute("hidden");
+    expect(screen.getByRole("button", { name: /Due: Overdue/i })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: /filters \(1\)/i })).toBeInTheDocument();
+  });
+
+  it("drops a filter when its chip is dismissed", async () => {
+    const query = vi.fn().mockResolvedValue(page([task()]));
+    renderInbox(stubApi(query));
+    await screen.findByText("Approve invoice");
+    await applyOverdue();
+    // The chip is the control, so it has to reach the server — not just tidy the chrome.
+    await waitFor(() => expect(query.mock.calls.at(-1)?.[0]).toHaveProperty("dueBefore"));
+
+    await userEvent.click(screen.getByRole("button", { name: /Due: Overdue/i }));
+
+    await waitFor(() =>
+      expect(screen.queryByRole("button", { name: /Due: Overdue/i })).not.toBeInTheDocument(),
+    );
+    await waitFor(() => expect(query.mock.calls.at(-1)?.[0]).not.toHaveProperty("dueBefore"));
+  });
+});

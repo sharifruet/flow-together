@@ -35,8 +35,13 @@ export const workEn = {
   "reports.completed": "Completed by you",
   "reports.needsAttention": "Needs attention",
   "reports.unavailable": "This count could not be read.",
-  "reports.note":
-    "Each tile is the total of one task query, not an aggregate \u2014 this engine exposes no analytics API, so there is no trend line and no average cycle time here rather than a guess at one.",
+  /*
+   * `reports.note` is deliberately gone. It explained, to a business user, why features
+   * they had never asked for were absent ("this engine exposes no analytics API, so there
+   * is no trend line..."). The engineering reason is real and still recorded in
+   * Reports.tsx's header comment, where the next developer looks; the freshness caveat it
+   * also carried is already in `reports.description`.
+   */
 
   // Inbox (§7.1)
   "inbox.label": "Task inbox",
@@ -111,6 +116,9 @@ export const workEn = {
   "inbox.column.priority": "Priority",
   "inbox.untitled": "(untitled task)",
   "inbox.unassigned": "Unassigned",
+  "inbox.refine.toggle": "Filters",
+  // Read after the chip's own label, which already names the filter being dropped.
+  "inbox.refine.remove": "Remove this filter",
   "inbox.definition.label": "Process",
   "inbox.definition.any": "Any process",
   "inbox.due.label": "Due",
@@ -179,8 +187,20 @@ export const workEn = {
   "task.subTasks.assignedTo": "assigned to {assignee}",
   "task.subTasks.unassigned": "unassigned",
   "task.history.unreadable": "This task's history could not be read.",
+  /*
+   * Two things are true at once here, and the copy has to serve both.
+   *
+   * The old text named `enableHistoricTaskLogging` — an engine flag — on the screen a
+   * salesperson uses to book leave. That had to go.
+   *
+   * But it was not decoration: task logging is off by default, so an empty list usually
+   * means "this system records nothing", not "nothing has happened to this task". Saying
+   * only "Nothing yet" would state the wrong one as fact, and leave someone hunting for
+   * a bug that is not there. So the distinction stays, in the reader's own terms and
+   * pointing at the person who can act on it.
+   */
   "task.history.none":
-    "Nothing recorded. Engines only keep a task audit trail when enableHistoricTaskLogging is switched on, and it is off by default.",
+    "No history recorded. If every task shows this, ask an administrator to switch task history on.",
   "task.history.event": "event",
   "task.history.by": "by {userId}",
   "task.action.claim": "Claim",

@@ -1,0 +1,18 @@
+# Line endings for files that are generated and then byte-compared.
+#
+# `serialiseCmmn` in togetherflow-design writes "\n", and
+# `schemaValidity.test.ts` asserts the checked-in fixture equals that output exactly —
+# the point being that the engine's own test deploys the same document the editor
+# produces, so the two cannot drift apart unnoticed.
+#
+# With `core.autocrlf=true` (the Windows default) and no rule here, Git rewrites the
+# fixture to CRLF on checkout. The bytes then differ on every line, and the test reports
+# it as "The checked-in case no longer matches this serialiser" — which reads as real
+# drift and is not. Pinning LF makes the working tree match what the generator writes,
+# on every platform.
+#
+# Scoped to this directory rather than to `*.cmmn`: the ~900 other CMMN files in the tree
+# come from upstream Flowable, are never regenerated here, and nothing compares them
+# byte-for-byte. Anything added beside this fixture wants the same guarantee, so the rule
+# covers the directory.
+modules/flowable-cmmn-engine/src/test/resources/org/flowable/cmmn/test/togetherflow/** text eol=lf

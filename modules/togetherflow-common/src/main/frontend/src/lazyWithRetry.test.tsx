@@ -16,6 +16,21 @@ function Loaded() {
   return <p>loaded</p>;
 }
 
+/**
+ * How long an assertion about the retry path is allowed to wait.
+ *
+ * `lazyWithRetry` sleeps for *real*: 300 ms then 600 ms, so a chunk that never loads takes
+ * 900 ms to reach the reload-or-throw. Testing Library's default `waitFor` budget is
+ * 1000 ms, which left under 100 ms for React to schedule the Suspense retry and commit —
+ * so these tests passed or failed on scheduling noise (observed anywhere from 2/5 to 5/5
+ * on an idle machine, and the failure looks like a behaviour bug rather than a slow test).
+ *
+ * Budgeting generously costs nothing: `waitFor` polls and resolves the moment the
+ * condition holds, so a passing run still finishes in ~900 ms. The ceiling only decides
+ * how long a genuine regression takes to be reported.
+ */
+const RETRY_PATH_MS = 5_000;
+
 const originalLocation = window.location;
 
 beforeEach(() => {
@@ -55,7 +70,7 @@ describe("lazyWithRetry", () => {
 
     renderLazy(load, "transient");
 
-    expect(await screen.findByText("loaded")).toBeInTheDocument();
+    expect(await screen.findByText("loaded", {}, { timeout: RETRY_PATH_MS })).toBeInTheDocument();
     expect(load).toHaveBeenCalledTimes(2);
     expect(window.location.reload).not.toHaveBeenCalled();
   });
@@ -66,7 +81,9 @@ describe("lazyWithRetry", () => {
     const load = vi.fn().mockRejectedValue(new Error("chunk gone"));
     renderLazy(load, "gone");
 
-    await waitFor(() => expect(window.location.reload).toHaveBeenCalledTimes(1));
+    await waitFor(() => expect(window.location.reload).toHaveBeenCalledTimes(1), {
+      timeout: RETRY_PATH_MS,
+    });
     // The initial attempt plus both retries.
     expect(load).toHaveBeenCalledTimes(3);
   });
@@ -74,7 +91,9 @@ describe("lazyWithRetry", () => {
   it("does not reload twice for the same chunk — a reload loop is worse than the error", async () => {
     const load = vi.fn().mockRejectedValue(new Error("chunk gone"));
     renderLazy(load, "loop");
-    await waitFor(() => expect(window.location.reload).toHaveBeenCalledTimes(1));
+    await waitFor(() => expect(window.location.reload).toHaveBeenCalledTimes(1), {
+      timeout: RETRY_PATH_MS,
+    });
 
     // What the page does after coming back and failing again: give up, and let the error
     // boundary show its screen rather than reloading for ever.
@@ -88,7 +107,7 @@ describe("lazyWithRetry", () => {
         })()}</Boundary>
       </Suspense>,
     );
-    await waitFor(() => expect(failed).toHaveBeenCalled());
+    await waitFor(() => expect(failed).toHaveBeenCalled(), { timeout: RETRY_PATH_MS });
     expect(window.location.reload).toHaveBeenCalledTimes(1);
   });
 
@@ -112,7 +131,7 @@ describe("lazyWithRetry", () => {
       </Suspense>,
     );
 
-    await waitFor(() => expect(failed).toHaveBeenCalled());
+    await waitFor(() => expect(failed).toHaveBeenCalled(), { timeout: RETRY_PATH_MS });
     expect(window.location.reload).not.toHaveBeenCalled();
     getItem.mockRestore();
   });

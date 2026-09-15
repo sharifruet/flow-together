@@ -42,7 +42,10 @@ function schemaErrors(xml: string, name: string): string {
     const failure = cause as { stderr?: Buffer; code?: string };
     if (failure.code === "ENOENT") {
       throw new Error(
-        "xmllint is not installed, so the schema was never checked. Install libxml2-utils.",
+        "xmllint is not installed, so the schema was never checked. "
+          + "Debian/Ubuntu: `sudo apt-get install -y libxml2-utils`. macOS: already there. "
+          + "Windows: no winget package ships it — run this suite under WSL. "
+          + "See the README's Prerequisites.",
         { cause },
       );
     }

@@ -3,3 +3,23 @@
 @import "./shell.css";
 @import "./components.css";
 @import "./forms.css";
+
+/*
+ * `hidden` means hidden, whatever else an element is wearing.
+ *
+ * The browser's own rule for `[hidden]` is `display: none` at user-agent specificity, so
+ * any component class that sets `display` beats it — `.tf-filter-bar { display: flex }`
+ * did, and the inbox's collapsed filter panel rendered in full while its attribute
+ * cheerfully said `hidden`.
+ *
+ * Note what did *not* catch it: jsdom applies no stylesheet, so a test asserting the
+ * attribute — or even `toBeVisible()`, which reads the attribute — passes on markup that
+ * is plainly visible in a browser. It took opening the page. This rule is here so the
+ * next person reaching for `hidden` does not have to find that out the same way.
+ *
+ * `!important` is deliberate and is the only one in the theme: it has to outrank every
+ * component class by construction, which is the whole point of the guarantee.
+ */
+[hidden] {
+  display: none !important;
+}

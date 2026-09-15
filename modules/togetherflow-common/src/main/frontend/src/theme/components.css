@@ -932,6 +932,20 @@ a.tf-menu__item:hover {
   gap: var(--tf-space-2);
   padding: var(--tf-space-1) var(--tf-space-2);
 }
+/*
+ * Not on a phone. Choosing columns and switching row density are decisions about a wide
+ * table; at this width the table has already dropped its secondary columns and there is
+ * nothing left to choose between. Keeping them here cost a control strip above the first
+ * row on the smallest screen, which is where rows are scarcest.
+ *
+ * `display: none` rather than visually-hidden: these are genuinely not applicable here,
+ * so announcing them to a screen reader would offer a choice that changes nothing.
+ */
+@media (max-width: 640px) {
+  .tf-table-toolbar {
+    display: none;
+  }
+}
 
 .tf-bulk-bar {
   flex: none;

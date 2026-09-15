@@ -44,6 +44,21 @@ one place.
   export PATH="$PWD/modules/togetherflow-design/target/node:$PATH"
   ```
 
+- **`xmllint`** — only to run Design's tests, not to run the app. Six tests in
+  `schemaValidity.test.ts` validate generated CMMN against the real `CMMN11.xsd`, and they
+  fail rather than skip when the tool is missing: a schema check that quietly does not run
+  is how four undeployable documents shipped in the first place. CI installs it; locally:
+
+  | | |
+  |---|---|
+  | Debian/Ubuntu | `sudo apt-get install -y libxml2-utils` (what CI runs) |
+  | macOS | preinstalled |
+  | Windows | no `winget` package ships it — use WSL for this suite, or put an `xmllint.exe` from a libxml2 build on `PATH` |
+
+  Without it those six tests fail with `spawnSync xmllint ENOENT`. Nothing else in the
+  repository needs it, so the other suites and all four apps run fine on a machine that
+  has never heard of it.
+
 ### 1. The backend
 
 **No Docker and no database server needed.** The war embeds H2 and creates the database on
@@ -168,6 +183,8 @@ has the detail, and `USER_MANUAL.md` beside it walks all fifteen steps.
 | 401 only on the very first run | The admin user is still being created — retry in a second |
 | 403 after a successful sign-in | The user has no `access-rest-api` privilege. Grant it in Identity → Privileges |
 | Vitest exits with `styleText` | Node is older than 22 — see Prerequisites |
+| `spawnSync xmllint ENOENT` in Design's tests | `xmllint` is not installed — see Prerequisites |
+| Design's CMMN fixture test reports drift, on Windows | A checkout predating `.gitattributes` still has the fixture in CRLF. Re-materialise just that file: `rm <path> && git checkout -- <path>`. Fresh clones are unaffected |
 | Apps load but every request 404s | The engine is mounted somewhere else; set `TF_API_CONTEXT` |
 
 ---

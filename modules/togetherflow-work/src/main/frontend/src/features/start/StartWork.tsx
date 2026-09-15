@@ -253,8 +253,14 @@ export function StartWork({ processApi, caseApi, onStarted }: StartWorkProps) {
     );
   }
 
+  /*
+   * `--picker` because the two branches of this screen want opposite widths: the form
+   * above is prose and inputs, which stay narrow to keep line lengths readable, while
+   * this is a list of things to choose between and was wasting most of a wide screen in
+   * a single 760px column.
+   */
   return (
-    <section className="tf-start" aria-label={t("start.label")}>
+    <section className="tf-start tf-start--picker" aria-label={t("start.label")}>
       <h1 className="tf-start__title">{t("start.title")}</h1>
       <p className="tf-start__meta">{t(`start.choose.${kind}`)}</p>
 
@@ -327,11 +333,23 @@ export function StartWork({ processApi, caseApi, onStarted }: StartWorkProps) {
                     <span className="tf-definition__name">
                       {definition.name ?? definition.key}
                     </span>
-                    <span className="tf-definition__meta">
-                      {definition.key} · v{definition.version}
-                    </span>
                     {definition.description ? (
                       <span className="tf-definition__description">{definition.description}</span>
+                    ) : null}
+                    {/*
+                      The definition key (`vacationRequest`) used to sit here under every
+                      name. It is how the engine identifies a process, not how the person
+                      starting one thinks about it, and it appeared on every card. Search
+                      still matches it, so anyone who knows a key can still find its
+                      process — it just no longer labels the screen.
+
+                      The version stays only when there is one worth mentioning: this list
+                      is fetched `latest=true`, so "v1" told the reader nothing at all.
+                    */}
+                    {definition.version > 1 ? (
+                      <span className="tf-definition__meta">
+                        {t("start.version", { version: definition.version })}
+                      </span>
                     ) : null}
                   </button>
                 </li>

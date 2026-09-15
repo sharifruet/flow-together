@@ -17,7 +17,7 @@
 
 import { gzipSync } from "node:zlib";
 import { readFileSync, readdirSync, existsSync, statSync } from "node:fs";
-import { join, resolve } from "node:path";
+import { join, resolve, sep } from "node:path";
 
 const cwd = process.cwd();
 const distDir = resolve(cwd, "dist");
@@ -46,7 +46,14 @@ const assets = walk(distDir)
   .filter((file) => file.endsWith(".js") || file.endsWith(".css"))
   .map((file) => ({
     file,
-    name: file.slice(distDir.length + 1),
+    /*
+     * Forward slashes, always. `walk` builds paths with `join`, which uses the platform
+     * separator — so on Windows every name arrived as `assets\index-a1b2c3.js` and no
+     * budget key (they are written `assets/index`) matched anything. Because an unmatched
+     * budget is treated as stale and fails, that turned the whole gate red on Windows
+     * while passing on CI, which is the worst way round for a check to be wrong.
+     */
+    name: file.slice(distDir.length + 1).split(sep).join("/"),
     gzipKb: gzipSync(readFileSync(file)).byteLength / 1024,
   }));
 

@@ -201,8 +201,17 @@ export function App({
 
   return (
     <AppShell apps={apps} onChangePassword={changePassword} view={view} inboxCount={inboxCount}>
+      {/*
+        The detail column is rendered only when something is open.
+
+        It used to be permanent: a 420px pane reading "No task selected — choose a task
+        from the list" held nearly a third of a 1440px screen while the list it was
+        telling you to use was squeezed into the rest. The rows are visibly clickable, so
+        the instruction was not earning its width. Now the list takes the full canvas
+        until you open something, and the layout gets `--single` to match.
+      */}
       {view === "inbox" ? (
-        <div className="tf-work-layout">
+        <div className={selectedTaskId ? "tf-work-layout" : "tf-work-layout tf-work-layout--single"}>
           <TaskInbox
             taskApi={taskApi}
             historyApi={historyApi}
@@ -213,18 +222,20 @@ export function App({
             refreshToken={refreshToken}
             onStartWork={() => setView("start")}
           />
-          <TaskDetail
-            taskApi={taskApi}
-            idmApi={idmApi}
-            taskId={selectedTaskId}
-            userId={session.userId}
-            onCompleted={onTaskCompleted}
-            onChanged={refresh}
-            onClose={() => navigate(pathFor("inbox"))}
-          />
+          {selectedTaskId ? (
+            <TaskDetail
+              taskApi={taskApi}
+              idmApi={idmApi}
+              taskId={selectedTaskId}
+              userId={session.userId}
+              onCompleted={onTaskCompleted}
+              onChanged={refresh}
+              onClose={() => navigate(pathFor("inbox"))}
+            />
+          ) : null}
         </div>
       ) : view === "cases" ? (
-        <div className="tf-work-layout">
+        <div className={selectedCaseId ? "tf-work-layout" : "tf-work-layout tf-work-layout--single"}>
           <MyCases
             caseApi={caseApi}
             userId={session.userId}
@@ -235,13 +246,15 @@ export function App({
             }}
             refreshToken={refreshToken}
           />
-          <CaseDetail
-            caseApi={caseApi}
-            instance={selectedCase}
-            caseId={selectedCaseId}
-            onClose={() => navigate(pathFor("cases"))}
-            onChanged={refresh}
-          />
+          {selectedCaseId ? (
+            <CaseDetail
+              caseApi={caseApi}
+              instance={selectedCase}
+              caseId={selectedCaseId}
+              onClose={() => navigate(pathFor("cases"))}
+              onChanged={refresh}
+            />
+          ) : null}
         </div>
       ) : view === "start" ? (
         <StartWork
