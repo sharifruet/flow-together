@@ -407,6 +407,22 @@
 }
 
 /*
+ * The DRD's definitions id, demoted.
+ *
+ * dmn-js prints it at 14px monospace directly under the model name, which made a
+ * generated string like `Definitions_mu2zvgt3` the most prominent secondary text on the
+ * canvas — louder than the decision the diagram is actually about.
+ *
+ * Demoted rather than hidden: a modeller does reference the definitions id, and this is
+ * where it lives. It just does not deserve to be read first. Same argument as keeping the
+ * model key under the name in the library, at the size that argument actually justifies.
+ */
+.tf-editor__canvas .dmn-definitions-id {
+  font-size: var(--tf-text-xs);
+  color: hsl(225, 8%, 45%);
+}
+
+/*
  * Belt and braces for the two that matter most, since both are created imperatively with
  * inline styles and neither sets a colour of its own.
  */
@@ -575,9 +591,19 @@
     grid-template-columns: minmax(0, 1fr);
   }
 }
+/*
+ * "2 of 12 selected", sitting with the list it counts.
+ *
+ * The count used to be in the section heading — "Models in this app (0)" over a list of
+ * twelve tickable models — where it read as a contradiction rather than a tally.
+ */
+.tf-app-models__tally {
+  margin: var(--tf-space-3) 0 0;
+  font-size: var(--tf-text-sm);
+}
 .tf-app-models {
   list-style: none;
-  margin: var(--tf-space-3) 0 0;
+  margin: var(--tf-space-2) 0 0;
   padding: 0;
   display: flex;
   flex-direction: column;
@@ -1175,4 +1201,20 @@
   font-size: var(--tf-text-sm);
   font-weight: var(--tf-weight-semibold);
   color: var(--tf-text-muted);
+}
+
+/*
+ * Open and the ⋯ menu belong on one line.
+ *
+ * `.tf-row-actions` wraps by default, which is right for the Control and Identity rows
+ * that still carry several inline buttons. Here there are exactly two controls and the
+ * column has room for both, so wrapping only bought a second line — about 26px per row,
+ * which on a phone is the difference between three models on screen and four.
+ *
+ * A modifier rather than a change to the shared rule, because the eight other screens
+ * using `.tf-row-actions` do need to wrap.
+ */
+.tf-row-actions--pair {
+  flex-wrap: nowrap;
+  align-items: center;
 }

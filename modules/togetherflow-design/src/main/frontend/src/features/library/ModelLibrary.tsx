@@ -28,6 +28,7 @@ import {
   usePersistentState,
   useToast,
   type Column,
+  type MenuItem,
   type ModelApi,
   type ModelKind,
   type ModelResponse,
@@ -100,8 +101,15 @@ export function ModelLibrary({ modelApi, onOpen, onCount, refreshToken }: ModelL
   const [relations, setRelations] = useState<RelationIndex | null>(null);
   const [layout, setLayout] = usePersistentState<"cards" | "table">(
     "design.library.layout",
-    // Table by default: it carries every row action, and a card view that only opens
-    // would be a downgrade for anyone who arrived expecting the old screen.
+    /*
+     * Table by default, but no longer for the reason this comment used to give — that it
+     * "carries every row action, and a card view that only opens would be a downgrade".
+     * Both views build their menu from `actionsFor` now, so neither is missing anything.
+     *
+     * It stays the default on its own merits: sortable columns, and type, version and
+     * last-edited readable down the page rather than per card. The cards remain the
+     * better choice for browsing, and are one click away.
+     */
     "table",
     (value): value is "cards" | "table" => value === "cards" || value === "table",
   );
@@ -254,6 +262,90 @@ export function ModelLibrary({ modelApi, onOpen, onCount, refreshToken }: ModelL
     [modelApi, push, t],
   );
 
+  /**
+   * Everything you can do to one model, in one place.
+   *
+   * Both views render from this: the table puts Open inline and the rest behind the row
+   * menu, the cards put all of it behind theirs. Before, each view built its own list and
+   * they had drifted — the cards offered four of the seven, which is precisely why the
+   * library defaulted to the table view despite the table being the harder one to read.
+   * One list means a new action appears in both, or in neither.
+   *
+   * Delete is last and `destructive`, which `DropdownMenu` renders in the danger tone
+   * *and* separates from the items above it — so the irreversible action no longer looks
+   * and sits like Open.
+   */
+  const actionsFor = useCallback(
+    (model: ModelResponse): MenuItem[] => {
+      const isTemplate = readMeta(model).template;
+      return [
+        { id: "open", label: t("action.open"), onSelect: () => onOpen(model) },
+        {
+          id: "history",
+          label: t("library.history.action"),
+          onSelect: () => setHistoryFor(model),
+        },
+        {
+          id: "relations",
+          label: t("relations.action"),
+          onSelect: () => setRelationsFor(model),
+        },
+        /*
+         * W2.3 (I5): a flag in metaInfo. The engine never reads metaInfo, which is what
+         * makes it usable for this — and why W3.1 must not use it for workspaces, where
+         * the lack of enforcement would matter.
+         */
+        ...(mayEdit
+          ? [
+              {
+                id: "template",
+                label: isTemplate ? t("library.template.clear") : t("library.template.mark"),
+                disabled: busy,
+                onSelect: () =>
+                  void run(
+                    isTemplate
+                      ? t("library.template.cleared", { name: model.name ?? model.id })
+                      : t("library.template.marked", { name: model.name ?? model.id }),
+                    () =>
+                      modelApi.update(model.id, {
+                        metaInfo: writeMeta(model, { template: !isTemplate }),
+                      }),
+                  ),
+              } satisfies MenuItem,
+            ]
+          : []),
+        {
+          id: "export",
+          label: t("action.export"),
+          disabled: busy,
+          onSelect: () => void exportOne(model),
+        },
+        ...(mayEdit
+          ? [
+              {
+                id: "duplicate",
+                label: t("action.duplicate"),
+                disabled: busy,
+                onSelect: () => void duplicate(model),
+              } satisfies MenuItem,
+            ]
+          : []),
+        ...(mayDelete
+          ? [
+              {
+                id: "delete",
+                label: t("action.delete"),
+                destructive: true,
+                onSelect: () => setPendingDelete(model),
+              } satisfies MenuItem,
+            ]
+          : []),
+      ];
+    },
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [busy, mayDelete, mayEdit, modelApi, onOpen, exportOne, run, t],
+  );
+
   const columns = useMemo<Column<ModelResponse>[]>(
     () => [
       {
@@ -291,53 +383,32 @@ export function ModelLibrary({ modelApi, onOpen, onCount, refreshToken }: ModelL
       {
         key: "actions",
         header: "",
-        width: "320px",
+        width: "140px",
+        /*
+         * Open inline, everything else behind the row menu.
+         *
+         * This column used to render all seven actions as ghost buttons side by side. At
+         * 1440px they wrapped onto three lines, making each row ~125px tall — four models
+         * to a screen; at 390px they stacked seven deep, ~290px a row, and a twelve-model
+         * library became twelve screens of scrolling. Worse than the height: Delete was
+         * styled exactly like Open and sat directly under it in the wrap, so the
+         * irreversible action shared a mouse path with the one people take every time.
+         *
+         * The card view already had the answer. Both views now build from the same
+         * `actionsFor`, which also closes the gap that made the table the default: the
+         * card menu was missing Mark as template, Export and Duplicate.
+         */
         render: (model) => (
-          <div className="tf-row-actions">
+          <div className="tf-row-actions tf-row-actions--pair">
             <Button variant="ghost" onClick={() => onOpen(model)}>
               {t("action.open")}
             </Button>
-            <Button variant="ghost" onClick={() => setHistoryFor(model)}>
-              {t("library.history.action")}
-            </Button>
-            <Button variant="ghost" onClick={() => setRelationsFor(model)}>
-              {t("relations.action")}
-            </Button>
-            {/* W2.3 (I5): a flag in metaInfo. The engine never reads metaInfo, which is
-                what makes it usable for this — and why W3.1 must not use it for
-                workspaces, where the lack of enforcement would matter. */}
-            {mayEdit ? (
-            <Button
-              variant="ghost"
-              disabled={busy}
-              onClick={() =>
-                void run(
-                  readMeta(model).template
-                    ? t("library.template.cleared", { name: model.name ?? model.id })
-                    : t("library.template.marked", { name: model.name ?? model.id }),
-                  () =>
-                    modelApi.update(model.id, {
-                      metaInfo: writeMeta(model, { template: !readMeta(model).template }),
-                    }),
-                )
-              }
-            >
-              {readMeta(model).template ? t("library.template.clear") : t("library.template.mark")}
-            </Button>
-            ) : null}
-            <Button variant="ghost" disabled={busy} onClick={() => void exportOne(model)}>
-              {t("action.export")}
-            </Button>
-            {mayEdit ? (
-              <Button variant="ghost" disabled={busy} onClick={() => void duplicate(model)}>
-                {t("action.duplicate")}
-              </Button>
-            ) : null}
-            {mayDelete ? (
-              <Button variant="ghost" onClick={() => setPendingDelete(model)}>
-                {t("action.delete")}
-              </Button>
-            ) : null}
+            <DropdownMenu
+              label={t("library.actionsFor", {
+                name: model.name || model.key || model.id,
+              })}
+              items={actionsFor(model).filter((item) => item.id !== "open")}
+            />
           </div>
         ),
       },
@@ -507,29 +578,9 @@ export function ModelLibrary({ modelApi, onOpen, onCount, refreshToken }: ModelL
                               label={t("library.actionsFor", {
                                 name: model.name || model.key || model.id,
                               })}
-                              items={[
-                                {
-                                  id: "open",
-                                  label: t("action.open"),
-                                  onSelect: () => onOpen(model),
-                                },
-                                {
-                                  id: "history",
-                                  label: t("library.history.action"),
-                                  onSelect: () => setHistoryFor(model),
-                                },
-                                {
-                                  id: "relations",
-                                  label: t("relations.action"),
-                                  onSelect: () => setRelationsFor(model),
-                                },
-                                {
-                                  id: "delete",
-                                  label: t("action.delete"),
-                                  destructive: true,
-                                  onSelect: () => setPendingDelete(model),
-                                },
-                              ]}
+                              // The card's own title is the Open affordance, so the menu
+                              // carries the other six rather than repeating it.
+                              items={actionsFor(model).filter((item) => item.id !== "open")}
                             />
                           </span>
                         </span>

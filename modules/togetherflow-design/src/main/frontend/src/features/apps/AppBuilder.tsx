@@ -329,17 +329,21 @@ export function AppBuilder({
             hint={t("app.field.icon.hint")}
             onChange={(event) => update({ icon: event.target.value })}
           />
-          {/* W2.3 (I7): theme, tags and display order — the depth Enterprise's app
-              editor has and ours did not. All three are draft-only: the engine's app
-              deployment reads none of them, so they describe the app here rather than
-              once deployed, and the hints say so. */}
-          <TextInput
-            label={t("app.field.theme")}
-            value={draft.theme ?? ""}
-            disabled={busy}
-            hint={t("app.field.theme.hint")}
-            onChange={(event) => update({ theme: event.target.value })}
-          />
+          {/*
+            W2.3 (I7): tags and display order — the depth Enterprise's app editor has and
+            ours did not. Both are draft-only: the engine's app deployment reads neither,
+            so they describe the app *here* rather than once deployed, and the hints say so.
+
+            Theme used to sit between them, and its own hint conceded that "this
+            distribution's app engine does not read a theme". Tags group apps in this
+            library and display order sorts them, so draft-only still means something for
+            those two; a theme changed nothing anywhere, and admitting so in the hint did
+            not make asking someone to fill it in any more reasonable.
+
+            The *field* survives — `AppDraft.theme` is still parsed and still written on
+            deploy. An app authored somewhere that does honour a theme keeps it through an
+            edit here, which it would not if removing the input also dropped the value.
+          */}
           <TextInput
             label={t("app.field.tags")}
             value={(draft.tags ?? []).join(", ")}
@@ -369,11 +373,18 @@ export function AppBuilder({
         </section>
 
         <section>
-          <h2 className="tf-panel__section-title">
-            Models in this app ({draft.modelIds.length})
-          </h2>
+          {/*
+            The heading used to carry the count — "Models in this app (0)" — directly
+            above a list of every model in the library with a tick box beside each. The
+            number counted what was selected, the list showed what could be, and together
+            they read as a contradiction: nothing is in the app, here are twelve things
+            that are. The heading now names the section, the sentence says what the ticks
+            do, and the tally sits with the list it is counting.
+          */}
+          <h2 className="tf-panel__section-title">Models in this app</h2>
           <p className="tf-panel__meta">
-            Publishing deploys the app and every model inside it, in one step.
+            Tick a model to include it. Publishing deploys the app and every model inside
+            it, in one step.
           </p>
 
           <AsyncBoundary
@@ -389,29 +400,34 @@ export function AppBuilder({
             }
           >
             {(list) => (
-              <ul className="tf-app-models">
-                {list.map((candidate) => {
-                  const checked = draft.modelIds.includes(candidate.id);
-                  return (
-                    <li key={candidate.id}>
-                      <label className="tf-app-models__item">
-                        <input
-                          type="checkbox"
-                          checked={checked}
-                          disabled={busy}
-                          onChange={() => toggleModel(candidate.id)}
-                        />
-                        <span className="tf-app-models__name">
-                          {candidate.name || candidate.key || candidate.id}
-                        </span>
-                        <Badge tone="info">
-                          {modelKindOf(candidate).toUpperCase()}
-                        </Badge>
-                      </label>
-                    </li>
-                  );
-                })}
-              </ul>
+              <>
+                <p className="tf-muted tf-app-models__tally">
+                  {draft.modelIds.length} of {list.length} selected
+                </p>
+                <ul className="tf-app-models">
+                  {list.map((candidate) => {
+                    const checked = draft.modelIds.includes(candidate.id);
+                    return (
+                      <li key={candidate.id}>
+                        <label className="tf-app-models__item">
+                          <input
+                            type="checkbox"
+                            checked={checked}
+                            disabled={busy}
+                            onChange={() => toggleModel(candidate.id)}
+                          />
+                          <span className="tf-app-models__name">
+                            {candidate.name || candidate.key || candidate.id}
+                          </span>
+                          <Badge tone="info">
+                            {modelKindOf(candidate).toUpperCase()}
+                          </Badge>
+                        </label>
+                      </li>
+                    );
+                  })}
+                </ul>
+              </>
             )}
           </AsyncBoundary>
         </section>

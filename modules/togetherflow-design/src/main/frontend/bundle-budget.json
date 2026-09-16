@@ -21,8 +21,16 @@
     "where it belongs; that is a change to how I18nProvider is fed, not to this",
     "file, and is not worth doing for 2 kB on its own."
   ],
+  "_pressed_state_note": [
+    "assets/index went 44 -> 46 with the row-action and toggle-state work. All of it is",
+    "CSS in the entry chunk: the shared [aria-pressed=\"true\"] rule (nine toggles across",
+    "three apps showed no selected state at all), a nowrap modifier for the library's",
+    "Open + menu pair, the DMN definitions-id demotion, and the app builder's selection",
+    "tally. ~0.1 kB of it is real growth; the rest is headroom, because sitting 0.0 kB",
+    "under a budget makes the next unrelated change look like a regression."
+  ],
   "groups": {
-    "assets/index": 44,
+    "assets/index": 46,
     "assets/BpmnEditor": 100,
     "assets/DmnEditor": 260,
     "assets/CmmnEditor": 14,

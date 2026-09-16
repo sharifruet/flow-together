@@ -598,6 +598,8 @@ export const designEn = {
   "dmn.openFailed": "This decision model could not be opened.",
   "dmn.notReady": "The editor is not ready yet.",
   "dmn.serialiseFailed": "The decision model could not be serialised.",
+  "dmn.exportLabel": "DMN XML",
+  "dmn.exportFailed": "The decision model could not be exported.",
   "dmn.loading": "Loading decision model",
   "dmn.deploy.title": "Deploy this decision?",
   "dmn.deploy.description":
@@ -943,10 +945,24 @@ export const designEn = {
   "app.field.key.hint": "Identifies the app in the engine.",
   "app.field.description": "Description",
   "app.field.icon": "Icon",
-  "app.field.icon.hint": "Glyph name, e.g. glyphicon-cog.",
-  "app.field.theme": "Theme",
-  "app.field.theme.hint":
-    "Recorded on the draft only \u2014 this distribution's app engine does not read a theme.",
+  /*
+   * Names what the field is for before what to type in it. The old hint was "Glyph name,
+   * e.g. glyphicon-cog." \u2014 an example of the syntax with no account of what the value
+   * does or whether it is needed, which is unguessable unless you already know the app
+   * engine renders Glyphicons.
+   *
+   * Still free text. A picker is the real answer and is a bigger piece of work than this:
+   * the valid set is the icon font the deploying app engine happens to ship, which this
+   * editor cannot enumerate.
+   */
+  "app.field.icon.hint":
+    "Optional. The icon the app shows in an app list, as a Glyphicon name such as "
+    + "glyphicon-cog. Left empty, the app gets the default.",
+  /*
+   * `app.field.theme` and its hint are deliberately gone \u2014 see AppBuilder.tsx. The hint
+   * conceded that the engine does not read a theme, which is a reason to drop the input
+   * rather than to caption it.
+   */
   "app.field.tags": "Tags",
   "app.field.tags.hint": "Comma separated. Used to group apps here, not by the engine.",
   "app.field.displayOrder": "Display order",

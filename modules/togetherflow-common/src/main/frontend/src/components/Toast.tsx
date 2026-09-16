@@ -32,7 +32,20 @@ interface ToastContextValue {
 
 const ToastContext = createContext<ToastContextValue | null>(null);
 
+/**
+ * How long a toast sits before it goes.
+ *
+ * Split by tone because the toast stack is pinned to the bottom-right, which in the
+ * editors is on top of the properties panel — a three-word "Purchase approval created."
+ * was covering form fields for six seconds. A confirmation is glanceable and can leave
+ * sooner; info and warnings carry something to actually read, so they keep the longer
+ * dwell. Errors are not here at all: they stay until dismissed (see `push`).
+ *
+ * This shortens the obstruction rather than removing it. Moving the stack would only
+ * trade this overlap for a different one, and bottom-right is where people look for it.
+ */
 const AUTO_DISMISS_MS = 6000;
+const CONFIRMATION_DISMISS_MS = 3500;
 
 export function ToastProvider({ children }: { children: ReactNode }) {
   const t = useT();
@@ -50,7 +63,10 @@ export function ToastProvider({ children }: { children: ReactNode }) {
       // Errors stay until dismissed — auto-hiding a failure the user needs to act on
       // is how people lose track of what went wrong.
       if (toast.tone !== "error") {
-        setTimeout(() => dismiss(id), AUTO_DISMISS_MS);
+        setTimeout(
+          () => dismiss(id),
+          toast.tone === "success" ? CONFIRMATION_DISMISS_MS : AUTO_DISMISS_MS,
+        );
       }
     },
     [dismiss],

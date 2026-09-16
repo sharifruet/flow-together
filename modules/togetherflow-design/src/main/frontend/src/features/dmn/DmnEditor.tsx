@@ -26,8 +26,44 @@ import {
 } from "@togetherflow/common";
 import { useConflictPrompt } from "../editors/ConflictPrompt";
 import { EditorMenuBar } from "../editors/EditorMenuBar";
+import { downloadFile } from "../library/importExport";
 
 const AUTOSAVE_IDLE_MS = 4000;
+
+interface CommandStack {
+  undo: () => void;
+  redo: () => void;
+  canUndo: () => boolean;
+  canRedo: () => boolean;
+}
+
+interface Canvas {
+  zoom: (level: number | "fit-viewport", center?: unknown) => number;
+}
+
+/**
+ * A service from whichever dmn-js view is on screen, or `undefined`.
+ *
+ * Every command here has to go through the *active* viewer: dmn-js holds one per view and
+ * swaps them as you move between the DRD and a decision table. Reading a service once and
+ * keeping it would leave the toolbar driving a viewer nobody is looking at.
+ *
+ * `undefined` is a real answer rather than a failure — a decision table has no canvas, so
+ * asking it for one is how the zoom controls learn to hide.
+ */
+function activeService<T>(modeler: DmnModeler, name: string): T | undefined {
+  const active = modeler.getActiveViewer?.() as { get?: (id: string) => unknown } | undefined;
+  try {
+    return active?.get?.(name) as T | undefined;
+  } catch {
+    // diagram-js throws for a service the current view does not provide.
+    return undefined;
+  }
+}
+
+const ZOOM_STEP = 0.2;
+const ZOOM_MIN = 0.2;
+const ZOOM_MAX = 4;
 
 export interface DmnEditorProps {
   modelApi: ModelApi;
@@ -66,6 +102,21 @@ export function DmnEditor({
   const [ready, setReady] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [dirty, setDirty] = useState(false);
+  /*
+   * Undo state, and whether the view on screen can be zoomed at all.
+   *
+   * This editor used to hand the menu bar nothing but Save and Save-version, while BPMN
+   * and CMMN — the same diagram-js foundation, the same drag-and-delete canvas — had
+   * undo, redo and zoom. Deleting a decision here was unrecoverable through the UI.
+   *
+   * dmn-js keeps a viewer per view and swaps the active one as you move between the DRD
+   * and a decision table, so there is no single command stack to hold: each is read from
+   * whichever viewer is active, and re-read whenever that changes.
+   */
+  const [canUndo, setCanUndo] = useState(false);
+  const [canRedo, setCanRedo] = useState(false);
+  /** Only the DRD is a canvas; a decision table has rows, and zooming it means nothing. */
+  const [canZoom, setCanZoom] = useState(false);
   const [saving, setSaving] = useState(false);
   const [deploying, setDeploying] = useState(false);
   const [lastSavedAt, setLastSavedAt] = useState<Date | null>(null);
@@ -83,13 +134,29 @@ export function DmnEditor({
     const modeler = new DmnModeler({ container: node });
     modelerRef.current = modeler;
 
+    const syncStack = () => {
+      const stack = activeService<CommandStack>(modeler, "commandStack");
+      setCanUndo(stack?.canUndo() ?? false);
+      setCanRedo(stack?.canRedo() ?? false);
+      // A decision table's viewer has no canvas, which is how "can this zoom?" is asked.
+      setCanZoom(Boolean(activeService(modeler, "canvas")));
+    };
+
     // dmn-js swaps the active viewer when moving between DRD and a decision table,
     // so change events must be re-bound to whichever view is active.
     modeler.on("views.changed", () => {
       const active = modeler.getActiveViewer?.();
-      active?.on?.("commandStack.changed", () => setDirty(true));
+      active?.on?.("commandStack.changed", () => {
+        setDirty(true);
+        syncStack();
+      });
+      // The new view has its own stack and may not be a canvas at all.
+      syncStack();
     });
-    modeler.on("view.contentChanged", () => setDirty(true));
+    modeler.on("view.contentChanged", () => {
+      setDirty(true);
+      syncStack();
+    });
   }, []);
 
   useEffect(() => {
@@ -229,6 +296,57 @@ export function DmnEditor({
     }
   };
 
+  /** Undo and redo, against whichever view is on screen. */
+  const runCommand = (command: "undo" | "redo") => {
+    const modeler = modelerRef.current;
+    if (!modeler) return;
+    const stack = activeService<CommandStack>(modeler, "commandStack");
+    if (!stack) return;
+    if (command === "undo" ? stack.canUndo() : stack.canRedo()) stack[command]();
+    setCanUndo(stack.canUndo());
+    setCanRedo(stack.canRedo());
+  };
+
+  /*
+   * Zoom by a step rather than to a level, so repeated presses behave. Clamped, because
+   * diagram-js will happily zoom to a point where the diagram is a dot or unreachably
+   * large and there is no gesture on a trackpad-less machine to get back.
+   */
+  const zoomBy = (delta: number) => {
+    const modeler = modelerRef.current;
+    if (!modeler) return;
+    const canvas = activeService<Canvas>(modeler, "canvas");
+    if (!canvas) return;
+    const current = canvas.zoom(1) as unknown as number;
+    const next = Math.min(ZOOM_MAX, Math.max(ZOOM_MIN, (current || 1) + delta));
+    canvas.zoom(next);
+  };
+  const zoomIn = () => zoomBy(ZOOM_STEP);
+  const zoomOut = () => zoomBy(-ZOOM_STEP);
+  const zoomFit = () => {
+    const modeler = modelerRef.current;
+    if (!modeler) return;
+    activeService<Canvas>(modeler, "canvas")?.zoom("fit-viewport");
+  };
+
+  /**
+   * The DMN source, as a file.
+   *
+   * BPMN and CMMN both offer this and DMN did not, so the only way to get a decision
+   * model out of here was to deploy it and fetch it back from the engine.
+   */
+  const exportXml = async () => {
+    const modeler = modelerRef.current;
+    if (!modeler) return;
+    try {
+      const { xml } = await modeler.saveXML({ format: true });
+      if (!xml) throw new Error("The editor produced no XML.");
+      downloadFile(`${model.key ?? model.id}.dmn`, xml, "application/xml");
+    } catch (cause) {
+      push({ tone: "error", message: (cause as Error).message || t("dmn.exportFailed") });
+    }
+  };
+
   return (
     <section className="tf-editor" aria-label={t("editor.editing", { name: model.name || model.id })}>
       {/* W2.3 (I8): one menu bar, shared by all six editors. */}
@@ -246,6 +364,11 @@ export function DmnEditor({
         saving={saving}
         ready={ready}
         onSaveVersion={() => void saveVersion()}
+        undo={{ run: () => runCommand("undo"), can: canUndo }}
+        redo={{ run: () => runCommand("redo"), can: canRedo }}
+        {...(canZoom ? { zoom: { in: zoomIn, out: zoomOut, fit: zoomFit } } : {})}
+        onExport={() => void exportXml()}
+        exportLabel={t("dmn.exportLabel")}
         primary={{
           label: t("action.deploy"),
           run: () => setConfirmDeploy(true),

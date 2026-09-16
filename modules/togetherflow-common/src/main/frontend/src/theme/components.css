@@ -49,6 +49,40 @@
 .tf-button--danger:hover:not(:disabled) {
   filter: brightness(0.94);
 }
+
+/*
+ * A toggle button that is on must look it.
+ *
+ * Nine buttons across the three apps carry `aria-pressed` — the model library's
+ * Cards/Table pair, the data table's density control, and the BPMN editor's grid and
+ * snap toggles — and nothing in the theme styled that attribute. Checked in a browser
+ * with hover and focus removed, a pressed button and an unpressed one computed to
+ * identical background, colour, border, weight and shadow: the state reached a screen
+ * reader and stopped there. For grid and snap, reporting state is the button's only job.
+ *
+ * Borrowed from `.tf-chip--active` rather than invented, so "this one is selected" reads
+ * the same whether it is a chip or a button.
+ */
+.tf-button[aria-pressed="true"]:not(:disabled) {
+  background: var(--tf-bg-selected);
+  border-color: var(--tf-accent);
+  color: var(--tf-accent);
+  font-weight: var(--tf-weight-semibold);
+}
+/* Hover still has to register on a pressed button, or it feels dead. */
+.tf-button[aria-pressed="true"]:hover:not(:disabled) {
+  background: var(--tf-info-bg);
+}
+/*
+ * The primary variant already fills with the accent, so the rules above would wash it
+ * out into the selected-grey. It deepens instead.
+ */
+.tf-button--primary[aria-pressed="true"]:not(:disabled) {
+  background: var(--tf-accent-hover);
+  border-color: var(--tf-accent-hover);
+  color: var(--tf-text-inverse);
+}
+
 .tf-button__spinner {
   width: 13px;
   height: 13px;

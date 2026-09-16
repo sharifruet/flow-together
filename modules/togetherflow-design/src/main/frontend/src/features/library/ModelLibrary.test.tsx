@@ -156,12 +156,22 @@ describe("ModelLibrary", () => {
     expect(api.saveSource.mock.calls[0][1]).toContain("<decisionTable");
   });
 
+  /**
+   * Everything but Open now lives behind the row's ⋯ menu — seven ghost buttons abreast
+   * wrapped to three lines a row on a desktop and seven on a phone, and put Delete
+   * directly beneath Open in the wrap. So the tests take the route a person does.
+   */
+  async function chooseRowAction(name: RegExp) {
+    await userEvent.click(screen.getAllByRole("button", { name: /actions for/i })[0]);
+    await userEvent.click(await screen.findByRole("menuitem", { name }));
+  }
+
   it("duplicates a model by copying its source", async () => {
     const api = stubApi();
     const { onOpen } = renderLibrary(api);
     await screen.findByText("Invoice approval");
 
-    await userEvent.click(screen.getAllByRole("button", { name: /duplicate/i })[0]);
+    await chooseRowAction(/duplicate/i);
 
     await waitFor(() => expect(api.create).toHaveBeenCalled());
     expect(api.getSource).toHaveBeenCalledWith("m1");
@@ -174,7 +184,7 @@ describe("ModelLibrary", () => {
     renderLibrary(api);
     await screen.findByText("Invoice approval");
 
-    await userEvent.click(screen.getAllByRole("button", { name: /duplicate/i })[0]);
+    await chooseRowAction(/duplicate/i);
 
     expect(await screen.findByText(/no saved content to copy/i)).toBeInTheDocument();
     expect(api.create).not.toHaveBeenCalled();
@@ -185,12 +195,29 @@ describe("ModelLibrary", () => {
     renderLibrary(api);
     await screen.findByText("Invoice approval");
 
-    await userEvent.click(screen.getAllByRole("button", { name: /^delete$/i })[0]);
+    await chooseRowAction(/^delete$/i);
     const dialog = await screen.findByRole("alertdialog");
     expect(dialog).toHaveTextContent(/keeps running/i);
     expect(api.delete).not.toHaveBeenCalled();
 
     await userEvent.click(within(dialog).getByRole("button", { name: /delete model/i }));
     await waitFor(() => expect(api.delete).toHaveBeenCalledWith("m1"));
+  });
+
+  it("keeps Open out of the menu and on the row, where it is used every time", async () => {
+    renderLibrary(stubApi());
+    await screen.findByText("Invoice approval");
+
+    // Open is a button in its own right, not one of seven equal links.
+    expect(screen.getAllByRole("button", { name: /^open$/i })[0]).toBeInTheDocument();
+
+    await userEvent.click(screen.getAllByRole("button", { name: /actions for/i })[0]);
+    const items = (await screen.findAllByRole("menuitem")).map((item) => item.textContent?.trim());
+    expect(items).not.toContain("Open");
+    // The gap that used to make the table the only complete view is closed: every
+    // action the table had is in this menu, and the cards render from the same list.
+    expect(items).toEqual(
+      expect.arrayContaining(["History", "Relations", "Export", "Duplicate", "Delete"]),
+    );
   });
 });
