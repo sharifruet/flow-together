@@ -13,10 +13,17 @@ field, and the rules for sending something back.
 ## Deploying it
 
 ```bash
-./deploy.sh                                    # localhost:8080, admin/test
-BASE=https://flowable.example.com/flowable-rest USER=me PASS=secret ./deploy.sh
+./deploy.sh                                    # localhost:8080, rest-admin/test
+BASE=https://flowable.example.com/flowable-rest FL_USER=me FL_PASS=secret ./deploy.sh
 ./deploy.sh --no-identity                      # models only, leave the directory alone
 ```
+
+`FL_USER` and `FL_PASS`, not `USER` and `PASS`: the shell already exports `USER` as your
+login name, so the script could never tell a value you set from one that was always there.
+The admin is `rest-admin` — `admin` is a different product's default and gets a 401 here.
+
+Needs `bash`, `curl`, and Python 3 for the identity step. A `.bar` archive is built with
+`zip` where it exists and with Python or `jar` where it does not, so no zip is required.
 
 Then start a case of `salesResignation` as a member of `sales-ase`, with these variables:
 
@@ -31,8 +38,8 @@ returned record goes back to.
 You can also deploy any single file by hand from Design, or with a plain `curl`:
 
 ```bash
-curl -u admin:test -F "resignation-sales.cmmn=@case/resignation-sales.cmmn" \
-  http://localhost:8080/flowable-rest/cmmn-repository/deployments
+curl -u rest-admin:test -F "resignation-sales.cmmn=@case/resignation-sales.cmmn" \
+  http://localhost:8080/flowable-rest/cmmn-api/cmmn-repository/deployments
 ```
 
 ## Why there is no Java
