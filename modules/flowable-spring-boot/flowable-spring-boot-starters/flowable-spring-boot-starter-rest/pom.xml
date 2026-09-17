@@ -40,6 +40,10 @@
         </dependency>
         <dependency>
             <groupId>org.flowable</groupId>
+            <artifactId>flowable-spring-boot-starter-form-rest</artifactId>
+        </dependency>
+        <dependency>
+            <groupId>org.flowable</groupId>
             <artifactId>flowable-event-registry-rest</artifactId>
             <exclusions>
                 <exclusion>

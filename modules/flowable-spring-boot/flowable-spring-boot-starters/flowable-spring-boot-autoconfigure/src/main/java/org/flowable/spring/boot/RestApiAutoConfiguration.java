@@ -20,6 +20,8 @@ import org.flowable.common.rest.resolver.ContentTypeResolver;
 import org.flowable.common.rest.resolver.DefaultContentTypeResolver;
 import org.flowable.dmn.engine.DmnEngine;
 import org.flowable.dmn.rest.service.api.DmnRestUrls;
+import org.flowable.form.engine.FormEngine;
+import org.flowable.form.rest.FormRestUrls;
 import org.flowable.engine.ProcessEngine;
 import org.flowable.eventregistry.impl.EventRegistryEngine;
 import org.flowable.eventregistry.rest.service.api.EventRestUrls;
@@ -36,6 +38,9 @@ import org.flowable.spring.boot.cmmn.FlowableCmmnProperties;
 import org.flowable.spring.boot.dmn.DmnEngineRestConfiguration;
 import org.flowable.spring.boot.dmn.DmnEngineServicesAutoConfiguration;
 import org.flowable.spring.boot.dmn.FlowableDmnProperties;
+import org.flowable.spring.boot.form.FlowableFormProperties;
+import org.flowable.spring.boot.form.FormEngineRestConfiguration;
+import org.flowable.spring.boot.form.FormEngineServicesAutoConfiguration;
 import org.flowable.spring.boot.eventregistry.EventRegistryRestConfiguration;
 import org.flowable.spring.boot.eventregistry.EventRegistryServicesAutoConfiguration;
 import org.flowable.spring.boot.eventregistry.FlowableEventRegistryProperties;
@@ -73,6 +78,7 @@ import org.springframework.context.annotation.Configuration;
     ProcessEngineServicesAutoConfiguration.class,
     CmmnEngineServicesAutoConfiguration.class,
     DmnEngineServicesAutoConfiguration.class,
+    FormEngineServicesAutoConfiguration.class,
     EventRegistryServicesAutoConfiguration.class,
     IdmEngineServicesAutoConfiguration.class
 })
@@ -159,6 +165,17 @@ public class RestApiAutoConfiguration {
         @Bean
         public ServletRegistrationBean dmnServlet(FlowableDmnProperties properties) {
             return registerServlet(properties.getServlet(), DmnEngineRestConfiguration.class);
+        }
+    }
+
+    @Configuration(proxyBeanMethods = false)
+    @ConditionalOnClass(FormRestUrls.class)
+    @ConditionalOnBean(FormEngine.class)
+    public static class FormEngineRestApiConfiguration extends BaseRestApiConfiguration {
+
+        @Bean
+        public ServletRegistrationBean formServlet(FlowableFormProperties properties) {
+            return registerServlet(properties.getServlet(), FormEngineRestConfiguration.class);
         }
     }
     

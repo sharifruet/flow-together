@@ -36,11 +36,13 @@ import org.flowable.engine.impl.persistence.entity.HistoricActivityInstanceEntit
 import org.flowable.engine.impl.persistence.entity.HistoricDetailVariableInstanceUpdateEntity;
 import org.flowable.engine.impl.persistence.entity.HistoricProcessInstanceEntity;
 import org.flowable.engine.impl.persistence.entity.ProcessDefinitionEntity;
+import org.flowable.engine.impl.util.CommandContextUtil;
 import org.flowable.engine.impl.util.TaskHelper;
 import org.flowable.engine.runtime.ActivityInstance;
 import org.flowable.entitylink.api.history.HistoricEntityLinkService;
 import org.flowable.entitylink.service.impl.persistence.entity.EntityLinkEntity;
 import org.flowable.entitylink.service.impl.persistence.entity.HistoricEntityLinkEntity;
+import org.flowable.form.api.FormService;
 import org.flowable.identitylink.service.HistoricIdentityLinkService;
 import org.flowable.identitylink.service.impl.persistence.entity.HistoricIdentityLinkEntity;
 import org.flowable.identitylink.service.impl.persistence.entity.IdentityLinkEntity;
@@ -149,6 +151,11 @@ public class DefaultHistoryManager extends AbstractHistoryManager {
             }
             
             getCommentEntityManager().deleteCommentsByProcessInstanceId(processInstanceId);
+
+            FormService formService = CommandContextUtil.getFormService();
+            if (formService != null) {
+                formService.deleteFormInstancesByProcessInstance(processInstanceId);
+            }
 
             if (historicProcessInstance != null) {
                 getHistoricProcessInstanceEntityManager().delete(historicProcessInstance, false);

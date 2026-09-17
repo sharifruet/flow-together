@@ -114,6 +114,7 @@ data:
   TF_CMMN_BASE: "/cmmn-api"
   TF_APP_BASE: "/app-api"
   TF_EVENT_BASE: "/event-registry-api"
+  TF_FORM_BASE: "/form-api"
   TF_EXTERNAL_JOB_BASE: "/external-job-api"
   # Production authenticates with OIDC; Basic is fenced to local development
   # (ADR 0006, §13.1). The client is public, so there is no secret here — a client

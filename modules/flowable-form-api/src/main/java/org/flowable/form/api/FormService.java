@@ -32,6 +32,15 @@ public interface FormService {
             String scopeType, FormInfo formInfo, Map<String, Object> values);
 
     /**
+     * Like {@link #validateFormFields(String, String, String, String, String, FormInfo, Map)}, also checking that {@code outcome}
+     * is one the form declares, so a wrong outcome is reported together with the failing fields rather than after them.
+     */
+    default void validateFormFields(String elementId, String elementType, String scopeId, String scopeDefinitionId,
+            String scopeType, FormInfo formInfo, Map<String, Object> values, String outcome) {
+        validateFormFields(elementId, elementType, scopeId, scopeDefinitionId, scopeType, formInfo, values);
+    }
+
+    /**
      * @param formInfo
      *            form definition to use for type-conversion and validation
      * @param values
@@ -117,6 +126,13 @@ public interface FormService {
     FormInstanceInfo getFormInstanceModelByKeyAndParentDeploymentIdAndScopeId(String formDefinitionKey, String parentDeploymentId,
                     String scopeId, String scopeType, Map<String, Object> variables, String tenantId, boolean fallbackToDefaultTenant);
 
+    /**
+     * Like {@link #getFormInstanceModelByKeyAndParentDeploymentIdAndScopeId(String, String, String, String, Map, String, boolean)}, but for the
+     * submission recorded against a specific task of the scope rather than the scope's own (start) form.
+     */
+    FormInstanceInfo getFormInstanceModelByKeyAndParentDeploymentIdAndScopeId(String formDefinitionKey, String parentDeploymentId, String taskId,
+                    String scopeId, String scopeType, Map<String, Object> variables, String tenantId, boolean fallbackToDefaultTenant);
+
     FormInstanceQuery createFormInstanceQuery();
     
     byte[] getFormInstanceValues(String formInstanceId);
@@ -128,4 +144,10 @@ public interface FormService {
     void deleteFormInstancesByProcessDefinition(String processDefinitionId);
     
     void deleteFormInstancesByScopeDefinition(String scopeDefinitionId);
+
+    /** Deletes every submission recorded against the process instance (start form and task forms). */
+    void deleteFormInstancesByProcessInstance(String processInstanceId);
+
+    /** Deletes every submission recorded against the scope instance (e.g. a case instance's start form and task forms). */
+    void deleteFormInstancesByScopeId(String scopeId, String scopeType);
 }

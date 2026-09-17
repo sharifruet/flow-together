@@ -21,6 +21,7 @@ try {
           idmBase={config.idmBase}
           appBase={config.appBase}
           eventBase={config.eventBase}
+          formBase={config.formBase}
           workspaceBase={config.workspaceBase}
         />
       </AppRoot>

@@ -751,3 +751,10 @@
   min-height: 0;
 }
 /* `.tf-reports__note` removed with the note it styled — see the i18n catalogue. */
+
+/* The variable grid alongside a form (FR-W.7): a disclosure, not a second panel. */
+.tf-detail__variables-toggle {
+  margin-top: var(--tf-space-4);
+  display: grid;
+  gap: var(--tf-space-3);
+}

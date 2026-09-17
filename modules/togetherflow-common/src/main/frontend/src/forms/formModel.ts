@@ -136,6 +136,9 @@ export interface FieldConstraints {
   pattern?: string;
   /** What the pattern means, in words — a regex is not an error message. */
   patternMessage?: string;
+  /** ISO dates (yyyy-MM-dd) bounding a `date` field, inclusive. */
+  minDate?: string;
+  maxDate?: string;
   /** `accept` for an upload field, e.g. ".pdf,image/*". */
   accept?: string;
   /** Largest accepted upload, in bytes. Checked before the file is sent. */
@@ -222,6 +225,8 @@ export function fieldConstraints(field: FormField): FieldConstraints {
     max: numberParam(params, "max", "maxValue"),
     pattern: stringParam(params, "pattern"),
     patternMessage: stringParam(params, "patternMessage"),
+    minDate: stringParam(params, "minDate"),
+    maxDate: stringParam(params, "maxDate"),
     accept: stringParam(params, "accept"),
     maxFileSize: numberParam(params, "maxFileSize"),
   };
@@ -274,6 +279,15 @@ export function validateField(
   }
   if (field.type === "date") {
     if (Number.isNaN(Date.parse(raw))) return t("form.validation.date");
+    // Compared as ISO strings: yyyy-MM-dd sorts as it dates, and the input already
+    // hands the value over in that shape.
+    const day = raw.slice(0, 10);
+    if (limits.minDate && day < limits.minDate) {
+      return t("form.validation.minDate", { date: limits.minDate });
+    }
+    if (limits.maxDate && day > limits.maxDate) {
+      return t("form.validation.maxDate", { date: limits.maxDate });
+    }
     return undefined;
   }
 
@@ -288,9 +302,11 @@ export function validateField(
   if (limits.pattern) {
     // An unparseable pattern is the form author's bug, not the filler's: let the value
     // through rather than blocking a form nobody can submit.
+    // Anchored, because the engine matches the whole value (Java's `matches()`); a
+    // browser check that passes on a substring would only move the refusal server-side.
     let expression: RegExp | undefined;
     try {
-      expression = new RegExp(limits.pattern);
+      expression = new RegExp(`^(?:${limits.pattern})$`);
     } catch {
       expression = undefined;
     }
@@ -398,4 +414,17 @@ function variableTypeFor(fieldType: string): string {
 export function hasRenderableFields(model: FormModelResponse | undefined): boolean {
   if (!model) return false;
   return flattenFields(model.fields).length > 0;
+}
+
+/**
+ * The same model with every field read-only, for showing a recorded submission: the
+ * renderer then paints values rather than controls, exactly as it does for a field the
+ * model itself marks read-only.
+ */
+export function asReadOnlyModel(model: FormModelResponse): FormModelResponse {
+  const readOnly = (field: FormField): FormField =>
+    isContainer(field)
+      ? { ...field, fields: (field.fields ?? []).map((row) => row.map(readOnly)) }
+      : { ...field, readOnly: true };
+  return { ...model, fields: (model.fields ?? []).map(readOnly) };
 }

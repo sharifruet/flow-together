@@ -38,6 +38,7 @@ import org.flowable.entitylink.service.impl.persistence.entity.EntityLinkEntityM
 import org.flowable.eventsubscription.service.EventSubscriptionService;
 import org.flowable.identitylink.service.impl.persistence.entity.IdentityLinkEntityManager;
 import org.flowable.job.api.ExternalWorkerJob;
+import org.flowable.form.api.FormService;
 import org.flowable.job.api.Job;
 import org.flowable.job.service.JobServiceConfiguration;
 import org.flowable.job.service.impl.DeadLetterJobQueryImpl;
@@ -205,6 +206,14 @@ public class CaseInstanceEntityManagerImpl
         for (ExternalWorkerJob externalWorkerJob : externalWorkerJobs) {
             externalWorkerJobEntityManager.delete(externalWorkerJob.getId());
             getIdentityLinkEntityManager().deleteIdentityLinksByScopeIdAndScopeType(externalWorkerJob.getCorrelationId(), ScopeTypes.EXTERNAL_WORKER);
+        }
+
+        // With history disabled the historic delete never runs, so the form submissions go here.
+        if (!engineConfiguration.getCmmnHistoryConfigurationSettings().isHistoryEnabled()) {
+            FormService formService = CommandContextUtil.getFormService();
+            if (formService != null) {
+                formService.deleteFormInstancesByScopeId(caseInstanceId, ScopeTypes.CMMN);
+            }
         }
 
         // Actual case instance

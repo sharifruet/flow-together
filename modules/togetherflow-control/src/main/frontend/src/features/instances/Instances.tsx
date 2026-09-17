@@ -25,7 +25,9 @@ import {
   type InstanceApi,
   type ProcessInstanceResponse,
   type RepositoryApi,
+  type FormApi,
 } from "@togetherflow/common";
+import { Submissions } from "../forms/Forms";
 import { ChangeStateDialog } from "./ChangeStateDialog";
 import { InstanceFilters, decodeFilters, encodeFilters } from "./InstanceFilters";
 import { MigrationDialog } from "./MigrationDialog";
@@ -35,6 +37,8 @@ export interface InstancesProps {
   instanceApi: InstanceApi;
   /** W2.1 needs definitions for migration targets and change-state activity lists. */
   repositoryApi: RepositoryApi;
+  /** Lists an instance's recorded form submissions (FR-H.4); absent hides the section. */
+  formApi?: FormApi;
   /** Degrades the screen to read-only rather than offering rejected actions (§13.1). */
   readOnly?: boolean;
   /**
@@ -73,6 +77,7 @@ const DEFAULT_VIEW: InstancesView = {
 export function Instances({
   instanceApi,
   repositoryApi,
+  formApi,
   readOnly = false,
   selectedId,
   onSelect,
@@ -194,6 +199,7 @@ export function Instances({
       <InstanceDetail
         instanceApi={instanceApi}
         repositoryApi={repositoryApi}
+        formApi={formApi}
         readOnly={readOnly}
         instanceId={selectedId}
         onBack={() => onSelect?.(undefined)}
@@ -368,6 +374,7 @@ interface DetailProps {
   instanceApi: InstanceApi;
   /** Needed for W2.1's migration targets and change-state activity list. */
   repositoryApi: RepositoryApi;
+  formApi?: FormApi;
   instanceId: string;
   /** Hides every mutating action rather than offering one the server will reject (§13.1). */
   readOnly?: boolean;
@@ -379,6 +386,7 @@ interface DetailProps {
 function InstanceDetail({
   instanceApi,
   repositoryApi,
+  formApi,
   instanceId,
   readOnly = false,
   onBack,
@@ -563,6 +571,13 @@ function InstanceDetail({
                 }}
               />
             </section>
+
+            {formApi ? (
+              <section className="tf-panel__section">
+                <h2 className="tf-panel__section-title">{t("instances.forms.title")}</h2>
+                <Submissions formApi={formApi} scope={{ processInstanceId: instance.id }} embedded />
+              </section>
+            ) : null}
 
             {migrating ? (
               <MigrationDialog

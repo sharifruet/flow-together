@@ -105,8 +105,8 @@ public class GetTaskFormModelCmd implements Command<FormInfo>, Serializable {
                             task.getTenantId(), cmmnEngineConfiguration.isFallbackToDefaultTenant());
             
         } else if (endTime != null) {
-            formInfo = formService.getFormInstanceModelByKeyAndParentDeploymentIdAndScopeId(task.getFormKey(), parentDeploymentId, task.getScopeId(), 
-                            task.getScopeType(), variables, task.getTenantId(), cmmnEngineConfiguration.isFallbackToDefaultTenant());
+            formInfo = formService.getFormInstanceModelByKeyAndParentDeploymentIdAndScopeId(task.getFormKey(), parentDeploymentId, taskId,
+                            task.getScopeId(), task.getScopeType(), variables, task.getTenantId(), cmmnEngineConfiguration.isFallbackToDefaultTenant());
 
         } else {
             formInfo = formService.getFormModelWithVariablesByKeyAndParentDeploymentId(task.getFormKey(), parentDeploymentId,

@@ -9,6 +9,7 @@ set -eu
 # Case instances and the event registry each sit on their own servlet.
 : "${TF_CMMN_BASE:=/cmmn-api}"
 : "${TF_EVENT_BASE:=/event-registry-api}"
+: "${TF_FORM_BASE:=/form-api}"
 : "${TF_EXTERNAL_JOB_BASE:=/external-job-api}"
 # Optional inbound event log (§7.2, ADR 0015). Unset — the default — means the recorder
 # is not deployed and Control offers no received-events view at all.
@@ -48,6 +49,7 @@ window.__TOGETHERFLOW_CONFIG__ = {
   dmnBase: "${TF_DMN_BASE}",
   cmmnBase: "${TF_CMMN_BASE}",
   eventBase: "${TF_EVENT_BASE}",
+  formBase: "${TF_FORM_BASE}",
   externalJobBase: "${TF_EXTERNAL_JOB_BASE}",
   eventRecorder: "${TF_EVENT_RECORDER_BASE}",
   identity: { readOnly: ${TF_IDENTITY_READ_ONLY} },

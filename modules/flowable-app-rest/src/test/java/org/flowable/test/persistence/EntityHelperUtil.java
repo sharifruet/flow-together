@@ -62,6 +62,10 @@ public class EntityHelperUtil {
                             org.flowable.dmn.engine.impl.db.EntityDependencyOrder.DELETE_ORDER,
                             org.flowable.dmn.engine.impl.db.EntityDependencyOrder.INSERT_ORDER)),
 
+                    Arguments.of(new EntityMappingPackageInformation("org.flowable.form",
+                            org.flowable.form.engine.impl.db.EntityDependencyOrder.DELETE_ORDER,
+                            org.flowable.form.engine.impl.db.EntityDependencyOrder.INSERT_ORDER)),
+
                     Arguments.of(new EntityMappingPackageInformation("org.flowable.app",
                             org.flowable.app.engine.impl.db.EntityDependencyOrder.DELETE_ORDER,
                             org.flowable.app.engine.impl.db.EntityDependencyOrder.INSERT_ORDER)),

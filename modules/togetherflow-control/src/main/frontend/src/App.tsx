@@ -23,6 +23,7 @@ import {
   useTenant,
   type AppLinks,
   type Shortcut,
+  FormApi,
 } from "@togetherflow/common";
 import { AppShell, type ControlCounts } from "./features/shell/AppShell";
 import {
@@ -33,6 +34,7 @@ import {
   instancePath,
   pathFor,
   type ControlView,
+  formDefinitionPath,
 } from "./routes";
 import { Dashboard } from "./features/dashboard/Dashboard";
 import { Instances } from "./features/instances/Instances";
@@ -41,6 +43,7 @@ import { Definitions } from "./features/definitions/Definitions";
 import { EventRegistry } from "./features/events/EventRegistry";
 import { Jobs } from "./features/jobs/Jobs";
 import { Deployments } from "./features/deployments/Deployments";
+import { Forms } from "./features/forms/Forms";
 import { System } from "./features/system/System";
 
 export interface AppProps {
@@ -51,6 +54,8 @@ export interface AppProps {
   cmmnBase: string;
   eventBase: string;
   externalJobBase: string;
+  /** Form engine REST base — definitions, deployments and submissions (FR-C.1). */
+  formBase?: string;
   /**
    * IDM REST base. Used only to read the signed-in user's privileges, which is what
    * decides whether Control shows its mutating actions (W2.1, §13.1). Optional: a
@@ -72,6 +77,7 @@ export function App({
   cmmnBase,
   eventBase,
   externalJobBase,
+  formBase,
   idmBase,
   eventRecorderBase,
   fetchImpl,
@@ -126,6 +132,7 @@ export function App({
       cmmn: make(cmmnBase),
       event: make(eventBase),
       externalJob: make(externalJobBase),
+      form: formBase ? make(formBase) : undefined,
       // Undefined rather than a client over an empty base: no IDM is a real deployment
       // shape, and `usePermissions` fails open on it by design.
       idm: idmBase ? make(idmBase) : undefined,
@@ -138,7 +145,7 @@ export function App({
     dmnBase,
     cmmnBase,
     eventBase,
-    externalJobBase,
+    externalJobBase, formBase,
     idmBase,
     eventRecorderBase,
     fetchImpl,
@@ -170,6 +177,7 @@ export function App({
       caseAccess: new CaseDefinitionAccessApi(clients.cmmn),
       events: new EventRegistryApi(clients.event),
       workers: new ExternalWorkerApi(clients.externalJob),
+      forms: clients.form ? new FormApi(clients.form) : undefined,
       eventRecorder: clients.eventRecorder ? new EventRecorderApi(clients.eventRecorder) : undefined,
     }),
     [clients],
@@ -235,6 +243,7 @@ export function App({
         <Instances
           instanceApi={apis.instances}
           repositoryApi={apis.repository}
+          formApi={apis.forms}
           readOnly={!permissions.canMutate}
           selectedId={route.params.instanceId}
           onSelect={(id) => navigate(id ? instancePath(id) : pathFor("instances"))}
@@ -243,6 +252,7 @@ export function App({
       {view === "cases" ? (
         <CaseInstances
           caseApi={apis.cases}
+          formApi={apis.forms}
           selectedId={route.params.caseId}
           onSelect={(id) => navigate(id ? casePath(id) : pathFor("cases"))}
         />
@@ -266,9 +276,17 @@ export function App({
           onSelect={(id) => navigate(id ? deploymentPath(id) : pathFor("deployments"))}
         />
       ) : null}
+      {view === "forms" ? (
+        <Forms
+          formApi={apis.forms}
+          selectedId={route.params.formDefinitionId}
+          onSelect={(id) => navigate(id ? formDefinitionPath(id) : pathFor("forms"))}
+        />
+      ) : null}
       {view === "system" ? (
         <System
           systemApi={apis.system}
+          formApi={apis.forms}
           decisionHistoryApi={apis.decisions}
           externalWorkerApi={apis.workers}
         />

@@ -52,6 +52,7 @@ export default defineConfig({
       "/process-api": proxy("/service"),
       "/idm-api": proxy("/idm-api"),
       "/dmn-api": proxy("/dmn-api"),
+      "/form-api": proxy("/form-api"),
       "/cmmn-api": proxy("/cmmn-api"),
       "/event-registry-api": proxy("/event-registry-api"),
       "/external-job-api": proxy("/external-job-api"),

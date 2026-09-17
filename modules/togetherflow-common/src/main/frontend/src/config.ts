@@ -45,6 +45,8 @@ export interface RuntimeConfig {
   eventBase: string;
   /** External worker job REST base. */
   externalJobBase: string;
+  /** Form engine REST base — Design deploys forms here; Control lists definitions and submissions. */
+  formBase: string;
   auth: { mode: AuthMode; oidc?: OidcConfig };
   /** URLs of the sibling apps, for the shell's app switcher (§7.5). */
   apps: AppLinks;
@@ -101,6 +103,7 @@ declare global {
       appBase?: string;
       eventBase?: string;
       externalJobBase?: string;
+      formBase?: string;
       apps?: AppLinks;
       attachmentGateway?: string;
       eventRecorder?: string;
@@ -132,6 +135,7 @@ export function readRuntimeConfig(): RuntimeConfig {
   const appBase = raw.appBase ?? "/app-api";
   const eventBase = raw.eventBase ?? "/event-registry-api";
   const externalJobBase = raw.externalJobBase ?? "/external-job-api";
+  const formBase = raw.formBase ?? "/form-api";
   const apps: AppLinks = raw.apps ?? {};
   const attachmentGateway = raw.attachmentGateway ?? "";
   const eventRecorder = raw.eventRecorder ?? "";
@@ -155,6 +159,7 @@ export function readRuntimeConfig(): RuntimeConfig {
       appBase,
       eventBase,
       externalJobBase,
+      formBase,
       apps,
       attachmentGateway,
       eventRecorder,
@@ -185,6 +190,7 @@ export function readRuntimeConfig(): RuntimeConfig {
     appBase,
     eventBase,
     externalJobBase,
+    formBase,
     apps,
     attachmentGateway,
     eventRecorder,

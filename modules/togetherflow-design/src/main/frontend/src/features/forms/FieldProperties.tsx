@@ -159,6 +159,25 @@ export function FieldProperties({ field, disabled = false, onChange }: FieldProp
         </>
       ) : null}
 
+      {field.type === "date" ? (
+        <>
+          <TextInput
+            label={t("form.field.minDate")}
+            type="date"
+            value={textParam("minDate")}
+            disabled={disabled}
+            onChange={(event) => setParam("minDate", event.target.value)}
+          />
+          <TextInput
+            label={t("form.field.maxDate")}
+            type="date"
+            value={textParam("maxDate")}
+            disabled={disabled}
+            onChange={(event) => setParam("maxDate", event.target.value)}
+          />
+        </>
+      ) : null}
+
       {field.type === "upload" ? (
         <>
           <TextInput

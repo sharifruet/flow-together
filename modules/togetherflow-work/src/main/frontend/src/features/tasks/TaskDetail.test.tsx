@@ -108,9 +108,11 @@ describe("TaskDetail", () => {
     );
 
     await waitFor(() => expect(api.complete).toHaveBeenCalled());
-    expect(api.complete).toHaveBeenCalledWith("task-1", [
-      { name: "amount", type: "long", value: 10 },
-    ]);
+    expect(api.complete).toHaveBeenCalledWith(
+      "task-1",
+      [{ name: "amount", type: "long", value: 10 }],
+      expect.objectContaining({ id: "task-1" }),
+    );
     expect(onCompleted).toHaveBeenCalled();
   });
 

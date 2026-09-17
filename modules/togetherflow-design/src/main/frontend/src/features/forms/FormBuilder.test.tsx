@@ -2,7 +2,7 @@ import { render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { describe, expect, it, vi } from "vitest";
 import type { Mock } from "vitest";
-import { ToastProvider, type ModelApi, type ModelResponse } from "@togetherflow/common";
+import { ToastProvider, type FormApi, type ModelApi, type ModelResponse } from "@togetherflow/common";
 import { FormBuilder } from "./FormBuilder";
 
 const MODEL: ModelResponse = {
@@ -19,20 +19,22 @@ function stubApi(overrides: Record<string, unknown> = {}) {
   } as unknown as ModelApi & { saveSource: Mock };
 }
 
-function renderBuilder(api: ModelApi, source: string | null = null) {
+function renderBuilder(api: ModelApi, source: string | null = null, formApi?: FormApi) {
   const onBack = vi.fn();
+  const onSaved = vi.fn();
   render(
     <ToastProvider>
       <FormBuilder
         modelApi={api}
+        formApi={formApi}
         model={MODEL}
         initialSource={source}
         onBack={onBack}
-        onSaved={vi.fn()}
+        onSaved={onSaved}
       />
     </ToastProvider>,
   );
-  return { onBack };
+  return { onBack, onSaved };
 }
 
 describe("FormBuilder", () => {
@@ -113,10 +115,31 @@ describe("FormBuilder", () => {
     expect(screen.getByText(/Select a field to edit/)).toBeInTheDocument();
   });
 
-  it("says forms deploy through an app, since there is no form REST endpoint", () => {
+  it("offers Deploy, and says what it needs when the form engine's API is not configured", () => {
     renderBuilder(stubApi());
-    expect(screen.getByRole("note")).toHaveTextContent(/deploy as part of an app/i);
-    expect(screen.queryByRole("button", { name: /Deploy|Publish/ })).not.toBeInTheDocument();
+    expect(screen.getByRole("button", { name: /^deploy$/i })).toBeInTheDocument();
+    expect(screen.getByRole("note")).toHaveTextContent(/needs the form engine's API/i);
+  });
+
+  it("deploys the saved JSON as a new version of the key and cuts a draft version (FR-A.5)", async () => {
+    const api = stubApi({ cutVersion: vi.fn().mockResolvedValue({ ...MODEL, version: 4 }) });
+    const formApi = {
+      latestDefinition: vi.fn().mockResolvedValue({ id: "def-3", key: MODEL.key, version: 3 }),
+      deployJson: vi.fn().mockResolvedValue({ id: "dep-9", name: "x" }),
+    } as unknown as FormApi & { deployJson: Mock };
+    const { onSaved } = renderBuilder(api, JSON.stringify({ key: MODEL.key, name: "Leave", fields: [] }), formApi);
+
+    expect(await screen.findByRole("note")).toHaveTextContent(/version 3 is live/i);
+
+    await userEvent.click(screen.getByRole("button", { name: /^deploy$/i }));
+
+    await waitFor(() => expect(formApi.deployJson).toHaveBeenCalled());
+    const [key, json] = formApi.deployJson.mock.calls[0];
+    expect(key).toBe(MODEL.key);
+    expect(JSON.parse(json)).toMatchObject({ key: MODEL.key, name: "Leave" });
+    expect((api as unknown as { saveSource: Mock }).saveSource).toHaveBeenCalled();
+    await waitFor(() => expect(onSaved).toHaveBeenCalledWith(expect.objectContaining({ version: 4 })));
+    expect(await screen.findByText(/deployed as dep-9/i)).toBeInTheDocument();
   });
 
   it("reports a failed save instead of silently losing the edit", async () => {

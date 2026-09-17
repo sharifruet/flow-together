@@ -233,6 +233,22 @@ export const commonEn = {
   "form.validation.min": "Enter {min} or more.",
   "form.validation.max": "Enter {max} or less.",
   "form.validation.pattern": "Enter this in the format the form expects.",
+  "form.validation.minDate": "Enter {date} or later.",
+  "form.validation.maxDate": "Enter {date} or earlier.",
+  "form.validation.type": "That value is not the kind this field takes.",
+  "form.validation.option": "Choose one of the listed options.",
+  "form.validation.user": "Choose a known user.",
+  "form.validation.group": "Choose a known group.",
+  "form.validation.upload": "That file does not belong to this task.",
+  "form.validation.outcome": "That outcome is not one this form offers.",
+  // The engine refused the submission on rules of its own (FR-S.7)
+  "form.server.rejected": "The server refused this submission — check the fields marked below.",
+
+  // People and group pickers (FR-W.5)
+  "form.identity.searching": "Searching…",
+  "form.identity.noMatch": "No match for \"{query}\" — the id will be sent as typed.",
+  "form.identity.userHint": "Start typing a name or user id.",
+  "form.identity.groupHint": "Start typing a group name or id.",
 
   // Error summary shown after a submit attempt (§14.1)
   "form.errors.title.one": "There is 1 problem with this form",

@@ -22,7 +22,11 @@ import java.util.Set;
 import org.apache.commons.lang3.StringUtils;
 import org.flowable.content.api.ContentItem;
 import org.flowable.content.api.ContentService;
+import org.flowable.engine.impl.persistence.entity.AttachmentEntity;
+import org.flowable.engine.impl.persistence.entity.AttachmentEntityManager;
 import org.flowable.engine.impl.util.CommandContextUtil;
+import org.flowable.form.api.FlowableFormValidationException;
+import org.flowable.form.api.FormFieldValidationError;
 import org.flowable.form.api.FormFieldHandler;
 import org.flowable.form.api.FormInfo;
 import org.flowable.form.model.FormField;
@@ -41,7 +45,11 @@ public class DefaultFormFieldHandler implements FormFieldHandler {
     @Override
     public void handleFormFieldsOnSubmit(FormInfo formInfo, String taskId, String processInstanceId, String scopeId, 
                     String scopeType, Map<String, Object> variables, String tenantId) {
-        
+
+        if (formInfo != null && taskId != null) {
+            verifyAttachmentsBelongToTask((SimpleFormModel) formInfo.getFormModel(), taskId, variables);
+        }
+
         ContentService contentService = CommandContextUtil.getContentService();
         if (contentService == null || formInfo == null) {
             return;
@@ -75,6 +83,43 @@ public class DefaultFormFieldHandler implements FormFieldHandler {
                     }
                 }
             }
+        }
+    }
+
+    /**
+     * An upload field's value is an attachment id created through the task attachment endpoint. A
+     * client must not be able to attach somebody else's file to this task by posting its id
+     * (FORM_REQUIREMENTS.md FR-S.6): every id that resolves to an engine attachment has to belong to
+     * the task being completed. Ids that do not resolve here (a content engine item, an attachment
+     * gateway reference) are left to the store that owns them.
+     */
+    protected void verifyAttachmentsBelongToTask(SimpleFormModel formModel, String taskId, Map<String, Object> variables) {
+        if (formModel == null || formModel.getFields() == null || variables == null) {
+            return;
+        }
+        AttachmentEntityManager attachmentEntityManager = CommandContextUtil.getAttachmentEntityManager();
+        if (attachmentEntityManager == null) {
+            return;
+        }
+        List<FormFieldValidationError> errors = new ArrayList<>();
+        for (FormField formField : formModel.listAllFields()) {
+            if (!FormFieldTypes.UPLOAD.equals(formField.getType())) {
+                continue;
+            }
+            Object value = variables.get(formField.getId());
+            if (!(value instanceof String) || StringUtils.isEmpty((String) value)) {
+                continue;
+            }
+            for (String attachmentId : StringUtils.split((String) value, ",")) {
+                AttachmentEntity attachment = attachmentEntityManager.findById(attachmentId.trim());
+                if (attachment != null && !taskId.equals(attachment.getTaskId())) {
+                    errors.add(new FormFieldValidationError(formField.getId(), FormFieldValidationError.CODE_UPLOAD,
+                            "Form field " + formField.getId() + " refers to attachment " + attachmentId + " which does not belong to task " + taskId));
+                }
+            }
+        }
+        if (!errors.isEmpty()) {
+            throw new FlowableFormValidationException(errors);
         }
     }
 

@@ -22,6 +22,13 @@ import {
   type CaseApi,
   type CaseInstanceResponse,
   type HistoryApi,
+  Button,
+  FormRenderer,
+  Modal,
+  asReadOnlyModel,
+  initialValues,
+  type FormModelResponse,
+  type TaskApi,
 } from "@togetherflow/common";
 
 type HistoryTab = "tasks" | "instances" | "cases";
@@ -30,6 +37,8 @@ const PAGE_SIZE = 25;
 
 export interface MyHistoryProps {
   historyApi: HistoryApi;
+  /** Reads a completed task's recorded submission (FR-H.3); absent hides the column. */
+  taskApi?: TaskApi;
   userId: string;
 }
 
@@ -37,7 +46,7 @@ export interface MyHistoryScreenProps extends MyHistoryProps {
   caseApi: CaseApi;
 }
 
-export function MyHistory({ historyApi, caseApi, userId }: MyHistoryScreenProps) {
+export function MyHistory({ historyApi, caseApi, taskApi, userId }: MyHistoryScreenProps) {
   const t = useT();
   const [tab, setTab] = useState<HistoryTab>("tasks");
 
@@ -77,7 +86,7 @@ export function MyHistory({ historyApi, caseApi, userId }: MyHistoryScreenProps)
       </div>
 
       {tab === "tasks" ? (
-        <CompletedTasks historyApi={historyApi} userId={userId} />
+        <CompletedTasks historyApi={historyApi} taskApi={taskApi} userId={userId} />
       ) : tab === "instances" ? (
         <MyInstances historyApi={historyApi} userId={userId} />
       ) : (
@@ -87,7 +96,7 @@ export function MyHistory({ historyApi, caseApi, userId }: MyHistoryScreenProps)
   );
 }
 
-function CompletedTasks({ historyApi, userId }: MyHistoryProps) {
+function CompletedTasks({ historyApi, taskApi, userId }: MyHistoryProps) {
   const { t, locale } = useI18n();
   const [start, setStart] = useState(0);
   const [search, setSearch] = useState("");
@@ -111,6 +120,9 @@ function CompletedTasks({ historyApi, userId }: MyHistoryProps) {
     [historyApi, request],
   );
 
+  /** The completed task whose recorded form is open, if any. */
+  const [viewing, setViewing] = useState<HistoricTaskInstanceResponse | null>(null);
+
   const columns = useMemo<Column<HistoricTaskInstanceResponse>[]>(
     () => [
       {
@@ -120,6 +132,23 @@ function CompletedTasks({ historyApi, userId }: MyHistoryProps) {
           <span className="tf-task-cell__name">{task.name ?? t("inbox.untitled")}</span>
         ),
       },
+      ...(taskApi
+        ? [
+            {
+              key: "form",
+              header: t("history.tasks.column.form"),
+              width: "140px",
+              render: (task: HistoricTaskInstanceResponse) =>
+                task.formKey ? (
+                  <Button variant="ghost" onClick={() => setViewing(task)}>
+                    {t("history.tasks.viewForm")}
+                  </Button>
+                ) : (
+                  <span className="tf-muted">—</span>
+                ),
+            } satisfies Column<HistoricTaskInstanceResponse>,
+          ]
+        : []),
       {
         key: "completed",
         header: t("history.tasks.column.completed"),
@@ -134,11 +163,14 @@ function CompletedTasks({ historyApi, userId }: MyHistoryProps) {
         render: (task) => formatDuration(task.durationInMillis),
       },
     ],
-    [t, locale],
+    [t, locale, taskApi],
   );
 
   return (
     <>
+      {viewing && taskApi ? (
+        <SubmittedForm task={viewing} taskApi={taskApi} onClose={() => setViewing(null)} />
+      ) : null}
       <div className="tf-history__search">
         <label className="tf-visually-hidden" htmlFor="tf-history-search">
           {t("history.tasks.searchLabel")}
@@ -397,5 +429,72 @@ function MyCaseHistory({ caseApi, userId }: { caseApi: CaseApi; userId: string }
         </>
       )}
     </AsyncBoundary>
+  );
+}
+
+/**
+ * A completed task's recorded submission, read-only (FR-H.3): the form engine's own
+ * model with the values as they were sent, plus who sent them, when, and which outcome.
+ */
+function SubmittedForm({
+  task,
+  taskApi,
+  onClose,
+}: {
+  task: HistoricTaskInstanceResponse;
+  taskApi: TaskApi;
+  onClose: () => void;
+}) {
+  const { t, locale } = useI18n();
+  const submission = useAsync((signal) => taskApi.getHistoricForm(task.id, signal, task), [taskApi, task]);
+  const model: FormModelResponse | null = submission.data ?? null;
+
+  return (
+    <Modal
+      open
+      size="lg"
+      title={task.name ?? t("inbox.untitled")}
+      description={
+        model?.submittedBy || model?.submittedDate
+          ? t("history.form.submitted", {
+              by: model.submittedBy ?? "—",
+              when: formatDateTime(model.submittedDate ?? undefined, locale),
+            })
+          : t("history.form.title")
+      }
+      onClose={onClose}
+      actions={
+        <Button variant="secondary" onClick={onClose}>
+          {t("history.form.close")}
+        </Button>
+      }
+    >
+      <AsyncBoundary
+        loading={submission.loading}
+        error={submission.error}
+        data={model}
+        onRetry={submission.refetch}
+        isEmpty={(m) => !m}
+        empty={<p className="tf-muted">{t("history.form.none")}</p>}
+      >
+        {(m) =>
+          m ? (
+            <>
+              {m.selectedOutcome ? (
+                <p className="tf-detail__note">
+                  {t("history.form.outcome", { outcome: m.selectedOutcome })}
+                </p>
+              ) : null}
+              <FormRenderer
+                id={`tf-history-form-${task.id}`}
+                model={asReadOnlyModel(m)}
+                values={initialValues(m)}
+                onChange={() => undefined}
+              />
+            </>
+          ) : null
+        }
+      </AsyncBoundary>
+    </Modal>
   );
 }

@@ -115,6 +115,7 @@ under its own prefix.
 | App | `/flowable-rest/app-api` |
 | DMN | `/flowable-rest/dmn-api` |
 | IDM | `/flowable-rest/idm-api` |
+| Form | `/flowable-rest/form-api` |
 
 ```bash
 curl -u rest-admin:test http://localhost:8080/flowable-rest/service/repository/process-definitions
@@ -167,6 +168,9 @@ case, five processes and twenty-two people over REST — no jar, no rebuild:
 examples/resignation-sales/deploy.sh
 ```
 
+It also deploys the example's fourteen forms, so each step shows its form rather than a
+variable grid: the engine ships a form engine (ADR 0019), mounted at `/flowable-rest/form-api`.
+
 Then, in Work, open **Start work**, switch the toggle from *Process* to **Case**, and start
 *Resignation (Sales)*. Start the **case**, not one of its five sub-processes: those are
 started by the case, which supplies their variables, and starting one by hand either fails
@@ -208,7 +212,7 @@ Per-app scripts, from any `src/main/frontend`:
 | `npm test` | Component tests (Vitest + Testing Library) |
 | `npm run typecheck` | `tsc --noEmit` |
 | `npm run lint` | ESLint |
-| `npm run e2e` | Playwright golden path — needs a real backend |
+| `npm run e2e` | Playwright golden path and the forms walk-through — needs a real backend; the forms spec skips itself unless the Resignation (Sales) example is deployed |
 
 ## Repository layout
 

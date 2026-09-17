@@ -102,9 +102,11 @@ export function App({
   const client = useMemo(() => makeClient(baseUrl), [makeClient, baseUrl]);
   const cmmnClient = useMemo(() => makeClient(cmmnBase), [makeClient, cmmnBase]);
 
+  // The CMMN client rides along so case tasks complete, and load their forms,
+  // through the engine that owns them (TaskScope in @togetherflow/common).
   const taskApi = useMemo(
-    () => new TaskApi(client, attachmentGateway || undefined),
-    [client, attachmentGateway],
+    () => new TaskApi(client, attachmentGateway || undefined, cmmnClient),
+    [client, attachmentGateway, cmmnClient],
   );
   const processApi = useMemo(() => new ProcessApi(client), [client]);
   const historyApi = useMemo(() => new HistoryApi(client), [client]);
@@ -260,6 +262,7 @@ export function App({
         <StartWork
           processApi={processApi}
           caseApi={caseApi}
+          idmApi={idmApi}
           onStarted={(kind) => {
             refresh();
             setView(kind === "case" ? "cases" : "inbox");
@@ -268,7 +271,7 @@ export function App({
       ) : view === "reports" ? (
         <Reports taskApi={taskApi} historyApi={historyApi} userId={session.userId} />
       ) : (
-        <MyHistory historyApi={historyApi} caseApi={caseApi} userId={session.userId} />
+        <MyHistory historyApi={historyApi} caseApi={caseApi} taskApi={taskApi} userId={session.userId} />
       )}
     </AppShell>
   );

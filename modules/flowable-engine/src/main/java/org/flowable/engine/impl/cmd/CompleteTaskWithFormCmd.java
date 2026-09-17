@@ -132,7 +132,7 @@ public class CompleteTaskWithFormCmd extends NeedsActiveTaskCmd<Void> {
             FormFieldHandler formFieldHandler = processEngineConfiguration.getFormFieldHandler();
             if (isFormFieldValidationEnabled(task, processEngineConfiguration, task.getProcessDefinitionId(), task.getTaskDefinitionKey())) {
                 formService.validateFormFields(task.getTaskDefinitionKey(), "userTask", task.getProcessInstanceId(), 
-                        task.getProcessDefinitionId(), ScopeTypes.BPMN, formInfo, formVariables);
+                        task.getProcessDefinitionId(), ScopeTypes.BPMN, formInfo, formVariables, outcome);
             }
 
             // Extract raw variables and complete the task

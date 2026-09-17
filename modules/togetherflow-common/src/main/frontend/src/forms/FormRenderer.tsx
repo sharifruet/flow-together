@@ -59,6 +59,12 @@ export interface FormRendererProps {
    */
   onUploadFile?: (field: FormField, file: File) => Promise<string>;
   /**
+   * Resolves `people` and `functional-group` fields against the identity store
+   * (FR-W.5). Absent where the deployment runs no IDM — the fields then take a typed
+   * id, which is what the engine stores either way.
+   */
+  identityLookup?: IdentityLookup;
+  /**
    * Id of the `<form>` element, so a submit button rendered outside it can point at it
    * with `form={id}`. Also namespaces field ids, which lets two forms coexist.
    */
@@ -72,6 +78,16 @@ export interface FormRendererProps {
   submitAttempt?: number;
 }
 
+export interface IdentityChoice {
+  id: string;
+  label: string;
+}
+
+export interface IdentityLookup {
+  users: (query: string, signal?: AbortSignal) => Promise<IdentityChoice[]>;
+  groups: (query: string, signal?: AbortSignal) => Promise<IdentityChoice[]>;
+}
+
 export function FormRenderer({
   model,
   values,
@@ -80,6 +96,7 @@ export function FormRenderer({
   onChange,
   onBlur,
   onUploadFile,
+  identityLookup,
   id,
   onSubmit,
   submitAttempt = 0,
@@ -94,6 +111,7 @@ export function FormRenderer({
     onChange,
     onBlur,
     onUploadFile,
+    identityLookup,
     domId,
   };
 
@@ -130,6 +148,7 @@ interface NodeContext {
   onChange: (fieldId: string, value: unknown) => void;
   onBlur?: (fieldId: string) => void;
   onUploadFile?: (field: FormField, file: File) => Promise<string>;
+  identityLookup?: IdentityLookup;
   domId: (fieldId: string) => string;
 }
 
@@ -314,6 +333,7 @@ function InputField({
   onChange,
   onBlur,
   onUploadFile,
+  identityLookup,
   domId,
 }: NodeProps) {
   const { t, locale } = useI18n();
@@ -466,14 +486,14 @@ function InputField({
     );
   } else if (field.type === "people" || field.type === "functional-group") {
     control = (
-      <input
-        {...commonProps}
-        type="text"
-        placeholder={
-          field.placeholder || (field.type === "people" ? t("form.userId") : t("form.groupId"))
-        }
-        value={String(value ?? "")}
-        onChange={(event) => onChange(field.id, event.target.value)}
+      <IdentityField
+        field={field}
+        inputId={inputId}
+        commonProps={commonProps}
+        value={value}
+        lookup={identityLookup}
+        onChange={onChange}
+        t={t}
       />
     );
   } else {
@@ -484,8 +504,8 @@ function InputField({
         type={inputTypeFor(field.type)}
         inputMode={numeric ? (field.type === "integer" ? "numeric" : "decimal") : undefined}
         step={field.type === "decimal" || field.type === "amount" ? "any" : undefined}
-        min={numeric ? limits.min : undefined}
-        max={numeric ? limits.max : undefined}
+        min={numeric ? limits.min : field.type === "date" ? limits.minDate : undefined}
+        max={numeric ? limits.max : field.type === "date" ? limits.maxDate : undefined}
         /*
          * A number input answers the scroll wheel, so scrolling a long form past a
          * focused amount silently edits it. Dropping focus on wheel is the cheapest
@@ -709,6 +729,111 @@ function inputTypeFor(fieldType: string): string {
     default:
       return "text";
   }
+}
+
+/* ── People and groups ─────────────────────────────────────────────────────── */
+
+/**
+ * A `people` or `functional-group` field: a text input the engine reads as an id, with a
+ * typeahead over the identity store when one is configured. The stored value is always
+ * the id — the label is for the person choosing, not for the engine.
+ *
+ * A `<datalist>` rather than a custom listbox: it is keyboard- and screen-reader-native,
+ * costs no focus management, and a form field is not the place for a bespoke widget.
+ */
+function IdentityField({
+  field,
+  inputId,
+  commonProps,
+  value,
+  lookup,
+  onChange,
+  t,
+}: {
+  field: FormField;
+  inputId: string;
+  commonProps: Record<string, unknown>;
+  value: unknown;
+  lookup?: IdentityLookup;
+  onChange: (fieldId: string, value: unknown) => void;
+  t: TFunction;
+}) {
+  const isUser = field.type === "people";
+  const text = String(value ?? "");
+  const query = text.trim();
+  const active = Boolean(lookup) && query.length >= 2;
+  /** The last answer from the store, tagged with the query it answers — stale answers are simply not shown. */
+  const [result, setResult] = useState<{ query: string; choices: IdentityChoice[] } | null>(null);
+  const [searching, setSearching] = useState(false);
+  const listId = `${inputId}-choices`;
+
+  useEffect(() => {
+    if (!active || !lookup) return undefined;
+    const controller = new AbortController();
+    const timer = window.setTimeout(() => {
+      setSearching(true);
+      const search = isUser ? lookup.users : lookup.groups;
+      search(query, controller.signal)
+        .then((found) => {
+          if (!controller.signal.aborted) setResult({ query, choices: found });
+        })
+        .catch(() => {
+          if (!controller.signal.aborted) setResult({ query, choices: [] });
+        })
+        .finally(() => {
+          if (!controller.signal.aborted) setSearching(false);
+        });
+    }, 250);
+    return () => {
+      controller.abort();
+      window.clearTimeout(timer);
+    };
+  }, [lookup, active, query, isUser]);
+
+  const choices = active && result?.query === query ? result.choices : [];
+  const missed = active && !searching && result?.query === query && result.choices.length === 0 ? query : null;
+  const exact = choices.find((choice) => choice.id === text);
+  const placeholder =
+    field.placeholder ||
+    (lookup
+      ? isUser
+        ? t("form.identity.userHint")
+        : t("form.identity.groupHint")
+      : isUser
+        ? t("form.userId")
+        : t("form.groupId"));
+
+  return (
+    <>
+      <input
+        {...commonProps}
+        type="text"
+        list={lookup ? listId : undefined}
+        autoComplete="off"
+        placeholder={placeholder}
+        value={text}
+        onChange={(event) => onChange(field.id, event.target.value)}
+      />
+      {lookup ? (
+        <datalist id={listId}>
+          {choices.map((choice) => (
+            <option key={choice.id} value={choice.id}>
+              {choice.label}
+            </option>
+          ))}
+        </datalist>
+      ) : null}
+      {lookup && (searching || exact || missed) ? (
+        <p className="tf-field__hint tf-form__identity-status" aria-live="polite">
+          {searching
+            ? t("form.identity.searching")
+            : exact
+              ? exact.label
+              : t("form.identity.noMatch", { query: missed ?? "" })}
+        </p>
+      ) : null}
+    </>
+  );
 }
 
 /* ── Upload ────────────────────────────────────────────────────────────────── */

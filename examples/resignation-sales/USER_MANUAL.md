@@ -38,9 +38,11 @@ Only a member of `sales-ase` can open a case. The employee does not start it the
 spreadsheet's first row is explicit that the ASE logs the resignation on behalf of the MPE or
 Sr. MPE who resigned, and attaches the scan of their letter.
 
-Start a case of `salesResignation` and fill in the resignation record. Everything on this form
-travels with the case for the rest of its life, so it is worth getting right at the outset:
-several later steps read from it and none of them re-ask.
+Start a case of `salesResignation` and fill in the resignation record — in Work, **Start work
+→ Cases → Resignation (Sales)** shows the form below. Everything on it travels with the case
+for the rest of its life, so it is worth getting right at the outset: several later steps read
+from it and none of them re-ask. The engine checks every field before accepting the record and
+names any it refuses.
 
 **Form `resignationSubmissionForm`**
 

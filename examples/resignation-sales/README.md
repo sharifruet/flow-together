@@ -25,7 +25,12 @@ The admin is `rest-admin` — `admin` is a different product's default and gets 
 Needs `bash`, `curl`, and Python 3 for the identity step. A `.bar` archive is built with
 `zip` where it exists and with Python or `jar` where it does not, so no zip is required.
 
-Then start a case of `salesResignation` as a member of `sales-ase`, with these variables:
+The script deploys the fourteen forms first (one `.bar` to `/form-api`), then the processes,
+the case and the app, so every `formKey` in the models resolves to a deployed definition and
+Work renders the forms rather than the variable grid. See [ADR 0019](../../docs/ui/adr/0019-form-engine.md).
+
+Then start a case of `salesResignation` as a member of `sales-ase` — in Work the start form
+collects these, or over REST send them as `startFormVariables`:
 
 ```
 employeeId, employeeUserId, employeeName, employeeDesignation,

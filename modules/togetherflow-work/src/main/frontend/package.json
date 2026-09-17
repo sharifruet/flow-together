@@ -11,7 +11,7 @@
     "typecheck": "tsc --noEmit",
     "test": "vitest run",
     "test:watch": "vitest",
-    "e2e": "playwright test --grep-invert @visual e2e/golden-path.spec.ts",
+    "e2e": "playwright test --grep-invert @visual e2e/golden-path.spec.ts e2e/forms.spec.ts",
     "lint": "eslint . --max-warnings 0",
     "e2e:visual": "playwright test --config=playwright.visual.config.ts",
     "budget": "node node_modules/@togetherflow/common/scripts/bundle-budget.mjs",

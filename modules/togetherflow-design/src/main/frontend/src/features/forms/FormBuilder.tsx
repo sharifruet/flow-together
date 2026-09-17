@@ -37,6 +37,8 @@ import {
   type ModelApi,
   type ModelResponse,
   type VisibilityOperator,
+  type FormApi,
+  useAsync,
 } from "@togetherflow/common";
 import { useConflictPrompt } from "../editors/ConflictPrompt";
 import { EditorMenuBar } from "../editors/EditorMenuBar";
@@ -65,6 +67,8 @@ const PREVIEW_FORM_ID = "tf-form-preview";
 
 export interface FormBuilderProps {
   modelApi: ModelApi;
+  /** The form engine's repository, for Deploy (FR-A.5). Absent, the button explains why it is not there. */
+  formApi?: FormApi;
   model: ModelResponse;
   initialSource: string | null;
   loadError?: string | null;
@@ -81,6 +85,7 @@ export interface FormBuilderProps {
 
 export function FormBuilder({
   modelApi,
+  formApi,
   model,
   initialSource,
   loadError,
@@ -105,7 +110,17 @@ export function FormBuilder({
   const [dropIndex, setDropIndex] = useState<number | null>(null);
   const [dirty, setDirty] = useState(false);
   const [saving, setSaving] = useState(false);
+  const [deploying, setDeploying] = useState(false);
   const [confirmLeave, setConfirmLeave] = useState(false);
+  /** Bumped after a deploy so the "what is deployed" line refreshes. */
+  const [deployedToken, setDeployedToken] = useState(0);
+
+  // What the engine already holds for this key (FR-A.8): the version a Deploy will
+  // supersede, or nothing yet. The key is the draft's, since that is what deploys.
+  const deployed = useAsync(
+    async (signal) => (formApi && form.key ? formApi.latestDefinition(form.key, signal) : null),
+    [formApi, form.key, deployedToken],
+  );
 
   const update = useCallback(
     (changes: Partial<FormModelResponse>) => {
@@ -197,6 +212,49 @@ export function FormBuilder({
     [modelApi, model.id, form, push, onSaved, t, conflict],
   );
 
+  /**
+   * Save, then deploy the same bytes as a new version of the key, then cut a draft
+   * version (§7.4.1) — deployed models are immutable, superseded by a new version.
+   */
+  const deploy = useCallback(async () => {
+    if (!formApi) {
+      push({ tone: "error", message: t("form.deploy.noApi") });
+      return;
+    }
+    setDeploying(true);
+    try {
+      const json = JSON.stringify(form, null, 2);
+      const written = await conflict.guard(async (overwrite) => {
+        await modelApi.saveSource(model.id, json, { overwrite });
+        return true;
+      });
+      if (!written) return;
+      setDirty(false);
+      const deployment = await formApi.deployJson(form.key || model.key || model.id, json, {
+        deploymentName: form.name || model.name || undefined,
+      });
+      push({ tone: "success", message: t("editor.deployed", { id: deployment.id }) });
+      setDeployedToken((token) => token + 1);
+      let draft: ModelResponse | undefined;
+      try {
+        draft = await modelApi.cutVersion(model, json);
+      } catch {
+        // The deploy already happened; a failed bookkeeping step must not report otherwise.
+        draft = undefined;
+      }
+      onSaved(draft);
+    } catch (cause) {
+      const apiError = cause instanceof ApiError ? cause : undefined;
+      push({
+        tone: "error",
+        message: apiError?.message ?? t("editor.deployFailed"),
+        reference: apiError?.correlationId,
+      });
+    } finally {
+      setDeploying(false);
+    }
+  }, [formApi, form, modelApi, model, conflict, push, t, onSaved]);
+
   const saveRef = useRef(save);
   useEffect(() => {
     saveRef.current = save;
@@ -283,10 +341,20 @@ export function FormBuilder({
         onBack={() => (dirty ? setConfirmLeave(true) : onBack())}
         onSave={() => void save()}
         saving={saving}
+        primary={{ label: t("action.deploy"), run: () => void deploy(), busy: deploying || saving }}
       />
 
       <p className="tf-banner" role="note">
-        {t("form.deployNote")}
+        {t("form.deployNote")}{" "}
+        {formApi
+          ? deployed.error
+            ? t("form.deployed.failed")
+            : deployed.data
+              ? t("form.deployed.latest", { version: deployed.data.version })
+              : deployed.loading
+                ? ""
+                : t("form.deployed.none")
+          : t("form.deploy.noApi")}
       </p>
 
       {loadError ? (

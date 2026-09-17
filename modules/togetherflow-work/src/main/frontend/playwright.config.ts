@@ -21,7 +21,12 @@ export default defineConfig({
     screenshot: "only-on-failure",
   },
   projects: [
-    { name: "chromium", use: { ...devices["Desktop Chrome"] } },
+    {
+      name: "chromium",
+      // TF_E2E_BROWSER_CHANNEL=chrome runs on an installed Google Chrome — for a machine
+      // Playwright cannot download a browser for (macOS 12, air-gapped CI).
+      use: { ...devices["Desktop Chrome"], channel: process.env.TF_E2E_BROWSER_CHANNEL },
+    },
     /*
      * Firefox, because a Chromium-only suite missed a real one: a `WWW-Authenticate:
      * Basic` header on a 401 makes Firefox open its own credential dialog and block the

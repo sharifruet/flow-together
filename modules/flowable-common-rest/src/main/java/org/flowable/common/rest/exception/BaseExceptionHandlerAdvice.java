@@ -18,6 +18,7 @@ import jakarta.servlet.http.HttpServletRequest;
 
 import org.flowable.common.engine.api.FlowableForbiddenException;
 import org.flowable.common.engine.api.FlowableIllegalArgumentException;
+import org.flowable.form.api.FlowableFormValidationException;
 import org.flowable.common.engine.api.FlowableIllegalStateException;
 import org.flowable.common.engine.api.FlowableObjectNotFoundException;
 import org.flowable.common.engine.api.FlowableTaskAlreadyClaimedException;
@@ -85,6 +86,16 @@ public class BaseExceptionHandlerAdvice {
             logger.debug("Forbidden. Message: {}, Request: {} {}", e.getMessage(), request.getMethod(), request.getRequestURI());
         }
         return new ErrorInfo("Forbidden", e);
+    }
+
+    @ResponseStatus(HttpStatus.BAD_REQUEST) // 400
+    @ExceptionHandler(FlowableFormValidationException.class)
+    @ResponseBody
+    public ErrorInfo handleFormValidation(FlowableFormValidationException e, HttpServletRequest request) {
+        if (logger.isDebugEnabled()) {
+            logger.debug("Form validation failed. Message: {}, Request: {} {}", e.getMessage(), request.getMethod(), request.getRequestURI());
+        }
+        return new FormValidationErrorInfo(e);
     }
 
     @ResponseStatus(HttpStatus.BAD_REQUEST) // 400

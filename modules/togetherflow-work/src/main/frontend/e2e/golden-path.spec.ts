@@ -74,7 +74,8 @@ test.describe("TogetherFlow Work golden path", () => {
   });
 
   test("shows my completed work in history", async ({ page }) => {
-    await page.getByRole("button", { name: "My history" }).click();
+    // Shell nav items are links with real hrefs (AppFrame F1), not buttons.
+    await page.getByRole("link", { name: "My history" }).click();
 
     // Either populated or a proper empty state — never a blank screen.
     const rows = page.locator(".tf-history tbody tr").first();
@@ -99,6 +100,8 @@ test.describe("TogetherFlow Work golden path", () => {
     const claim = detail.getByRole("button", { name: /^claim$/i });
     if (await claim.isVisible().catch(() => false)) await claim.click();
 
+    // Attachments live on the Documents tab of the task detail.
+    await detail.getByRole("tab", { name: /documents/i }).click();
     await detail.getByRole("button", { name: /add link/i }).click();
     await detail.getByLabel(/link name/i).fill("Reference doc");
     await detail.getByLabel(/^URL/i).fill("https://example.com/reference");
@@ -126,7 +129,7 @@ test.describe("TogetherFlow Work golden path", () => {
 
   test("moves through the inbox and claims a task from the keyboard", async ({ page }) => {
     await startWork(page);
-    await page.getByRole("button", { name: "Tasks" }).click();
+    await page.getByRole("link", { name: /^Tasks/ }).click();
     await page.getByRole("tab", { name: /available to claim/i }).click();
 
     const firstRow = page.locator("table tbody tr").first();

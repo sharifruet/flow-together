@@ -1,0 +1,10 @@
+drop index ACT_IDX_FORM_RSRC_DPL;
+drop index ACT_IDX_FORM_DEF_UNIQ;
+drop index ACT_IDX_FORM_TASK;
+drop index ACT_IDX_FORM_PROC;
+drop index ACT_IDX_FORM_SCOPE;
+
+drop table ACT_FO_FORM_INSTANCE;
+drop table ACT_FO_FORM_DEFINITION;
+drop table ACT_FO_FORM_RESOURCE;
+drop table ACT_FO_FORM_DEPLOYMENT;

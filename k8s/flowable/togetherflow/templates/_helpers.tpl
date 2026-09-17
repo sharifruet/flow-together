@@ -96,6 +96,7 @@ TF_IDM_BASE: {{ $engine.idmBase | quote }}
 TF_DMN_BASE: {{ $engine.dmnBase | quote }}
 TF_CMMN_BASE: {{ $engine.cmmnBase | quote }}
 TF_EVENT_BASE: {{ $engine.eventBase | quote }}
+TF_FORM_BASE: {{ $engine.formBase | quote }}
 TF_EXTERNAL_JOB_BASE: {{ $engine.externalJobBase | quote }}
 TF_IDENTITY_READ_ONLY: {{ .root.Values.identity.readOnly | quote }}
 {{- else if eq .app "identity" }}
@@ -109,6 +110,7 @@ TF_DMN_BASE: {{ $engine.dmnBase | quote }}
 TF_CMMN_BASE: {{ $engine.cmmnBase | quote }}
 TF_APP_BASE: {{ $engine.appBase | quote }}
 TF_EVENT_BASE: {{ $engine.eventBase | quote }}
+TF_FORM_BASE: {{ $engine.formBase | quote }}
 TF_EXTERNAL_JOB_BASE: {{ $engine.externalJobBase | quote }}
 TF_IDENTITY_READ_ONLY: {{ .root.Values.identity.readOnly | quote }}
 {{- end }}

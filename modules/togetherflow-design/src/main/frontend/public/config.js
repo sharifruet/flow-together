@@ -13,6 +13,7 @@ window.__TOGETHERFLOW_CONFIG__ = {
   cmmnBase: "/cmmn-api",
   appBase: "/app-api",
   eventBase: "/event-registry-api",
+  formBase: "/form-api",
   externalJobBase: "/external-job-api",
   // Sibling app URLs for the switcher. Unset entries are simply not offered.
   apps: {

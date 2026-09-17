@@ -1043,6 +1043,8 @@ export const designEn = {
     "Shown instead of the default. Say what is wrong, not that the pattern failed.",
   "form.field.min": "Minimum value",
   "form.field.max": "Maximum value",
+  "form.field.minDate": "Earliest date",
+  "form.field.maxDate": "Latest date",
   "form.field.accept": "Accepted file types",
   "form.field.accept.hint": "As an HTML accept list \u2014 for example .pdf,.png or image/*.",
   "form.field.maxFileSize": "Maximum file size (bytes)",
@@ -1086,7 +1088,11 @@ export const designEn = {
     "\u201c{name}\u201d isn't usable in an expression. Use letters, digits and underscores, starting with a letter or underscore.",
   "form.data.problem.missing-name": "A field has no id, so it writes nothing.",
   "form.deployNote":
-    "Forms deploy as part of an app. Add this form to an app in the model library and publish that — and note it only takes effect where a form engine is configured.",
+    "Deploy publishes this form to the engine as a new version of its key. Tasks and start events that name the key pick it up on their next load.",
+  "form.deployed.latest": "Deployed: version {version} is live.",
+  "form.deployed.none": "Not deployed yet.",
+  "form.deployed.failed": "Could not check what is deployed for this key.",
+  "form.deploy.noApi": "Deploying forms needs the form engine's API, which this deployment does not configure.",
 
   // Live preview (§7.4.6) — the same renderer the Work app uses at runtime.
   "form.preview.label": "Form preview",

@@ -51,6 +51,7 @@ import org.flowable.engine.impl.persistence.entity.data.ExecutionDataManager;
 import org.flowable.engine.impl.runtime.callback.ProcessInstanceState;
 import org.flowable.engine.impl.util.BpmnLoggingSessionUtil;
 import org.flowable.engine.impl.util.CommandContextUtil;
+import org.flowable.form.api.FormService;
 import org.flowable.engine.impl.util.CountingEntityUtil;
 import org.flowable.engine.impl.util.EventUtil;
 import org.flowable.engine.impl.util.ProcessDefinitionUtil;
@@ -551,6 +552,14 @@ public class ExecutionEntityManagerImpl
 
         if (deleteHistory) {
             getHistoryManager().recordProcessInstanceDeleted(execution.getId(), execution.getProcessDefinitionId(), execution.getTenantId());
+
+            // With history disabled nothing above runs, but the form submissions still have to go with the instance.
+            if (!getHistoryManager().isHistoryEnabled(execution.getProcessDefinitionId())) {
+                FormService formService = CommandContextUtil.getFormService();
+                if (formService != null) {
+                    formService.deleteFormInstancesByProcessInstance(execution.getId());
+                }
+            }
         }
 
         getHistoryManager().recordProcessInstanceEnd(processInstanceExecutionEntity, state, deleteReason, null, getClock().getCurrentTime());

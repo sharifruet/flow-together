@@ -85,6 +85,12 @@ public abstract class EntityParameterTypesOverview {
         addHistoricDecisionExecutionParams();
         addDmnResourceParams();
 
+        // FORM
+        addFormDeploymentParams();
+        addFormResourceParams();
+        addFormDefinitionParams();
+        addFormInstanceParams();
+
         // SERVICES
         addBatchPartParams();
         addDeadLetterJobParams();
@@ -1896,6 +1902,75 @@ public abstract class EntityParameterTypesOverview {
 
         info.addQueryParameter("deploymentId", PARAMETER_TYPE_VARCHAR);
         info.addQueryParameter("decisionKey", PARAMETER_TYPE_VARCHAR);
+    }
+
+    protected static void addFormDeploymentParams() {
+        ParameterInfo info = addParameterInfo("formDeployment", "deployment");
+        info.addColumn("ID_", "id", PARAMETER_TYPE_VARCHAR);
+        info.addColumn("NAME_", "name", PARAMETER_TYPE_VARCHAR);
+        info.addColumn("CATEGORY_", "category", PARAMETER_TYPE_VARCHAR);
+        info.addColumn("TENANT_ID_", "tenantId", PARAMETER_TYPE_VARCHAR);
+        info.addColumn("PARENT_DEPLOYMENT_ID_", "parentDeploymentId", PARAMETER_TYPE_VARCHAR);
+        info.addColumn("DEPLOY_TIME_", "deploymentTime", PARAMETER_TYPE_TIMESTAMP);
+
+        info.addQueryParameter("deploymentId", PARAMETER_TYPE_VARCHAR);
+        info.addQueryParameter("formDefinitionKey", PARAMETER_TYPE_VARCHAR);
+    }
+
+    protected static void addFormResourceParams() {
+        ParameterInfo info = addParameterInfo("formResource", "resource", "byteArr");
+        info.addColumn("ID_", "id", PARAMETER_TYPE_VARCHAR);
+        info.addColumn("NAME_", "name", PARAMETER_TYPE_VARCHAR);
+        info.addColumn("RESOURCE_BYTES_", "bytes", PARAMETER_TYPE_BLOBTYPE);
+        info.addColumn("DEPLOYMENT_ID_", "deploymentId", PARAMETER_TYPE_VARCHAR);
+
+        info.addQueryParameter("resourceName", PARAMETER_TYPE_VARCHAR);
+        info.addQueryParameter("parameter", PARAMETER_TYPE_VARCHAR);
+    }
+
+    protected static void addFormDefinitionParams() {
+        ParameterInfo info = addParameterInfo("formDefinition");
+        info.addColumn("ID_", "id", PARAMETER_TYPE_VARCHAR);
+        info.addColumn("CATEGORY_", "category", PARAMETER_TYPE_VARCHAR);
+        info.addColumn("NAME_", "name", PARAMETER_TYPE_VARCHAR);
+        info.addColumn("KEY_", "key", PARAMETER_TYPE_VARCHAR);
+        info.addColumn("VERSION_", "version", PARAMETER_TYPE_INTEGER);
+        info.addColumn("DEPLOYMENT_ID_", "deploymentId", PARAMETER_TYPE_VARCHAR);
+        info.addColumn("RESOURCE_NAME_", "resourceName", PARAMETER_TYPE_VARCHAR);
+        info.addColumn("TENANT_ID_", "tenantId", PARAMETER_TYPE_VARCHAR);
+        info.addColumn("DESCRIPTION_", "description", PARAMETER_TYPE_VARCHAR);
+
+        info.addQueryParameter("formId", PARAMETER_TYPE_VARCHAR);
+        info.addQueryParameter("formDefinitionKey", PARAMETER_TYPE_VARCHAR);
+        info.addQueryParameter("formVersion", PARAMETER_TYPE_INTEGER);
+        info.addQueryParameter("parentDeploymentId", PARAMETER_TYPE_VARCHAR);
+        info.addQueryParameter("versionGt", PARAMETER_TYPE_INTEGER);
+        info.addQueryParameter("versionGte", PARAMETER_TYPE_INTEGER);
+        info.addQueryParameter("versionLt", PARAMETER_TYPE_INTEGER);
+        info.addQueryParameter("versionLte", PARAMETER_TYPE_INTEGER);
+        info.addQueryParameter("item", PARAMETER_TYPE_VARCHAR);
+    }
+
+    protected static void addFormInstanceParams() {
+        ParameterInfo info = addParameterInfo("formInstance");
+        info.addColumn("ID_", "id", PARAMETER_TYPE_VARCHAR);
+        info.addColumn("FORM_DEFINITION_ID_", "formDefinitionId", PARAMETER_TYPE_VARCHAR);
+        info.addColumn("TASK_ID_", "taskId", PARAMETER_TYPE_VARCHAR);
+        info.addColumn("PROC_INST_ID_", "processInstanceId", PARAMETER_TYPE_VARCHAR);
+        info.addColumn("PROC_DEF_ID_", "processDefinitionId", PARAMETER_TYPE_VARCHAR);
+        info.addColumn("SCOPE_ID_", "scopeId", PARAMETER_TYPE_VARCHAR);
+        info.addColumn("SCOPE_TYPE_", "scopeType", PARAMETER_TYPE_VARCHAR);
+        info.addColumn("SCOPE_DEFINITION_ID_", "scopeDefinitionId", PARAMETER_TYPE_VARCHAR);
+        info.addColumn("SUBMITTED_DATE_", "submittedDate", PARAMETER_TYPE_TIMESTAMP);
+        info.addColumn("SUBMITTED_BY_", "submittedBy", PARAMETER_TYPE_VARCHAR);
+        info.addColumn("FORM_VALUES_ID_", "resourceRef", PARAMETER_TYPE_VARCHAR);
+        info.addColumn("TENANT_ID_", "tenantId", PARAMETER_TYPE_VARCHAR);
+
+        info.addQueryParameter("submittedDateAfter", PARAMETER_TYPE_TIMESTAMP);
+        info.addQueryParameter("submittedDateBefore", PARAMETER_TYPE_TIMESTAMP);
+        info.addQueryParameter("submittedFormId", PARAMETER_TYPE_VARCHAR);
+        info.addQueryParameter("SUBMITTED_FORM", PARAMETER_TYPE_VARCHAR);
+        info.addQueryParameter("item", PARAMETER_TYPE_VARCHAR);
     }
 
     protected static void addHistoricDecisionExecutionParams() {

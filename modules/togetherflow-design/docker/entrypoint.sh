@@ -10,6 +10,7 @@ set -eu
 : "${TF_CMMN_BASE:=/cmmn-api}"
 : "${TF_APP_BASE:=/app-api}"
 : "${TF_EVENT_BASE:=/event-registry-api}"
+: "${TF_FORM_BASE:=/form-api}"
 : "${TF_EXTERNAL_JOB_BASE:=/external-job-api}"
 : "${TF_IDENTITY_READ_ONLY:=false}"
 : "${TF_AUTH_MODE:=oidc}"
@@ -53,6 +54,7 @@ window.__TOGETHERFLOW_CONFIG__ = {
   cmmnBase: "${TF_CMMN_BASE}",
   appBase: "${TF_APP_BASE}",
   eventBase: "${TF_EVENT_BASE}",
+  formBase: "${TF_FORM_BASE}",
   externalJobBase: "${TF_EXTERNAL_JOB_BASE}",
   workspaceBase: "${TF_WORKSPACE_BASE}",
   identity: { readOnly: ${TF_IDENTITY_READ_ONLY} },

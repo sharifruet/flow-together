@@ -426,3 +426,9 @@
     --tf-spin-duration: 2000ms;
   }
 }
+
+/* People and group pickers (FR-W.5): the status line under the input names the match. */
+.tf-form__identity-status {
+  margin-top: var(--tf-space-1);
+  color: var(--tf-text-muted);
+}

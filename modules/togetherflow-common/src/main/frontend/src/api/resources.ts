@@ -22,17 +22,41 @@ import type {
   TaskResponse,
 } from "./types";
 
+/**
+ * Where a task comes from. Tasks are one table shared by both engines, and most task
+ * operations go through the process API whatever created the task — but completing a
+ * task (with or without a form) and reading its form must go to the engine that owns
+ * it: the process engine refuses to complete a case task ("should be completed via
+ * the cmmn engine API"), and only the case engine resolves the task's form against
+ * the case deployment it belongs to. Pass the task itself; only `scopeType` is read.
+ */
+export interface TaskScope {
+  scopeType?: string | null;
+}
+
 export class TaskApi {
   /**
    * @param client the process API
    * @param gatewayBaseUrl base URL of `togetherflow-attachment-gateway`, set only where
    *   the deployment uses a non-`db` attachment provider (§7.6). Unset is the default
    *   `db` behaviour: bytes go straight to Flowable and no gateway exists.
+   * @param cmmnClient the CMMN API, used for the scope-bound calls on case tasks (see
+   *   {@link TaskScope}). Without it every call goes to the process API, and completing
+   *   a case task is refused by the engine.
    */
   constructor(
     private readonly client: ApiClient,
     private readonly gatewayBaseUrl?: string,
+    private readonly cmmnClient?: ApiClient,
   ) {}
+
+  /** The engine a scope-bound call goes to, with that engine's path prefixes. */
+  private engine(scope?: TaskScope): { client: ApiClient; runtime: string; history: string } {
+    if (scope?.scopeType === "cmmn" && this.cmmnClient) {
+      return { client: this.cmmnClient, runtime: "/cmmn-runtime", history: "/cmmn-history" };
+    }
+    return { client: this.client, runtime: "/runtime", history: "/history" };
+  }
 
   /** POST /query/tasks — the filterable inbox query. */
   query(request: TaskQueryRequest, signal?: AbortSignal): Promise<DataResponse<TaskResponse>> {
@@ -48,8 +72,9 @@ export class TaskApi {
     return this.client.request(`/runtime/tasks/${encodeURIComponent(taskId)}`, { signal });
   }
 
-  action(taskId: string, request: TaskActionRequest): Promise<void> {
-    return this.client.request(`/runtime/tasks/${encodeURIComponent(taskId)}`, {
+  action(taskId: string, request: TaskActionRequest, scope?: TaskScope): Promise<void> {
+    const engine = this.engine(scope);
+    return engine.client.request(`${engine.runtime}/tasks/${encodeURIComponent(taskId)}`, {
       method: "POST",
       body: request,
     });
@@ -63,8 +88,34 @@ export class TaskApi {
     return this.action(taskId, { action: "unclaim" });
   }
 
-  complete(taskId: string, variables?: RestVariable[]): Promise<void> {
-    return this.action(taskId, { action: "complete", variables });
+  /** Completes with plain variables. `scope` routes a case task to the CMMN API. */
+  complete(taskId: string, variables?: RestVariable[], scope?: TaskScope): Promise<void> {
+    return this.action(taskId, { action: "complete", variables }, scope);
+  }
+
+  /**
+   * Completes through the form engine (`completeTaskWithForm`): the engine validates
+   * the values against the form, converts them to typed variables, writes the outcome
+   * variable and records the submission as a form instance. A refusal is a 400 whose
+   * body lists every failing field — see `serverFormErrors`.
+   */
+  completeWithForm(
+    taskId: string,
+    formDefinitionId: string,
+    outcome: string | undefined,
+    variables: RestVariable[],
+    scope?: TaskScope,
+  ): Promise<void> {
+    return this.action(
+      taskId,
+      {
+        action: "complete",
+        formDefinitionId,
+        ...(outcome ? { outcome } : {}),
+        variables,
+      },
+      scope,
+    );
   }
 
   listVariables(taskId: string, signal?: AbortSignal): Promise<RestVariable[]> {
@@ -89,10 +140,54 @@ export class TaskApi {
    * endpoint 400s when the task has no formKey, and fails outright when no form
    * engine is deployed. Callers fall back to the variable grid.
    */
-  async getForm(taskId: string, signal?: AbortSignal): Promise<FormModelResponse | null> {
+  async getForm(taskId: string, signal?: AbortSignal, scope?: TaskScope): Promise<FormModelResponse | null> {
     try {
-      return await this.client.request<FormModelResponse>(
-        `/runtime/tasks/${encodeURIComponent(taskId)}/form`,
+      const engine = this.engine(scope);
+      return await engine.client.request<FormModelResponse>(
+        `${engine.runtime}/tasks/${encodeURIComponent(taskId)}/form`,
+        { signal },
+      );
+    } catch (error) {
+      if (error instanceof DOMException && error.name === "AbortError") throw error;
+      return null;
+    }
+  }
+
+  /**
+   * Like {@link getForm}, but says *why* there is no form when there is none, so the
+   * screen can name the form key and the status rather than a generic "could not be
+   * loaded" (FR-W.9). `status` is the HTTP status of the refusal, or 0 for a network
+   * failure.
+   */
+  async getFormResult(
+    taskId: string,
+    signal?: AbortSignal,
+    scope?: TaskScope,
+  ): Promise<{ form: FormModelResponse | null; status?: number; message?: string }> {
+    try {
+      const engine = this.engine(scope);
+      const form = await engine.client.request<FormModelResponse>(
+        `${engine.runtime}/tasks/${encodeURIComponent(taskId)}/form`,
+        { signal },
+      );
+      return { form };
+    } catch (error) {
+      if (error instanceof DOMException && error.name === "AbortError") throw error;
+      const apiError = error instanceof ApiError ? error : undefined;
+      return { form: null, status: apiError?.status ?? 0, message: apiError?.message ?? String(error) };
+    }
+  }
+
+  /**
+   * GET /history/historic-task-instances/{taskId}/form — the recorded submission of a
+   * completed task, with `submittedBy`, `submittedDate` and `selectedOutcome`. Null when
+   * the task has no form or nothing was recorded for it.
+   */
+  async getHistoricForm(taskId: string, signal?: AbortSignal, scope?: TaskScope): Promise<FormModelResponse | null> {
+    try {
+      const engine = this.engine(scope);
+      return await engine.client.request<FormModelResponse>(
+        `${engine.history}/historic-task-instances/${encodeURIComponent(taskId)}/form`,
         { signal },
       );
     } catch (error) {

@@ -29,6 +29,9 @@ import {
   type FormValues,
   type CaseApi,
   type ProcessApi,
+  serverFormErrors,
+  type IdentityLookup,
+  type IdmApi,
 } from "@togetherflow/common";
 import { VariableEditor } from "../tasks/VariableEditor";
 
@@ -50,10 +53,12 @@ type Startable = {
 export interface StartWorkProps {
   processApi: ProcessApi;
   caseApi: CaseApi;
+  /** Powers the people and group pickers on a start form (FR-W.5); absent without an IDM. */
+  idmApi?: IdmApi | null;
   onStarted: (kind: StartKind) => void;
 }
 
-export function StartWork({ processApi, caseApi, onStarted }: StartWorkProps) {
+export function StartWork({ processApi, caseApi, idmApi, onStarted }: StartWorkProps) {
   const t = useT();
   const { push } = useToast();
   const [kind, setKind] = useState<StartKind>("process");
@@ -66,6 +71,27 @@ export function StartWork({ processApi, caseApi, onStarted }: StartWorkProps) {
   const [submitAttempt, setSubmitAttempt] = useState(0);
   const [touched, setTouched] = useState<Record<string, boolean>>({});
   const [busy, setBusy] = useState(false);
+  /** What the engine refused on the last attempt (FR-W.4); cleared per field on change. */
+  const [serverErrors, setServerErrors] = useState<{ fields: Record<string, string>; general: string[] } | null>(null);
+
+  const identityLookup = useMemo<IdentityLookup | undefined>(
+    () =>
+      idmApi
+        ? {
+            users: async (query, signal) =>
+              (await idmApi.listUsers({ displayNameLike: `%${query}%`, size: 8 }, signal)).data.map((user) => ({
+                id: user.id,
+                label: user.displayName || [user.firstName, user.lastName].filter(Boolean).join(" ") || user.id,
+              })),
+            groups: async (query, signal) =>
+              (await idmApi.listGroups({ nameLike: `%${query}%`, size: 8 }, signal)).data.map((group) => ({
+                id: group.id,
+                label: group.name || group.id,
+              })),
+          }
+        : undefined,
+    [idmApi],
+  );
 
   const { data, error, loading, refetch } = useAsync(
     async (signal) =>
@@ -117,8 +143,9 @@ export function StartWork({ processApi, caseApi, onStarted }: StartWorkProps) {
     for (const [id, message] of Object.entries(formErrors)) {
       if (touched[id]) visible[id] = message;
     }
+    for (const [id, message] of Object.entries(serverErrors?.fields ?? {})) visible[id] = message;
     return visible;
-  }, [formErrors, touched]);
+  }, [formErrors, touched, serverErrors]);
 
   const gridErrors = useMemo(() => validateVariables(variables), [variables]);
   const validationErrors = usingForm
@@ -131,24 +158,33 @@ export function StartWork({ processApi, caseApi, onStarted }: StartWorkProps) {
    * is simply disabled tells a user who has not visited the required field nothing at
    * all about why.
    */
-  function attemptStart() {
+  function attemptStart(outcome?: string) {
     if (usingForm && form && Object.keys(formErrors).length > 0) {
       setTouched(Object.fromEntries(fieldIdsInOrder(form).map((id) => [id, true])));
       setSubmitAttempt((attempt) => attempt + 1);
       return;
     }
-    void start();
+    void start(outcome);
   }
 
-  async function start() {
+  async function start(outcome?: string) {
     if (!selected) return;
     setBusy(true);
     try {
-      const request = {
-        businessKey: businessKey.trim() || undefined,
-        variables:
-          usingForm && form ? formValuesToVariables(form, formValues) : toRestVariables(variables),
-      };
+      // With a start form the values go as `startFormVariables`, which the engine
+      // validates against the form, converts and records as a submission (FR-S.2);
+      // without one they are plain variables.
+      const request =
+        usingForm && form
+          ? {
+              businessKey: businessKey.trim() || undefined,
+              startFormVariables: formValuesToVariables(form, formValues),
+              ...(outcome ? { outcome } : {}),
+            }
+          : {
+              businessKey: businessKey.trim() || undefined,
+              variables: toRestVariables(variables),
+            };
       const instance =
         kind === "process"
           ? await processApi.start({ ...request, processDefinitionId: selected.id })
@@ -165,10 +201,16 @@ export function StartWork({ processApi, caseApi, onStarted }: StartWorkProps) {
       onStarted(kind);
       return instance;
     } catch (cause) {
+      const refused = usingForm && form ? serverFormErrors(cause, form, t) : null;
+      if (refused) {
+        setServerErrors(refused);
+        setTouched(Object.fromEntries(fieldIdsInOrder(form!).map((id) => [id, true])));
+        setSubmitAttempt((attempt) => attempt + 1);
+      }
       const apiError = cause instanceof ApiError ? cause : undefined;
       push({
         tone: "error",
-        message: apiError?.message ?? t(`start.failed.${kind}`),
+        message: refused ? t("form.server.rejected") : (apiError?.message ?? t(`start.failed.${kind}`)),
         reference: apiError?.correlationId,
       });
     } finally {
@@ -206,17 +248,28 @@ export function StartWork({ processApi, caseApi, onStarted }: StartWorkProps) {
               <h2 className="tf-detail__section-title">
                 {form.name || t("start.form.title")}
               </h2>
+              {serverErrors?.general.length ? (
+                <p className="tf-detail__note tf-detail__note--error" role="alert">
+                  {t("form.server.rejected")} {serverErrors.general.join(" ")}
+                </p>
+              ) : null}
               <FormRenderer
                 id={START_FORM_ID}
                 model={form}
                 values={formValues}
                 errors={visibleFormErrors}
                 submitAttempt={submitAttempt}
+                identityLookup={identityLookup}
                 disabled={busy}
-                onSubmit={attemptStart}
-                onChange={(fieldId, value) =>
-                  setFormValues((previous) => ({ ...previous, [fieldId]: value }))
-                }
+                onSubmit={() => attemptStart(form.outcomes?.[0]?.id ?? form.outcomes?.[0]?.name)}
+                onChange={(fieldId, value) => {
+                  setServerErrors((previous) => {
+                    if (!previous || !(fieldId in previous.fields)) return previous;
+                    const { [fieldId]: _cleared, ...rest } = previous.fields;
+                    return { ...previous, fields: rest };
+                  });
+                  setFormValues((previous) => ({ ...previous, [fieldId]: value }));
+                }}
                 onBlur={(fieldId) => setTouched((previous) => ({ ...previous, [fieldId]: true }))}
               />
             </>
@@ -234,14 +287,29 @@ export function StartWork({ processApi, caseApi, onStarted }: StartWorkProps) {
             <Button variant="secondary" onClick={() => setSelected(null)} disabled={busy}>
               {t("dialog.cancel")}
             </Button>
-            <Button
-              loading={busy}
-              // Never disabled on a form: the form itself reports what is wrong.
-              disabled={!usingForm && validationErrors.length > 0}
-              onClick={attemptStart}
-            >
-              {t("start.submit")}
-            </Button>
+            {usingForm && form && (form.outcomes?.length ?? 0) > 0 ? (
+              // A start form with outcomes offers one button per outcome (FR-W.2), the
+              // first being the primary — the engine records which was pressed.
+              form.outcomes!.map((outcome, index) => (
+                <Button
+                  key={outcome.id ?? outcome.name}
+                  loading={busy}
+                  variant={index === 0 ? "primary" : "secondary"}
+                  onClick={() => attemptStart(outcome.id ?? outcome.name)}
+                >
+                  {outcome.name}
+                </Button>
+              ))
+            ) : (
+              <Button
+                loading={busy}
+                // Never disabled on a form: the form itself reports what is wrong.
+                disabled={!usingForm && validationErrors.length > 0}
+                onClick={() => attemptStart()}
+              >
+                {t("start.submit")}
+              </Button>
+            )}
           </div>
           {!usingForm && validationErrors.length > 0 ? (
             <p className="tf-detail__note tf-detail__note--error" role="alert">

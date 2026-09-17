@@ -67,9 +67,39 @@ rather than rebuilt per environment. Nothing below is baked into the bundle.
 | App | Additional |
 |---|---|
 | Work | `TF_CMMN_BASE`, `TF_ATTACHMENT_GATEWAY` |
-| Control | `TF_IDM_BASE`, `TF_DMN_BASE`, `TF_CMMN_BASE`, `TF_EVENT_BASE`, `TF_EXTERNAL_JOB_BASE`, `TF_EVENT_RECORDER_BASE` |
+| Control | `TF_IDM_BASE`, `TF_DMN_BASE`, `TF_CMMN_BASE`, `TF_EVENT_BASE`, `TF_EXTERNAL_JOB_BASE`, `TF_FORM_BASE`, `TF_EVENT_RECORDER_BASE` |
 | Identity | `TF_IDM_BASE`, `TF_IDENTITY_READ_ONLY` |
-| Design | `TF_IDM_BASE`, `TF_DMN_BASE`, `TF_CMMN_BASE`, `TF_APP_BASE`, `TF_EVENT_BASE` |
+| Design | `TF_IDM_BASE`, `TF_DMN_BASE`, `TF_CMMN_BASE`, `TF_APP_BASE`, `TF_EVENT_BASE`, `TF_FORM_BASE` |
+
+### Forms
+
+The engine runs a form engine (ADR 0019, [FORM_REQUIREMENTS.md](FORM_REQUIREMENTS.md)),
+mounted at `/form-api` (`TF_FORM_BASE`, default `/form-api`). Work needs no extra setting:
+task and start forms come from the process and CMMN engines' own endpoints. Design deploys
+forms to `/form-api`; Control lists definitions, deployments and submissions from it.
+
+| Property (`flowable-default.properties` / `application.properties`) | Default | Effect |
+|---|---|---|
+| `flowable.form.enabled` | `true` | Switch the engine off; every task form then falls back to the variable grid |
+| `flowable.form.servlet.path` | `/form-api` | Where the form REST API is mounted |
+| `flowable.form-field-validation-enabled` | `true` here (Flowable's own default is `false`) | Validate submissions on the engine: required, type, range, length, pattern, dates, options, identities, outcome |
+| `flowable.form.deployment-name`, `flowable.form.resource-location` | — | Auto-deploy `.form` resources from the classpath at boot |
+
+Failure modes worth knowing:
+
+- **Schema.** First boot against an existing database creates `ACT_FO_FORM_DEPLOYMENT`,
+  `ACT_FO_FORM_RESOURCE`, `ACT_FO_FORM_DEFINITION`, `ACT_FO_FORM_INSTANCE` and writes
+  `form.schema.version` to `ACT_GE_PROPERTY`. A database created by the Liquibase-era engine
+  (Flowable 6) is recognised by its `ACT_FO_DATABASECHANGELOG` and upgraded in place.
+- **A 400 on completion with a `fields` array** is the engine refusing the submission; each
+  entry carries a stable `code`. Work maps them onto the form. Over raw REST, fix the named
+  fields and resend.
+- **Submissions are deleted with their process or case instance** (runtime delete when
+  history is off, historic delete otherwise), and with a form deployment deleted with
+  `cascade=true`. Without cascade, a deployment whose definitions have submissions cannot be
+  deleted.
+- **`/form-api/form-repository/deployments`** takes any number of `.form` parts, or a
+  `.zip`/`.bar` of them, in one call; `deploymentName` names the deployment.
 
 ### OIDC vs Basic
 

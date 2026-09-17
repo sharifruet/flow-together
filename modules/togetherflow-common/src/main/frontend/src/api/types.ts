@@ -260,6 +260,14 @@ export interface ProcessInstanceCreateRequest {
   name?: string;
   businessKey?: string;
   variables?: RestVariable[];
+  /**
+   * Values of the definition's start form. Sent instead of `variables` when a start form
+   * is used: the engine validates them against the form, converts them to typed variables
+   * and records the submission as a form instance (`startProcessInstanceWithForm`).
+   */
+  startFormVariables?: RestVariable[];
+  /** The start form outcome that was chosen, when the form declares outcomes. */
+  outcome?: string;
   tenantId?: string;
   returnVariables?: boolean;
 }
@@ -285,6 +293,9 @@ export interface CaseInstanceCreateRequest {
   name?: string;
   businessKey?: string;
   variables?: RestVariable[];
+  /** Values of the case's start form — see {@link ProcessInstanceCreateRequest.startFormVariables}. */
+  startFormVariables?: RestVariable[];
+  outcome?: string;
   tenantId?: string;
 }
 
@@ -408,6 +419,32 @@ export interface FormModelResponse {
   fields?: FormField[];
   outcomes?: FormOutcome[];
   outcomeVariableName?: string;
+  /*
+   * Present only when the model describes a recorded submission — a historic task's
+   * form, or a form instance read back from the form engine.
+   */
+  formInstanceId?: string;
+  submittedBy?: string;
+  submittedDate?: string;
+  selectedOutcome?: string;
+}
+
+/**
+ * One field the engine refused on submission. `code` is stable and translated by the
+ * client (`form.validation.<code>`); `message` is the engine's own wording, the fallback.
+ */
+export interface FormValidationFieldError {
+  /** Null for a form-level problem, such as an outcome the form does not declare. */
+  id: string | null;
+  code: string;
+  message: string;
+}
+
+/** The body of a 400 from a form submission the engine validated and refused. */
+export interface FormValidationErrorBody {
+  message: string;
+  exception?: string;
+  fields: FormValidationFieldError[];
 }
 
 /* ── Task identity links and audit log (§7.1) ─────────────────────────────── */

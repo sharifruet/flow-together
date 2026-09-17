@@ -39,7 +39,9 @@ import {
   type Column,
   type PlanItemAction,
   type PlanItemInstanceResponse,
+  type FormApi,
 } from "@togetherflow/common";
+import { Submissions } from "../forms/Forms";
 
 
 /** Message keys per action; Control's wording differs from Work's on purpose (ADR 0011). */
@@ -60,12 +62,14 @@ const DEFAULT_VIEW: CaseInstancesView = { q: "" };
 
 export interface CaseInstancesProps {
   caseApi: CaseApi;
+  /** Lists a case's recorded form submissions (FR-H.4); absent hides the section. */
+  formApi?: FormApi;
   /** Id from `/cases/:caseId`, so an inspected case is a link. */
   selectedId?: string;
   onSelect?: (caseId: string | undefined) => void;
 }
 
-export function CaseInstances({ caseApi, selectedId, onSelect }: CaseInstancesProps) {
+export function CaseInstances({ caseApi, formApi, selectedId, onSelect }: CaseInstancesProps) {
   const { t, locale } = useI18n();
   const list = useListState<CaseInstancesView>({
     defaults: DEFAULT_VIEW,
@@ -223,6 +227,7 @@ export function CaseInstances({ caseApi, selectedId, onSelect }: CaseInstancesPr
       {selectedInstance ? (
         <CaseInspector
           caseApi={caseApi}
+          formApi={formApi}
           instance={selectedInstance}
           onClose={() => onSelect?.(undefined)}
           onChanged={() => setReloadToken((n) => n + 1)}
@@ -236,11 +241,13 @@ export function CaseInstances({ caseApi, selectedId, onSelect }: CaseInstancesPr
 
 function CaseInspector({
   caseApi,
+  formApi,
   instance,
   onClose,
   onChanged,
 }: {
   caseApi: CaseApi;
+  formApi?: FormApi;
   instance: CaseInstanceResponse;
   onClose: () => void;
   onChanged: () => void;
@@ -428,6 +435,13 @@ function CaseInspector({
             </ul>
           )}
         </AsyncBoundary>
+
+        {formApi ? (
+          <>
+            <h3 className="tf-detail__section-title">{t("cases.section.forms")}</h3>
+            <Submissions formApi={formApi} scope={{ scopeId: instance.id, scopeType: "cmmn" }} embedded />
+          </>
+        ) : null}
 
         <h3 className="tf-detail__section-title">{t("cases.section.variables")}</h3>
         <AsyncBoundary

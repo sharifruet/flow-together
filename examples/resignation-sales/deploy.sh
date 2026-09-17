@@ -111,6 +111,9 @@ post_models() {
 
 echo "Deploying Resignation (Sales) to $BASE as $FL_USER"
 
+# The fourteen forms go first, so the case and processes that name them by key find them
+# deployed the moment they are. The form engine takes a .bar of .form files in one call.
+post_models "form-api/form-repository" "resignation-forms"     "$HERE"/forms/*.form
 post_models "service/repository"       "resignation-processes" "$HERE"/processes/*.bpmn20.xml
 post_models "cmmn-api/cmmn-repository" "resignation-case"      "$HERE"/case/*.cmmn
 post_models "app-api/app-repository"   "resignation-app"       "$HERE"/app/*.app

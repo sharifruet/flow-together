@@ -23,6 +23,7 @@ import {
   useTenant,
   type ModelResponse,
   type AppLinks,
+  FormApi,
 } from "@togetherflow/common";
 import { AppShell } from "./features/shell/AppShell";
 import { ROUTE_TABLE, modelPath, pathFor } from "./routes";
@@ -81,6 +82,8 @@ export interface AppProps {
   idmBase?: string;
   appBase: string;
   eventBase: string;
+  /** Form engine REST base — where the form builder deploys (FR-A.5). */
+  formBase?: string;
   /**
    * Base URL of `togetherflow-workspace` (ADR 0017). When set, model reads and writes go
    * through it instead of straight to the engine, so the workspace role is checked
@@ -92,7 +95,7 @@ export interface AppProps {
 }
 
 export function App({ apps,
-  apiBase, dmnBase, cmmnBase, idmBase, appBase, eventBase, workspaceBase, fetchImpl }: AppProps) {
+  apiBase, dmnBase, cmmnBase, idmBase, appBase, eventBase, formBase, workspaceBase, fetchImpl }: AppProps) {
   const t = useT();
   const { session, signOut, getAuthHeaders, isInitialising } = useAuth();
   const { tenantId } = useTenant();
@@ -202,6 +205,10 @@ export function App({ apps,
   const identities = useIdentities(idmApi, processApi);
 
   const appApi = useMemo(() => new AppApi(makeClient(appBase)), [makeClient, appBase]);
+  const formApi = useMemo(
+    () => (formBase ? new FormApi(makeClient(formBase)) : undefined),
+    [makeClient, formBase],
+  );
   const eventApi = useMemo(
     () => new EventRegistryApi(makeClient(eventBase)),
     [makeClient, eventBase],
@@ -302,6 +309,7 @@ export function App({ apps,
           ) : modelKindOf(openModel) === "form" ? (
             <FormBuilder
               modelApi={modelApi}
+              formApi={formApi}
               model={openModel}
               initialSource={props.initialXml}
               loadError={loadError}

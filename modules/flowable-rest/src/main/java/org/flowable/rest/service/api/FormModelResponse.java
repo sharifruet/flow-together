@@ -12,9 +12,11 @@
  */
 package org.flowable.rest.service.api;
 
+import java.util.Date;
 import java.util.List;
 
 import org.flowable.form.api.FormInfo;
+import org.flowable.form.api.FormInstanceInfo;
 import org.flowable.form.model.FormField;
 import org.flowable.form.model.FormOutcome;
 import org.flowable.form.model.SimpleFormModel;
@@ -30,12 +32,25 @@ public class FormModelResponse {
     protected List<FormOutcome> outcomes;
     protected String outcomeVariableName;
 
+    // Present only when the model describes a recorded submission (a historic task form).
+    protected String formInstanceId;
+    protected String submittedBy;
+    protected Date submittedDate;
+    protected String selectedOutcome;
+
     public FormModelResponse(FormInfo formInfo) {
         this.id = formInfo.getId();
         this.name = formInfo.getName();
         this.description = formInfo.getDescription();
         this.key = formInfo.getKey();
         this.version = formInfo.getVersion();
+        if (formInfo instanceof FormInstanceInfo) {
+            FormInstanceInfo instanceInfo = (FormInstanceInfo) formInfo;
+            this.formInstanceId = instanceInfo.getFormInstanceId();
+            this.submittedBy = instanceInfo.getSubmittedBy();
+            this.submittedDate = instanceInfo.getSubmittedDate();
+            this.selectedOutcome = instanceInfo.getSelectedOutcome();
+        }
     }
     
     public FormModelResponse(FormInfo formInfo, SimpleFormModel formModel) {
@@ -108,5 +123,36 @@ public class FormModelResponse {
 
     public void setOutcomeVariableName(String outcomeVariableName) {
         this.outcomeVariableName = outcomeVariableName;
+    }
+    public String getFormInstanceId() {
+        return formInstanceId;
+    }
+
+    public void setFormInstanceId(String formInstanceId) {
+        this.formInstanceId = formInstanceId;
+    }
+
+    public String getSubmittedBy() {
+        return submittedBy;
+    }
+
+    public void setSubmittedBy(String submittedBy) {
+        this.submittedBy = submittedBy;
+    }
+
+    public Date getSubmittedDate() {
+        return submittedDate;
+    }
+
+    public void setSubmittedDate(Date submittedDate) {
+        this.submittedDate = submittedDate;
+    }
+
+    public String getSelectedOutcome() {
+        return selectedOutcome;
+    }
+
+    public void setSelectedOutcome(String selectedOutcome) {
+        this.selectedOutcome = selectedOutcome;
     }
 }

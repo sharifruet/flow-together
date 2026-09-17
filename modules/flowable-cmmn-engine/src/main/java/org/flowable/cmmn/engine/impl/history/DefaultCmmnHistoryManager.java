@@ -37,9 +37,11 @@ import org.flowable.cmmn.model.PlanItemDefinition;
 import org.flowable.cmmn.model.Stage;
 import org.flowable.common.engine.api.FlowableException;
 import org.flowable.common.engine.api.delegate.Expression;
+import org.flowable.cmmn.engine.impl.util.CommandContextUtil;
 import org.flowable.common.engine.api.scope.ScopeTypes;
 import org.flowable.common.engine.impl.identity.Authentication;
 import org.flowable.entitylink.api.history.HistoricEntityLinkService;
+import org.flowable.form.api.FormService;
 import org.flowable.entitylink.service.impl.persistence.entity.EntityLinkEntity;
 import org.flowable.entitylink.service.impl.persistence.entity.HistoricEntityLinkEntity;
 import org.flowable.identitylink.service.HistoricIdentityLinkService;
@@ -214,6 +216,11 @@ public class DefaultCmmnHistoryManager implements CmmnHistoryManager {
             if (cmmnEngineConfiguration.isEnableEntityLinks()) {
                 cmmnEngineConfiguration.getEntityLinkServiceConfiguration().getHistoricEntityLinkService()
                         .deleteHistoricEntityLinksByScopeIdOrReferenceScopeIdAndScopeType(historicCaseInstance.getId(), ScopeTypes.CMMN);
+            }
+
+            FormService formService = CommandContextUtil.getFormService();
+            if (formService != null) {
+                formService.deleteFormInstancesByScopeId(historicCaseInstance.getId(), ScopeTypes.CMMN);
             }
 
             HistoricVariableInstanceEntityManager historicVariableInstanceEntityManager = cmmnEngineConfiguration.getVariableServiceConfiguration().getHistoricVariableInstanceEntityManager();

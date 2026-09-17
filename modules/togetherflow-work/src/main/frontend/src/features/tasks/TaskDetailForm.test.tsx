@@ -4,7 +4,7 @@ import { render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { describe, expect, it, vi } from "vitest";
 import type { Mock } from "vitest";
-import { ToastProvider, type FormModelResponse, type TaskApi, type TaskResponse } from "@togetherflow/common";
+import { ApiError, ToastProvider, type FormModelResponse, type TaskApi, type TaskResponse } from "@togetherflow/common";
 import { TaskDetail } from "./TaskDetail";
 
 function task(overrides: Partial<TaskResponse> = {}): TaskResponse {
@@ -38,7 +38,7 @@ const FORM: FormModelResponse = {
   ],
 };
 
-type StubTaskApi = TaskApi & { getForm: Mock; complete: Mock; listVariables: Mock };
+type StubTaskApi = TaskApi & { getForm: Mock; getFormResult: Mock; complete: Mock; completeWithForm: Mock; listVariables: Mock };
 
 function stubApi(overrides: Record<string, unknown> = {}): StubTaskApi {
   return {
@@ -54,6 +54,7 @@ function stubApi(overrides: Record<string, unknown> = {}): StubTaskApi {
     assign: vi.fn().mockResolvedValue({}),
     getForm: vi.fn().mockResolvedValue(FORM),
     complete: vi.fn().mockResolvedValue(undefined),
+    completeWithForm: vi.fn().mockResolvedValue(undefined),
     claim: vi.fn().mockResolvedValue(undefined),
     unclaim: vi.fn().mockResolvedValue(undefined),
     addComment: vi.fn().mockResolvedValue({ id: "c", message: "m" }),
@@ -62,7 +63,22 @@ function stubApi(overrides: Record<string, unknown> = {}): StubTaskApi {
   } as unknown as StubTaskApi;
 }
 
+/**
+ * The detail asks `getFormResult`, which wraps `getForm`'s answer with the failure
+ * reason; tests keep stubbing `getForm` and this derives the wrapper from it.
+ */
+function withFormResult(api: StubTaskApi): StubTaskApi {
+  if (!("getFormResult" in api) || !api.getFormResult) {
+    api.getFormResult = vi.fn(async (taskId: string, signal?: AbortSignal) => {
+      const form = await api.getForm(taskId, signal);
+      return form ? { form } : { form: null, status: 400, message: "Form engine is not initialized" };
+    }) as unknown as Mock;
+  }
+  return api;
+}
+
 function renderDetail(api: TaskApi, props: Record<string, unknown> = {}) {
+  withFormResult(api as StubTaskApi);
   return render(
     <ToastProvider>
       <TaskDetail
@@ -109,14 +125,14 @@ describe("TaskDetail — form rendering", () => {
   it("falls back to the variable grid, with an explanation, when the form cannot be loaded", async () => {
     renderDetail(stubApi({ getForm: vi.fn().mockResolvedValue(null) }));
 
-    expect(await screen.findByText(/definition could not be loaded/i)).toBeInTheDocument();
+    expect(await screen.findByText(/showing the underlying variables instead/i)).toBeInTheDocument();
     expect(screen.getByRole("button", { name: /add variable/i })).toBeInTheDocument();
   });
 
   it("falls back when the form has no renderable fields", async () => {
     renderDetail(stubApi({ getForm: vi.fn().mockResolvedValue({ id: "f", name: "Empty", fields: [] }) }));
 
-    expect(await screen.findByText(/definition could not be loaded/i)).toBeInTheDocument();
+    expect(await screen.findByText(/showing the underlying variables instead/i)).toBeInTheDocument();
   });
 
   it("does not complete a task whose required field is empty, and says why", async () => {
@@ -156,7 +172,7 @@ describe("TaskDetail — form rendering", () => {
     await waitFor(() => expect(screen.queryByRole("alert")).not.toBeInTheDocument());
 
     await confirmComplete();
-    await waitFor(() => expect(api.complete).toHaveBeenCalled());
+    await waitFor(() => expect(api.completeWithForm).toHaveBeenCalled());
   });
 
   it("shows a required-field error only after the field is left, not while empty and untouched", async () => {
@@ -183,13 +199,66 @@ describe("TaskDetail — form rendering", () => {
 
     await confirmComplete();
 
-    await waitFor(() => expect(api.complete).toHaveBeenCalled());
-    expect(api.complete).toHaveBeenCalledWith("task-1", [
-      { name: "comment", type: "string", value: "Approved" },
-      { name: "amount", type: "integer", value: 42 },
-      { name: "urgent", type: "boolean", value: true },
-      { name: "reason", type: "string", value: "Duplicate" },
-    ]);
+    // Through the form engine (FR-S.1): the definition id and outcome travel with the
+    // values, so the engine validates, converts and records the submission itself.
+    await waitFor(() => expect(api.completeWithForm).toHaveBeenCalled());
+    expect(api.completeWithForm).toHaveBeenCalledWith(
+      "task-1",
+      "f1",
+      undefined,
+      [
+        { name: "comment", type: "string", value: "Approved" },
+        { name: "amount", type: "integer", value: 42 },
+        { name: "urgent", type: "boolean", value: true },
+        { name: "reason", type: "string", value: "Duplicate" },
+      ],
+      // The task itself travels as the scope, so a case task completes via the CMMN API.
+      expect.objectContaining({ id: "task-1" }),
+    );
+    expect(api.complete).not.toHaveBeenCalled();
+  });
+
+  it("shows the engine's refusal on the fields it named (FR-W.4)", async () => {
+    const api = stubApi({
+      completeWithForm: vi.fn().mockRejectedValue(
+        new ApiError("Bad request", 400, "corr-9", {
+          message: "Form validation failed",
+          fields: [
+            { id: "amount", code: "max", message: "engine words" },
+            { id: null, code: "outcome", message: "engine words" },
+          ],
+        }),
+      ),
+    });
+    renderDetail(api);
+    await userEvent.type(await screen.findByLabelText(/^Comment/), "Approved");
+    await userEvent.type(screen.getByLabelText(/^Amount/), "42");
+
+    await confirmComplete();
+
+    // The summary names the refused field, the field carries the message, and the
+    // form-level problem is stated above the form.
+    expect(await screen.findByRole("alert", { name: /problem/i })).toBeInTheDocument();
+    expect(screen.getByLabelText(/^Amount/)).toHaveAttribute("aria-invalid", "true");
+    expect(screen.getByText(/not one this form offers/i)).toBeInTheDocument();
+
+    // Fixing the field clears the engine's verdict for it.
+    await userEvent.type(screen.getByLabelText(/^Amount/), "0");
+    await waitFor(() => expect(screen.getByLabelText(/^Amount/)).not.toHaveAttribute("aria-invalid"));
+  });
+
+  it("names the engine's answer when a declared form cannot be loaded (FR-W.9)", async () => {
+    renderDetail(stubApi({ getForm: vi.fn().mockResolvedValue(null) }));
+    expect(await screen.findByText(/engine answered 400/i)).toBeInTheDocument();
+    expect(screen.getByText(/Form engine is not initialized/)).toBeInTheDocument();
+  });
+
+  it("keeps the variable grid reachable beside a form (FR-W.7)", async () => {
+    renderDetail(stubApi());
+    await screen.findByLabelText(/^Comment/);
+    expect(screen.queryByText("legacy")).not.toBeInTheDocument();
+    await userEvent.click(screen.getByRole("button", { name: /show variables/i }));
+    expect(await screen.findByDisplayValue("legacy")).toBeInTheDocument();
   });
 
   it("disables the form for a task the user has not claimed", async () => {

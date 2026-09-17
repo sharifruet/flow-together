@@ -20,6 +20,7 @@ try {
           cmmnBase={config.cmmnBase}
           eventBase={config.eventBase}
           externalJobBase={config.externalJobBase}
+          formBase={config.formBase}
           eventRecorderBase={config.eventRecorder}
         />
       </AppRoot>

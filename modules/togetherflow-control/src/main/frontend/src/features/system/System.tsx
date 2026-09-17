@@ -24,6 +24,7 @@ import {
   type ExternalWorkerJobResponse,
   type HistoricDecisionExecutionResponse,
   type SystemApi,
+  type FormApi,
 } from "@togetherflow/common";
 
 const PAGE_SIZE = 25;
@@ -35,11 +36,13 @@ const TABS: Tab[] = ["engine", "tables", "subscriptions", "batches", "decisions"
 
 export interface SystemProps {
   systemApi: SystemApi;
+  /** The form engine's own management endpoint (FR-C.4); absent shows it as not configured. */
+  formApi?: FormApi;
   decisionHistoryApi: DecisionHistoryApi;
   externalWorkerApi: ExternalWorkerApi;
 }
 
-export function System({ systemApi, decisionHistoryApi, externalWorkerApi }: SystemProps) {
+export function System({ systemApi, formApi, decisionHistoryApi, externalWorkerApi }: SystemProps) {
   const { t } = useI18n();
   const [tab, setTab] = useState<Tab>("engine");
 
@@ -67,7 +70,7 @@ export function System({ systemApi, decisionHistoryApi, externalWorkerApi }: Sys
         ))}
       </div>
 
-      {tab === "engine" ? <Engine systemApi={systemApi} /> : null}
+      {tab === "engine" ? <Engine systemApi={systemApi} formApi={formApi} /> : null}
       {tab === "tables" ? <Tables systemApi={systemApi} /> : null}
       {tab === "subscriptions" ? <Subscriptions systemApi={systemApi} /> : null}
       {tab === "batches" ? <Batches systemApi={systemApi} /> : null}
@@ -77,7 +80,8 @@ export function System({ systemApi, decisionHistoryApi, externalWorkerApi }: Sys
   );
 }
 
-function Engine({ systemApi }: { systemApi: SystemApi }) {
+function Engine({ systemApi, formApi }: { systemApi: SystemApi; formApi?: FormApi }) {
+  const formEngine = useAsync(async (signal) => (formApi ? formApi.engine(signal) : null), [formApi]);
   const { t } = useI18n();
   const engine = useAsync((signal) => systemApi.engine(signal), [systemApi]);
   const properties = useAsync((signal) => systemApi.properties(signal), [systemApi]);
@@ -100,6 +104,8 @@ function Engine({ systemApi }: { systemApi: SystemApi }) {
             <div className="tf-facts__item">
               <dt>{t("system.engine.version")}</dt>
               <dd>{info.version || "—"}</dd>
+              <dt>{t("system.engine.formVersion")}</dt>
+              <dd>{formEngine.data?.version ?? (formApi ? "…" : t("system.engine.formMissing"))}</dd>
             </div>
             {info.exception ? (
               <div className="tf-facts__item">

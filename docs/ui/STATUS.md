@@ -579,6 +579,115 @@ sits in the lazily loaded chunk where it belongs.
 
 ---
 
+## 2h. Forms: the engine is back
+
+**Decision**: [ADR 0019](adr/0019-form-engine.md); requirements in [FORM_REQUIREMENTS.md](FORM_REQUIREMENTS.md).
+
+Every task form and start form in Work fell back to the variable grid because this
+distribution had no form engine (Flowable removed it from open source in 7.0; this fork
+carried that as commit `270e5e77f8`). The six form modules were restored from that commit's
+parent and ported to 8.x: `flowable-form-json-converter`, `flowable-form-engine`,
+`flowable-form-engine-configurator`, `flowable-form-spring`, `flowable-form-spring-configurator`,
+`flowable-form-rest`, plus the Spring Boot autoconfiguration, two starters
+(`flowable-spring-boot-starter-form`, `-form-rest`) and `/form-api` mounted in
+`flowable-app-rest`. What the port changed, beyond names and versions:
+
+- Liquibase → hand-written `create/drop/upgrade` SQL for h2, postgres, mysql, mssql, oracle,
+  db2, with `form.schema.version` in `ACT_GE_PROPERTY` and a changelog→version map for
+  databases the 6.x engine created. `SqlUpgradeValidationTest` (49) and
+  `EngineMappingsValidationTest` (35, incl. the four `ACT_FO_*` mappings, every parameter
+  typed) pass.
+- Joda-Time → `java.time`; dates ISO `yyyy-MM-dd` on the wire, `LocalDate` in variables;
+  `amount`/`decimal` → `BigDecimal`, `integer` → `Long` (`FormValueUtil`, one place).
+- Jackson 2 → Jackson 3 (`tools.jackson`) throughout, per the import-control rule.
+- `FormService` grew element-context parameters upstream; implemented. `validateFormFields`
+  was an empty method in 6.x — now `FormFieldValidator` reports **every** failing field in one
+  `FlowableFormValidationException` (required fields and outcome membership so far; the rest
+  of FR-S.3 is Phase 2). `flowable.form-field-validation-enabled=true` in the app's defaults,
+  because Flowable's default is off.
+- The `.form` deployer now also un-deploys with its parent (cascade), and the configurator
+  registers on the app engine as well.
+- Two bugs found by running it, both fixed: an instance lookup by *key* had no definition
+  filter and returned a case's earliest form instance (the start form) for any task; and the
+  CMMN completed-task path queried by scope without task id, which can never match a task's
+  own submission. A task-aware overload was added to `FormService` and used by the CMMN
+  `GetTaskFormModelCmd`. The historic form responses now carry `submittedBy`,
+  `submittedDate`, `selectedOutcome`, `formInstanceId`.
+
+**Verified on the running war** (2026-09-16, H2): boot creates the `ACT_FO_*` schema in an
+existing database; the fourteen Resignation forms deploy over `/form-api` (one `.form` per
+call); `GET …/tasks/{id}/form` returns `salesClearanceForm` with values; **Work renders the
+task form and the case start form with no frontend change**; a case starts with
+`startFormVariables` + `outcome` and records a form instance with `submittedBy`; a completion
+missing three required fields is refused with all three named; a valid
+`completeTaskWithForm` writes typed variables and the outcome variable and records the
+instance; the historic task form returns that submission.
+
+Tests green: form-engine 45, configurator 16, spring 26, spring-configurator 5, rest 2,
+autoconfigure engine tests 64, json-converter 1.
+
+**Since then (2026-09-17), Phases 2–6 built:**
+
+- *Engine.* `FormFieldValidator` covers the whole of FR-S.3 — type, min/max, min/maxLength,
+  pattern (whole-value), min/maxDate, option membership (static and `optionsExpression`),
+  `people`/`functional-group` existence through the IDM engine when present, outcome —
+  every failing field in one `FlowableFormValidationException`; the outcome now reaches
+  validation from all four engine call sites (a new `validateFormFields(…, outcome)` overload).
+  `FormService.deleteFormInstancesByProcessInstance` / `…ByScopeId`, called from both engines'
+  historic delete and from runtime delete when history is off. `DefaultFormFieldHandler`
+  refuses an `upload` value that names another task's attachment (FR-S.6). The REST 400 for a
+  refused submission carries `fields[{id, code, message}]` (`FormValidationErrorInfo`, in
+  `flowable-common-rest`). `/form-api` deployments accept many `.form` parts or a `.zip`/`.bar`.
+  The form configurator hands its deployer to every sibling engine configuration it can see,
+  so a `.form` inside a **process, case or app** deployment lands in the form engine with the
+  parent id — verified on the running war for all three, with cascade delete. Tests: validator
+  9, configurator 20 (incl. a CMMN suite: deploy-with-form, start/complete with form, historic
+  form is the task's own submission, cascade), engine 54, spring 26, spring-configurator 5,
+  rest 2.
+- *Work.* Completes through `completeWithForm` (definition id + outcome + values); the
+  engine's refusal lands on the named fields and in the summary, form-level problems above the
+  form; start forms send `startFormVariables` + outcome, one button per outcome; `people` /
+  `functional-group` fields are IDM-backed pickers; the variable grid stays behind
+  "Show variables"; the fallback names the engine's status; **My history → View form** shows
+  a completed task's submission read-only with who/when/outcome. 106 tests.
+- *Design.* **Deploy** on the form builder (save → `/form-api` → cut a draft version); the
+  banner says which version is live for the key; date fields get earliest/latest bounds.
+  593 tests.
+- *Control.* A **Forms** section — definitions (with rendered preview and JSON),
+  deployments (upload, delete with cascade), submissions (filter by submitter, open
+  read-only) — plus a submissions panel on every process and case instance and the form
+  engine's version on System → Engine. 107 tests.
+- *Shared.* `FormApi` client, `serverFormErrors`, `asReadOnlyModel`, date bounds and
+  whole-value patterns in the browser check (matching the engine), `formBase` in runtime
+  config, containers and the Helm chart. 454 tests.
+- *Example and docs.* `deploy.sh` deploys the fourteen forms first; OPERATIONS.md has a Forms
+  section; `e2e/forms.spec.ts` in Work walks the Resignation start form and ASE task through the
+  engine (skips when the example is not deployed).
+
+**Found by the e2e run (2026-09-17, later):** Work completed *every* task through the
+process API, and the process engine refuses to complete a case task ("should be completed via
+the cmmn engine API") — so no Resignation task had ever been completable from Work, form or no
+form. `TaskApi` now takes the CMMN client as well and routes by the task's `scopeType`
+(`TaskScope`): completion, with or without a form, and the live and historic form reads go to
+`/cmmn-api` for a case task and to the process API otherwise; claim, comments, attachments and
+the rest stay on the shared task service. Three unit tests cover the routing; TaskDetail and
+My history pass the task itself as the scope. With that, `e2e/forms.spec.ts` (2 tests) and the
+golden path (6, one skipped for want of a claimable task) pass on the installed Chrome
+(`TF_E2E_BROWSER_CHANNEL=chrome`, project-local Playwright) against the running war: start form
+recorded with `submittedBy`, ASE task form completed through the CMMN API, historic form and
+My history → View form show the submission. The golden path had drifted from the shell's
+link-based nav and the Documents tab; both fixed in the spec. A single `.bar` upload to
+`/form-api` was also verified by hand (one definition, cascade delete clean), and
+`docs/public-api/references/swagger/form/flowable-swagger-form.yaml` is the generated spec.
+Production builds of Work, Design and Control pass; common 457, Work 106.
+
+**Still open:** the CI database matrix has not yet run the new modules on Postgres/MySQL/
+MSSQL/Oracle/DB2 (H2 only, locally); Design does not yet bundle referenced forms into a
+process/case deployment (FR-A.6 — forms deploy standalone, resolved by key); no per-task
+pinning of a form version (§13 Q2).
+
+---
+
 ## 3. Verification status — read this before trusting anything
 
 **Verified locally**: lint, typecheck, unit and component tests, production builds, bundle

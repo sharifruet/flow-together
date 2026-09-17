@@ -32,6 +32,8 @@ import {
   type IconName,
   type IdmApi,
   type TaskApi,
+  serverFormErrors,
+  type IdentityLookup,
 } from "@togetherflow/common";
 import { Attachments } from "./Attachments";
 import { VariableEditor } from "./VariableEditor";
@@ -113,13 +115,16 @@ export function TaskDetail({
         ]);
       // Only ask for a form when the task declares one: the endpoint 400s otherwise,
       // and a needless failed request on every task selection is wasteful noise.
-      const form = task.formKey ? await taskApi.getForm(taskId, signal) : null;
+      const formResult = task.formKey
+        ? await taskApi.getFormResult(taskId, signal, task)
+        : { form: null as null };
       return {
         task,
         variables: taskVariables,
         comments,
         attachments,
-        form,
+        form: formResult.form,
+        formFailure: formResult.form ? undefined : { status: formResult.status, message: formResult.message },
         subTasks,
         people,
         log,
@@ -170,6 +175,20 @@ export function TaskDetail({
     [form, formValues, t],
   );
 
+  /**
+   * What the engine refused on the last submit (FR-W.4). Kept apart from the browser's
+   * own checks: a server error is cleared per field as soon as that field changes, and
+   * wholesale on the next attempt, rather than recomputed from the values.
+   */
+  const [serverErrors, setServerErrors] = useState<{
+    taskId: string;
+    fields: Record<string, string>;
+    general: string[];
+  } | null>(null);
+  const activeServerErrors = serverErrors && serverErrors.taskId === taskId ? serverErrors : null;
+  /** The variable grid alongside a form — operators need the raw values too (FR-W.7). */
+  const [showVariables, setShowVariables] = useState(false);
+
   // Only surface an error once the user has left the field, so a required field
   // is not flagged before it has been filled in for the first time (§14.3).
   const visibleFormErrors = useMemo(() => {
@@ -177,12 +196,21 @@ export function TaskDetail({
     for (const [id, message] of Object.entries(formErrors)) {
       if (touched[id]) visible[id] = message;
     }
+    // The engine's verdict outranks the browser's guess for the same field.
+    for (const [id, message] of Object.entries(activeServerErrors?.fields ?? {})) {
+      visible[id] = message;
+    }
     return visible;
-  }, [formErrors, touched]);
+  }, [formErrors, touched, activeServerErrors]);
 
   const setFormValue = useCallback(
     (fieldId: string, value: unknown) => {
       if (!taskId) return;
+      setServerErrors((previous) => {
+        if (!previous || previous.taskId !== taskId || !(fieldId in previous.fields)) return previous;
+        const { [fieldId]: _cleared, ...rest } = previous.fields;
+        return { ...previous, fields: rest };
+      });
       setFormEdits((previous) => ({
         taskId,
         values: {
@@ -219,6 +247,25 @@ export function TaskDetail({
       setConfirmComplete(outcome);
     },
     [usingForm, form, formErrors],
+  );
+
+  const identityLookup = useMemo<IdentityLookup | undefined>(
+    () =>
+      idmApi
+        ? {
+            users: async (query, signal) =>
+              (await idmApi.listUsers({ displayNameLike: `%${query}%`, size: 8 }, signal)).data.map((user) => ({
+                id: user.id,
+                label: user.displayName || [user.firstName, user.lastName].filter(Boolean).join(" ") || user.id,
+              })),
+            groups: async (query, signal) =>
+              (await idmApi.listGroups({ nameLike: `%${query}%`, size: 8 }, signal)).data.map((group) => ({
+                id: group.id,
+                label: group.name || group.id,
+              })),
+          }
+        : undefined,
+    [idmApi],
   );
 
   const task = detail.data?.task;
@@ -474,6 +521,11 @@ export function TaskDetail({
                     <h3 className="tf-detail__section-title">
                       {usingForm ? form?.name || t("task.section.form") : t("task.section.variables")}
                     </h3>
+                    {usingForm && form && activeServerErrors?.general.length ? (
+                      <p className="tf-detail__note tf-detail__note--error" role="alert">
+                        {t("form.server.rejected")} {activeServerErrors.general.join(" ")}
+                      </p>
+                    ) : null}
                     {usingForm && form ? (
                       <FormRenderer
                         id={FORM_ID}
@@ -481,6 +533,7 @@ export function TaskDetail({
                         values={formValues}
                         errors={visibleFormErrors}
                         submitAttempt={submitAttempt}
+                        identityLookup={identityLookup}
                         disabled={busy || !isAssignedToMe}
                         // Enter in a field completes the task, the same as the footer button.
                         onSubmit={() => attemptComplete(outcomes[0]?.name ?? "")}
@@ -507,7 +560,13 @@ export function TaskDetail({
                       <>
                         {current.formKey ? (
                           <p className="tf-detail__note">
-                            <code>{current.formKey}</code> — {t("task.form.unloadable")}
+                            <code>{current.formKey}</code> —{" "}
+                            {detail.data?.formFailure?.status
+                              ? t("task.form.unloadableStatus", {
+                                  status: detail.data.formFailure.status,
+                                  message: detail.data.formFailure.message ?? "",
+                                })
+                              : t("task.form.unloadable")}
                           </p>
                         ) : null}
                         <VariableEditor
@@ -517,6 +576,25 @@ export function TaskDetail({
                         />
                       </>
                     )}
+                    {usingForm && form ? (
+                      <div className="tf-detail__variables-toggle">
+                        <button
+                          type="button"
+                          className="tf-link-button"
+                          aria-expanded={showVariables}
+                          onClick={() => setShowVariables((open) => !open)}
+                        >
+                          {showVariables ? t("task.form.hideVariables") : t("task.form.showVariables")}
+                        </button>
+                        {showVariables ? (
+                          <VariableEditor
+                            variables={variables}
+                            onChange={setVariables}
+                            disabled={busy || !isAssignedToMe}
+                          />
+                        ) : null}
+                      </div>
+                    ) : null}
                     {!isAssignedToMe ? (
                       <p className="tf-detail__note">{t("task.form.claimFirst")}</p>
                     ) : null}
@@ -900,12 +978,34 @@ export function TaskDetail({
                   const outcome = confirmComplete;
                   setConfirmComplete(null);
                   void runAction(t("task.action.completed"), async () => {
-                    const submitted =
-                      usingForm && form
-                        ? formValuesToVariables(form, formValues)
-                        : toRestVariables(variables);
-                    // The chosen outcome travels as a variable, named by the form or
-                    // by the engine's default of "form_<key>_outcome".
+                    if (usingForm && form?.id) {
+                      // Through the form engine: it validates against the form, converts
+                      // to typed variables, writes the outcome variable and records the
+                      // submission (FR-S.1). A refusal names every failing field.
+                      try {
+                        await taskApi.completeWithForm(
+                          current.id,
+                          form.id,
+                          outcome || undefined,
+                          formValuesToVariables(form, formValues),
+                          current,
+                        );
+                      } catch (cause) {
+                        const refused = serverFormErrors(cause, form, t);
+                        if (refused) {
+                          setServerErrors({ taskId: current.id, ...refused });
+                          setTouched(Object.fromEntries(fieldIdsInOrder(form).map((id) => [id, true])));
+                          setSubmitAttempt((attempt) => attempt + 1);
+                        }
+                        throw cause;
+                      }
+                      onCompleted();
+                      return;
+                    }
+                    const submitted = toRestVariables(variables);
+                    // A form without an id is one the engine could not serve as a
+                    // definition; the outcome then travels as a plain variable, named
+                    // by the form or by the engine's default of "form_<key>_outcome".
                     if (outcome && form) {
                       submitted.push({
                         name: form.outcomeVariableName || `form_${form.key ?? "form"}_outcome`,
@@ -913,7 +1013,7 @@ export function TaskDetail({
                         value: outcome,
                       });
                     }
-                    await taskApi.complete(current.id, submitted);
+                    await taskApi.complete(current.id, submitted, current);
                     onCompleted();
                   });
                 }}

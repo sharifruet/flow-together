@@ -60,6 +60,7 @@ export default defineConfig({
       "/app-api": proxy("/app-api"),
       "/event-registry-api": proxy("/event-registry-api"),
       "/dmn-api": proxy("/dmn-api"),
+      "/form-api": proxy("/form-api"),
       /*
        * The workspace service (ADR 0017) is its own process, not a servlet of the
        * engine, so it is proxied straight through rather than through `proxy()`'s

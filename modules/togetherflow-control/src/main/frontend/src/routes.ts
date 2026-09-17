@@ -18,6 +18,7 @@ export type ControlView =
   | "definitions"
   | "jobs"
   | "deployments"
+  | "forms"
   | "events"
   | "system";
 
@@ -28,6 +29,7 @@ export const CONTROL_VIEWS: ControlView[] = [
   "definitions",
   "jobs",
   "deployments",
+  "forms",
   "events",
   "system",
 ];
@@ -46,6 +48,7 @@ export const ROUTES: Record<ControlView, ControlRoute> = {
   definitions: { pattern: "/definitions", icon: "definitions" },
   jobs: { pattern: "/jobs", icon: "jobs", group: "operations" },
   deployments: { pattern: "/deployments", icon: "deployments", group: "operations" },
+  forms: { pattern: "/forms", icon: "form", group: "operations" },
   events: { pattern: "/events", icon: "events", group: "platform" },
   system: { pattern: "/system", icon: "system", group: "platform" },
 };
@@ -63,6 +66,8 @@ export const ROUTE_TABLE: RouteDefinition<ControlView>[] = [
   { id: "jobs", pattern: ROUTES.jobs.pattern },
   { id: "deployments", pattern: "/deployments/:deploymentId" },
   { id: "deployments", pattern: ROUTES.deployments.pattern },
+  { id: "forms", pattern: "/forms/:formDefinitionId" },
+  { id: "forms", pattern: ROUTES.forms.pattern },
   { id: "events", pattern: ROUTES.events.pattern },
   { id: "system", pattern: ROUTES.system.pattern },
   // The root is the overview (W2.1): "is anything wrong" before "what is running".
@@ -78,3 +83,5 @@ export const instancePath = (instanceId: string) =>
 export const casePath = (caseId: string) => buildPath("/cases/:caseId", { caseId });
 export const deploymentPath = (deploymentId: string) =>
   buildPath("/deployments/:deploymentId", { deploymentId });
+export const formDefinitionPath = (formDefinitionId: string) =>
+  buildPath("/forms/:formDefinitionId", { formDefinitionId });
