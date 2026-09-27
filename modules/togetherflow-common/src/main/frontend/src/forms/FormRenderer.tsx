@@ -30,6 +30,7 @@ import {
   fieldLabel,
   isContainer,
   isOptionField,
+  parseStoredUpload,
   toDateInputValue,
   type FieldConstraints,
   type FormErrors,
@@ -58,6 +59,11 @@ export interface FormRendererProps {
    * control that cannot work. Omitting it is a deliberate, supported state.
    */
   onUploadFile?: (field: FormField, file: File) => Promise<string>;
+  /**
+   * Download URL for a stored upload. Needed on a later task: the attachment lives
+   * on the task that received the file, not on the one displaying it.
+   */
+  fileUrl?: (field: FormField, value: unknown) => string | undefined;
   /**
    * Resolves `people` and `functional-group` fields against the identity store
    * (FR-W.5). Absent where the deployment runs no IDM — the fields then take a typed
@@ -96,6 +102,7 @@ export function FormRenderer({
   onChange,
   onBlur,
   onUploadFile,
+  fileUrl,
   identityLookup,
   id,
   onSubmit,
@@ -111,6 +118,7 @@ export function FormRenderer({
     onChange,
     onBlur,
     onUploadFile,
+    fileUrl,
     identityLookup,
     domId,
   };
@@ -148,6 +156,7 @@ interface NodeContext {
   onChange: (fieldId: string, value: unknown) => void;
   onBlur?: (fieldId: string) => void;
   onUploadFile?: (field: FormField, file: File) => Promise<string>;
+  fileUrl?: (field: FormField, value: unknown) => string | undefined;
   identityLookup?: IdentityLookup;
   domId: (fieldId: string) => string;
 }
@@ -333,6 +342,7 @@ function InputField({
   onChange,
   onBlur,
   onUploadFile,
+  fileUrl,
   identityLookup,
   domId,
 }: NodeProps) {
@@ -377,7 +387,12 @@ function InputField({
     // map; their value comes straight off the model.
     control = <ReadOnlyValue id={inputId} value={value ?? field.value} computed />;
   } else if (isReadOnlyValue) {
-    control = <ReadOnlyValue id={inputId} value={displayValue(field, value, t)} />;
+    control =
+      field.type === "upload" ? (
+        <ReadOnlyUpload id={inputId} value={value} href={fileUrl?.(field, value)} />
+      ) : (
+        <ReadOnlyValue id={inputId} value={displayValue(field, value, t)} />
+      );
   } else if (field.type === "boolean") {
     // The question is the checkbox's own label, so there is exactly one label and
     // clicking the words toggles the box.
@@ -424,16 +439,17 @@ function InputField({
             // The group's first option answers to the field's own id, so the error
             // summary and any other jump link land on the group.
             const optionId = index === 0 ? inputId : `${inputId}-${index}`;
+            const stored = optionStoredValue(option);
             return (
-              <label className="tf-check" htmlFor={optionId} key={option.id ?? option.name}>
+              <label className="tf-check" htmlFor={optionId} key={stored}>
                 <input
                   type="radio"
                   id={optionId}
                   name={inputId}
-                  value={option.name}
+                  value={stored}
                   disabled={disabled}
-                  checked={String(value ?? "") === option.name}
-                  onChange={() => onChange(field.id, option.name)}
+                  checked={optionSelected(option, value)}
+                  onChange={() => onChange(field.id, stored)}
                   onBlur={onBlur ? () => onBlur(field.id) : undefined}
                 />
                 <span className="tf-check__label">{option.name}</span>
@@ -620,6 +636,35 @@ function CharacterCounter({
   );
 }
 
+/** A stored file that this task may look at but not replace. */
+function ReadOnlyUpload({
+  id,
+  value,
+  href,
+}: {
+  id: string;
+  value: unknown;
+  href: string | undefined;
+}) {
+  const t = useT();
+  const stored = parseStoredUpload(value);
+  const empty = !stored && (value === undefined || value === null || value === "");
+  const label = stored?.name ?? (empty ? "" : String(value));
+  if (empty) {
+    return <ReadOnlyValue id={id} value="" />;
+  }
+  if (!href) {
+    return <ReadOnlyValue id={id} value={t("form.upload.attached", { name: label })} />;
+  }
+  return (
+    <output className="tf-form__readonly tf-form__readonly--file" id={id} tabIndex={-1}>
+      <a className="tf-form__download" href={href} target="_blank" rel="noopener noreferrer">
+        {t("form.upload.download", { name: label })}
+      </a>
+    </output>
+  );
+}
+
 /** A value the user cannot change: shown as text, never as a disabled control. */
 function ReadOnlyValue({
   id,
@@ -653,7 +698,21 @@ function displayValue(field: FormField, value: unknown, t: TFunction): unknown {
     return value === true || value === "true" ? t("form.yes") : t("form.no");
   }
   if (field.type === "date") return toDateInputValue(value ?? field.value);
+  if (isOptionField(field) && value != null && value !== "") {
+    const match = (field.options ?? []).find((option) => optionSelected(option, value));
+    if (match) return match.name;
+  }
   return value ?? field.value;
+}
+
+/** The value written to the process variable: id when the author set one, else the label. */
+function optionStoredValue(option: { id?: string; name: string }): string {
+  return option.id || option.name;
+}
+
+function optionSelected(option: { id?: string; name: string }, value: unknown): boolean {
+  const stored = String(value ?? "");
+  return stored === optionStoredValue(option) || stored === option.name;
 }
 
 function hasOptions(field: OptionFormField): boolean {
@@ -705,11 +764,14 @@ function renderOptions(field: OptionFormField, ctx: OptionRenderContext): ReactN
       onBlur={ctx.onBlur ? () => ctx.onBlur?.(field.id) : undefined}
     >
       <option value="">{field.placeholder || ctx.t("form.choose")}</option>
-      {options.map((option) => (
-        <option key={option.id ?? option.name} value={option.name}>
-          {option.name}
-        </option>
-      ))}
+      {options.map((option) => {
+        const stored = optionStoredValue(option);
+        return (
+          <option key={stored} value={stored}>
+            {option.name}
+          </option>
+        );
+      })}
     </select>
   );
 }
