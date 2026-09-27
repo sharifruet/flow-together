@@ -179,6 +179,62 @@ principal, or declare `tenant-scope: single-tenant`. That is a deliberate startu
 rather than a warning, because the alternative it prevents is serving every tenant's event
 payloads to every authenticated caller.
 
+## 4c. Outgoing mail (SMTP)
+
+BPMN mail service tasks (`flowable:type="mail"`) and CMMN mail tasks read the **same**
+`flowable.mail.server.*` block — `ProcessEngineAutoConfiguration` and
+`CmmnEngineAutoConfiguration` both bind `FlowableMailProperties`, so one block configures
+both engines. Defaults for this deployment ship in `flowable-default.properties`:
+
+| Property | Value | Notes |
+|---|---|---|
+| `flowable.mail.server.host` | `mail.i2gether.com` | |
+| `flowable.mail.server.ssl-port` | `465` | Read **only** when `use-ssl` is true |
+| `flowable.mail.server.use-ssl` | `true` | Implicit TLS (SMTPS) |
+| `flowable.mail.server.use-tls` | `false` | STARTTLS; for port 587, not 465 |
+| `flowable.mail.server.username` | `together-flow@i2gether.com` | Empty username disables AUTH entirely |
+| `flowable.mail.server.default-from` | `together-flow@i2gether.com` | Used when a mail task sets no `from` |
+| `flowable.mail.server.password` | **unset** | A Secret — see below |
+| `flowable.mail.server.force-to` | unset | Diverts *every* mail to these addresses |
+
+**The password is never checked in.** `flowable-default.properties` is in git and ships
+inside the war, so it carries everything except the password. Supply that at runtime, in
+descending order of preference:
+
+```bash
+# Kubernetes — a Secret, never a ConfigMap (§7)
+kubectl create secret generic flowable-mail-secrets \
+  --from-literal=FLOWABLE_MAIL_SERVER_PASSWORD='...'
+# then reference it with envFrom.secretRef on the flowable-rest Deployment
+
+# Docker / plain JVM
+export FLOWABLE_MAIL_SERVER_PASSWORD='...'
+java -jar flowable-rest.war
+
+# One-off, e.g. a local test (leaks into the process list — do not use on a shared host)
+java -Dflowable.mail.server.password='...' -jar flowable-rest.war
+```
+
+Spring's relaxed binding maps `FLOWABLE_MAIL_SERVER_PASSWORD` onto
+`flowable.mail.server.password` with no placeholder in the file. This works because
+`FlowableDefaultPropertiesEnvironmentPostProcessor` registers `flowable-default.properties`
+with `addLast` — the **lowest** precedence — so environment variables, system properties and
+an external `application.properties` all override it.
+
+Failure modes worth knowing:
+
+- **`use-ssl` and `use-tls` both true** makes the client attempt STARTTLS inside an already
+  encrypted socket. Pick one: 465 is `use-ssl`, 587 is `use-tls`.
+- **Setting `port` instead of `ssl-port`** while `use-ssl` is true is silently ignored —
+  `FlowableMailClientCreator.createMailHostServerConfiguration` reads `ssl-port` on that
+  branch and `port` only on the other.
+- **A mail task is synchronous** unless marked async, so an SMTP failure rolls the
+  transaction back and surfaces on whatever call reached the task. With an async mail task it
+  becomes a failed job with retries instead, visible in Control.
+- **`force-to` is a blunt instrument** and applies to every mail the engine sends. It is the
+  right switch for a staging environment holding a copy of production data; it is wrong in
+  production.
+
 ## 5. Observability
 
 - **Correlation.** Every request carries `X-Correlation-Id`, and the same id spans all
