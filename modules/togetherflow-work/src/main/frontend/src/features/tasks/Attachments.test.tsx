@@ -18,6 +18,7 @@ function stubApi(overrides: Partial<Record<string, unknown>> = {}): StubTaskApi 
     deleteAttachment: vi.fn().mockResolvedValue(undefined),
     attachmentContentUrl: (taskId: string, id: string) =>
       `/process-api/runtime/tasks/${taskId}/attachments/${id}/content`,
+    downloadAttachment: vi.fn().mockResolvedValue(new Blob(["pdf"])),
     ...overrides,
   } as unknown as StubTaskApi;
 }
@@ -63,14 +64,18 @@ describe("Attachments", () => {
     expect(screen.getByText(/no attachments/i)).toBeInTheDocument();
   });
 
-  it("links engine-stored content to the content endpoint", () => {
-    renderAttachments(stubApi(), [
+  it("downloads engine-stored content with the session, not a raw content URL", async () => {
+    vi.spyOn(URL, "createObjectURL").mockReturnValue("blob:test");
+    vi.spyOn(URL, "revokeObjectURL").mockImplementation(() => {});
+    const api = stubApi();
+    renderAttachments(api, [
       { id: "a1", name: "contract.pdf", contentUrl: "x", time: "2026-08-20T10:00:00Z" },
     ]);
-    expect(screen.getByRole("link", { name: "contract.pdf" })).toHaveAttribute(
-      "href",
-      "/process-api/runtime/tasks/task-1/attachments/a1/content",
-    );
+    const download = screen.getByRole("button", { name: "contract.pdf" });
+    expect(download).not.toHaveAttribute("href");
+    expect(screen.queryByRole("link", { name: "contract.pdf" })).not.toBeInTheDocument();
+    await userEvent.click(download);
+    await waitFor(() => expect(api.downloadAttachment).toHaveBeenCalledWith("task-1", "a1"));
   });
 
   it("links an external attachment straight to its URL, safely", () => {

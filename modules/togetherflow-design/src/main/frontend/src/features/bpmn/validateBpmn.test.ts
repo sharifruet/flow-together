@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { canDeploy, validateBpmn } from "./validateBpmn";
+import { canDeploy, issuesFromServer, usableIssues, validateBpmn } from "./validateBpmn";
 
 /** A minimal but valid process: start → user task → end, all wired up. */
 function model(body: string, attrs = 'id="p1"'): string {
@@ -207,5 +207,36 @@ describe("what actually stops a deploy", () => {
         { severity: "error", message: "No start event", source: "engine" },
       ]),
     ).toBe(false);
+  });
+});
+
+describe("engine findings that Deploy puts on screen", () => {
+  it("does not throw when the engine omitted the errors array", () => {
+    expect(issuesFromServer({ valid: true, errorCount: 0, warningCount: 0 } as never)).toEqual([]);
+    expect(issuesFromServer(undefined)).toEqual([]);
+  });
+
+  it("turns a missing description into a sentence, never an object React child", () => {
+    const issues = issuesFromServer({
+      valid: false,
+      errorCount: 1,
+      warningCount: 0,
+      errors: [{ warning: false, activityId: "t1" }],
+    });
+    expect(issues[0].message).toBe("The engine reported a problem with no description.");
+    expect(issues[0].elementId).toBe("t1");
+  });
+
+  it("drops findings that would crash the checks panel", () => {
+    const cleaned = usableIssues([
+      { severity: "error", message: "real" },
+      { severity: "error", message: { nested: true } as unknown as string },
+      { severity: "info" as never, message: "nope" },
+      null as never,
+    ]);
+    expect(cleaned.map((issue) => issue.message)).toEqual([
+      "real",
+      "A problem was reported without a description.",
+    ]);
   });
 });

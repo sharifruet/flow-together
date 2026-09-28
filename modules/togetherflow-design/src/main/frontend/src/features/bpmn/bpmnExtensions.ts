@@ -290,8 +290,9 @@ export type FieldValueKind = "stringValue" | "expression" | "string";
 export interface FieldRow {
   name: string;
   /**
-   * `stringValue` and `expression` are attributes; `string` is a child element, which is
-   * what Flowable's own tooling uses for multi-line bodies such as a mail task's HTML.
+   * `stringValue` is an attribute; `expression` and `string` are child elements.
+   * Mail HTML must be a child — an attribute cannot hold the body, and Design
+   * used to drop `<flowable:expression>` when `expression` was modelled as an attribute.
    */
   valueKind: FieldValueKind;
   value: string;

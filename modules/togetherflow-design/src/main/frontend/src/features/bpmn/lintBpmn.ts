@@ -126,13 +126,22 @@ export async function lintXml(xml: string): Promise<ValidationIssue[]> {
   const { rootElement } = await moddle.fromXML(xml);
   const results = (await linter.lint(rootElement)) as Record<string, LintReport[]>;
 
-  return Object.entries(results).flatMap(([rule, reports]) =>
-    reports.map((report) => ({
-      severity: (report.category === "warn" ? "warning" : "error") as Severity,
-      elementId: report.id,
-      message: report.message,
-      source: "lint" as const,
-      code: rule,
-    })),
-  );
+  return Object.entries(results).flatMap(([rule, reports]) => {
+    if (!Array.isArray(reports)) return [];
+    return reports.flatMap((report) => {
+      if (!report || typeof report !== "object") return [];
+      return [
+        {
+          severity: (report.category === "warn" ? "warning" : "error") as Severity,
+          elementId: typeof report.id === "string" ? report.id : undefined,
+          message:
+            typeof report.message === "string" && report.message.trim() !== ""
+              ? report.message
+              : `Structure problem (${rule}).`,
+          source: "lint" as const,
+          code: rule,
+        },
+      ];
+    });
+  });
 }

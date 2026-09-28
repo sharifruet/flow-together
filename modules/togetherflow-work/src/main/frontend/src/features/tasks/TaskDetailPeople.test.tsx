@@ -39,6 +39,7 @@ function stubApi(overrides: Record<string, unknown> = {}) {
     addAttachmentLink: vi.fn().mockResolvedValue({}),
     deleteAttachment: vi.fn().mockResolvedValue(undefined),
     attachmentContentUrl: vi.fn().mockReturnValue("/x"),
+    downloadAttachment: vi.fn().mockResolvedValue(new Blob(["x"])),
     ...overrides,
   } as unknown as TaskApi & Record<string, Mock>;
 }
@@ -114,59 +115,32 @@ describe("TaskDetail — people and sub-tasks", () => {
   });
 });
 
-describe("TaskDetail — audit trail", () => {
+describe("TaskDetail — the Task tab carries the form alone", () => {
   /**
-   * `enableHistoricTaskLogging` is false by default, so an empty list is the norm and
-   * means "this engine records nothing", not "nothing happened". Saying the wrong one
-   * would send an operator hunting for a bug that isn't there.
-   *
-   * What changed: the distinction is still drawn, but without naming the engine flag —
-   * this screen belongs to whoever is doing the task, not to whoever configured the
-   * engine. So the assertion is on the *meaning* (there is a way to turn this on, and
-   * someone else does it) rather than on the identifier that used to carry it.
+   * The tab used to end with a task-log section that, because historic task logging is
+   * off by default, almost always read "no history recorded — ask an administrator to
+   * switch task history on": engine configuration advice under a form, addressed to
+   * someone who came to answer three questions.
    */
-  it("distinguishes an unrecorded history from an uneventful one", async () => {
-    renderDetail(stubApi());
-    expect(await screen.findByText(/ask an administrator to switch task history on/i))
-      .toBeInTheDocument();
-    // The engine's own vocabulary must not reach this screen.
-    expect(screen.queryByText(/enableHistoricTaskLogging/)).not.toBeInTheDocument();
-  });
+  it("shows no task-log section, and does not ask the engine for one", async () => {
+    const api = stubApi();
+    renderDetail(api);
 
-  it("shows entries when the engine does record them", async () => {
-    renderDetail(
-      stubApi({
-        listLogEntries: vi.fn().mockResolvedValue({
-          data: [
-            { logNumber: 2, type: "USER_TASK_ASSIGNEE_CHANGED", timeStamp: "2026-08-21T10:00:00Z", userId: "bob" },
-            { logNumber: 1, type: "USER_TASK_CREATED", timeStamp: "2026-08-20T09:00:00Z" },
-          ],
-          total: 2,
-          start: 0,
-          size: 100,
-        }),
-      }),
-    );
-
-    expect(await screen.findByText("USER_TASK_ASSIGNEE_CHANGED")).toBeInTheDocument();
-    expect(screen.getByText("by bob")).toBeInTheDocument();
-    expect(screen.queryByText(/enableHistoricTaskLogging/)).not.toBeInTheDocument();
-  });
-
-  it("says so when the trail could not be read at all", async () => {
-    renderDetail(stubApi({ listLogEntries: vi.fn().mockRejectedValue(new Error("nope")) }));
-    expect(await screen.findByText(/history could not be read/i)).toBeInTheDocument();
+    expect(await screen.findByText("Approve invoice")).toBeInTheDocument();
+    expect(screen.queryByRole("heading", { name: /history/i })).not.toBeInTheDocument();
+    expect(screen.queryByText(/switch task history on/i)).not.toBeInTheDocument();
+    expect(screen.queryByText(/history could not be read/i)).not.toBeInTheDocument();
+    expect(api.listLogEntries).not.toHaveBeenCalled();
   });
 
   /**
    * Found by a stubbed e2e run: an endpoint answering with an unexpected shape made
-   * `log.data.length` throw and took the entire task panel down — the task became
-   * unworkable because its audit trail was odd.
+   * `log.data.length` throw and took the entire task panel down. Nothing reads that
+   * shape now, and an odd answer elsewhere still must not make a task unworkable.
    */
   it("survives an endpoint that answers with the wrong shape", async () => {
     renderDetail(
       stubApi({
-        listLogEntries: vi.fn().mockResolvedValue({}),
         listSubTasks: vi.fn().mockResolvedValue({}),
         listIdentityLinks: vi.fn().mockResolvedValue({}),
       }),
@@ -174,7 +148,6 @@ describe("TaskDetail — audit trail", () => {
 
     // The task itself still renders, which is the point.
     expect(await screen.findByText("Approve invoice")).toBeInTheDocument();
-    expect(screen.getByText(/history could not be read/i)).toBeInTheDocument();
     expect(screen.queryByRole("heading", { name: "People" })).not.toBeInTheDocument();
   });
 });

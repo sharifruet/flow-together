@@ -295,7 +295,7 @@ export function TaskInbox({
           return (
             <span
               className={`tf-due tf-due--${due.tone}`}
-              title={formatDate(task.dueDate, locale)}
+              title={formatDate(task.dueDate)}
             >
               {due.label}
             </span>

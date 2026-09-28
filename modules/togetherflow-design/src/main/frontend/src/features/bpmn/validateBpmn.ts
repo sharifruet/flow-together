@@ -264,7 +264,36 @@ function hasCondition(process: Element_, flowId: string | undefined): boolean {
 
 /** True when nothing blocks deployment; warnings alone do not. */
 export function canDeploy(issues: ValidationIssue[]): boolean {
-  return !issues.some((issue) => issue.severity === "error");
+  return !usableIssues(issues).some((issue) => issue.severity === "error");
+}
+
+/**
+ * Drops unrenderable findings so the checks panel cannot take the screen down.
+ *
+ * Deploy runs three checkers and puts whatever they returned into React. A missing
+ * `errors` array, a lint report with no message, or a severity that is not the enum
+ * used to throw while rendering `{issue.message}` — and Design's app-level boundary
+ * replaced the editor with "This screen stopped working".
+ */
+export function usableIssues(issues: ValidationIssue[] | null | undefined): ValidationIssue[] {
+  if (!Array.isArray(issues)) return [];
+  return issues.flatMap((issue) => {
+    if (!issue || (issue.severity !== "error" && issue.severity !== "warning")) return [];
+    return [
+      {
+        ...issue,
+        message: issueText(issue),
+        elementId: typeof issue.elementId === "string" && issue.elementId ? issue.elementId : undefined,
+      },
+    ];
+  });
+}
+
+/** A React child. Objects and empty values become a sentence rather than a throw. */
+export function issueText(issue: Pick<ValidationIssue, "message">): string {
+  return typeof issue.message === "string" && issue.message.trim() !== ""
+    ? issue.message
+    : "A problem was reported without a description.";
 }
 
 /**
@@ -275,12 +304,23 @@ export function canDeploy(issues: ValidationIssue[]): boolean {
  * so they are passed through verbatim rather than run through the i18n layer, which would
  * only produce a missing-key warning for every one of them.
  */
-export function issuesFromServer(result: ServerValidationResult): ValidationIssue[] {
-  return result.errors.map((problem) => ({
-    severity: problem.warning ? "warning" : "error",
-    elementId: elementIdOf(problem),
-    message: problem.defaultDescription ?? problem.problem ?? "The engine reported a problem with no description.",
-    source: "engine",
-    code: problem.problem,
-  }));
+export function issuesFromServer(result: ServerValidationResult | null | undefined): ValidationIssue[] {
+  const problems = result?.errors;
+  if (!Array.isArray(problems)) return [];
+  return problems.flatMap((problem) => {
+    if (!problem || typeof problem !== "object") return [];
+    const description = problem.defaultDescription ?? problem.problem;
+    return [
+      {
+        severity: problem.warning ? "warning" : "error",
+        elementId: elementIdOf(problem),
+        message:
+          typeof description === "string" && description.trim() !== ""
+            ? description
+            : "The engine reported a problem with no description.",
+        source: "engine" as const,
+        code: typeof problem.problem === "string" ? problem.problem : undefined,
+      },
+    ];
+  });
 }

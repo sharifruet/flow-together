@@ -15,6 +15,7 @@ import type {
 } from "../api/types";
 import { interpolate, type Messages, type TFunction } from "../i18n/I18nContext";
 import { commonEn } from "../i18n/messages";
+import { isFieldRequired } from "./requiredWhen";
 import { hiddenFieldIds } from "./visibility";
 
 /**
@@ -245,7 +246,10 @@ export function validateForm(
   const hidden = hiddenFieldIds(model, values);
   for (const field of flattenFields(model.fields)) {
     if (!isSubmittable(field) || field.readOnly || hidden.has(field.id)) continue;
-    const error = validateField(field, values[field.id], t);
+    // `required` can depend on another answer (requiredWhen.ts), so what is validated is
+    // the field as it stands for these values rather than as the model declared it.
+    const asked = { ...field, required: isFieldRequired(field, values) } as FormField;
+    const error = validateField(asked, values[field.id], t);
     if (error) errors[field.id] = error;
   }
   return errors;
@@ -424,6 +428,19 @@ export function parseStoredUpload(value: unknown): StoredUpload | null {
 
 export function serialiseStoredUpload(upload: StoredUpload): string {
   return JSON.stringify(upload);
+}
+
+/** Saves bytes the API fetched with the session — a raw content URL is a 401. */
+export function saveBlobDownload(blob: Blob, fileName: string): void {
+  const url = URL.createObjectURL(blob);
+  const anchor = document.createElement("a");
+  anchor.href = url;
+  anchor.download = fileName || "download";
+  anchor.rel = "noopener";
+  document.body.appendChild(anchor);
+  anchor.click();
+  anchor.remove();
+  URL.revokeObjectURL(url);
 }
 
 function variableTypeFor(fieldType: string): string {

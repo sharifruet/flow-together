@@ -2,6 +2,7 @@ import { Suspense, useCallback, useMemo, useState } from "react";
 import {
   ApiClient,
   AppApi,
+  ErrorBoundary,
   EventRegistryApi,
   LoginScreen,
   ModelApi,
@@ -302,6 +303,7 @@ export function App({ apps,
             </div>
           }
         >
+          <ErrorBoundary boundary="model-editor" resetKey={editingId}>
           {modelKindOf(openModel) === "dmn" ? (
             <DmnEditor {...props} />
           ) : modelKindOf(openModel) === "cmmn" ? (
@@ -344,6 +346,7 @@ export function App({ apps,
               processApi={processApi}
             />
           )}
+          </ErrorBoundary>
         </Suspense>
       </AppShell>
     );

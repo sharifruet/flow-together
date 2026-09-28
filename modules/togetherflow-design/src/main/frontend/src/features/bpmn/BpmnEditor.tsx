@@ -32,7 +32,7 @@ import { useConflictPrompt } from "../editors/ConflictPrompt";
 import { EditorMenuBar } from "../editors/EditorMenuBar";
 import { useBpmnModeler } from "./useBpmnModeler";
 import type { IdentitySource } from "./useIdentities";
-import { canDeploy, issuesFromServer, validateBpmn, type ValidationIssue } from "./validateBpmn";
+import { canDeploy, issuesFromServer, usableIssues, validateBpmn, type ValidationIssue } from "./validateBpmn";
 import { downloadFile } from "../library/importExport";
 import { RuntimePreview } from "../editors/RuntimePreview";
 import { PropertiesPanel } from "./PropertiesPanel";
@@ -214,9 +214,10 @@ export function BpmnEditor({
     setChecking(true);
     try {
       const { found, fromEngine } = await runChecks(await getXml());
-      setIssues(found);
+      const cleaned = usableIssues(found);
+      setIssues(cleaned.length > 0 ? cleaned : null);
       setEngineChecked(fromEngine);
-      if (found.length === 0) push({ tone: "success", message: t("bpmn.checksClean") });
+      if (cleaned.length === 0) push({ tone: "success", message: t("bpmn.checksClean") });
     } catch (cause) {
       push({ tone: "error", message: (cause as Error).message || t("bpmn.checkFailed") });
     } finally {
@@ -230,11 +231,16 @@ export function BpmnEditor({
    * and forget the diagram — dismissing the panel clears the markers for the same reason.
    */
   useEffect(() => {
-    markProblems(
-      (issues ?? [])
-        .filter((issue) => issue.elementId)
-        .map((issue) => ({ elementId: issue.elementId!, severity: issue.severity })),
-    );
+    try {
+      markProblems(
+        usableIssues(issues)
+          .filter((issue) => issue.elementId)
+          .map((issue) => ({ elementId: issue.elementId!, severity: issue.severity })),
+      );
+    } catch {
+      // Markers are decoration; a throw here used to be indistinguishable from a
+      // modelling failure and took the whole Design screen down with it.
+    }
   }, [issues, markProblems]);
 
   /*
@@ -253,10 +259,12 @@ export function BpmnEditor({
       timer = setTimeout(() => {
         void (async () => {
           try {
-            const found = validateBpmn(await getXml()).map((issue) => ({
-              ...issue,
-              source: "browser" as const,
-            }));
+            const found = usableIssues(
+              validateBpmn(await getXml()).map((issue) => ({
+                ...issue,
+                source: "browser" as const,
+              })),
+            );
             setIssues(found.length > 0 ? found : null);
             setEngineChecked(false);
           } catch {
@@ -305,21 +313,25 @@ export function BpmnEditor({
     setChecking(true);
     try {
       const { found, fromEngine } = await runChecks(await getXml());
-      setIssues(found.length > 0 ? found : null);
+      const cleaned = usableIssues(found);
+      setIssues(cleaned.length > 0 ? cleaned : null);
       setEngineChecked(fromEngine);
-      if (!canDeploy(found)) {
+      if (!canDeploy(cleaned)) {
         push({
           tone: "error",
           message: t("bpmn.fixBeforeDeploy"),
         });
         return;
       }
-    } catch {
-      // A model we cannot even read is the engine's problem to report.
+      setConfirmDeploy(true);
+    } catch (cause) {
+      push({
+        tone: "error",
+        message: cause instanceof Error ? cause.message : t("bpmn.xmlReadFailed"),
+      });
     } finally {
       setChecking(false);
     }
-    setConfirmDeploy(true);
   }, [getXml, push, runChecks, t]);
 
   const save = useCallback(
@@ -507,7 +519,7 @@ export function BpmnEditor({
                 <span className={`tf-issues__source tf-issues__source--${issue.source ?? "browser"}`}>
                   {t(`bpmn.checks.source.${issue.source ?? "browser"}`)}
                 </span>
-                <span>{issue.message}</span>
+                <span>{typeof issue.message === "string" ? issue.message : String(issue.message ?? "")}</span>
                 {issue.elementId ? (
                   <button
                     type="button"

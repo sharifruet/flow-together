@@ -18,6 +18,7 @@ import {
   hasRenderableFields,
   initialValues,
   parseStoredUpload,
+  saveBlobDownload,
   serialiseStoredUpload,
   priorityLabel,
   toEditable,
@@ -106,7 +107,6 @@ export function TaskDetail({
   const [tab, setTab] = useState<TaskTab>("task");
   const [savingDraft, setSavingDraft] = useState(false);
   const [editingDue, setEditingDue] = useState(false);
-  const [comment, setComment] = useState("");
   const [delegating, setDelegating] = useState(false);
   const [delegateTo, setDelegateTo] = useState("");
   const [reloadToken, setReloadToken] = useState(0);
@@ -114,17 +114,13 @@ export function TaskDetail({
   const detail = useAsync(
     async (signal) => {
       if (!taskId) return undefined;
-      const [task, taskVariables, comments, attachments, subTasks, people, log] =
+      const [task, taskVariables, attachments, subTasks, people] =
         await Promise.all([
           taskApi.get(taskId, signal),
           taskApi.listVariables(taskId, signal).catch(() => []),
-          taskApi.listComments(taskId, signal).catch(() => []),
           taskApi.listAttachments(taskId, signal).catch(() => []),
           taskApi.listSubTasks(taskId, signal).catch(() => []),
           taskApi.listIdentityLinks(taskId, signal).catch(() => []),
-          // Empty on any engine that has not enabled historic task logging, which is
-          // the default — so a failure here must not take the whole panel down.
-          taskApi.listLogEntries(taskId, signal).catch(() => undefined),
         ]);
       // Only ask for a form when the task declares one: the endpoint 400s otherwise,
       // and a needless failed request on every task selection is wasteful noise.
@@ -134,13 +130,11 @@ export function TaskDetail({
       return {
         task,
         variables: taskVariables,
-        comments,
         attachments,
         form: formResult.form,
         formFailure: formResult.form ? undefined : { status: formResult.status, message: formResult.message },
         subTasks,
         people,
-        log,
       };
     },
     [taskApi, taskId, reloadToken],
@@ -199,9 +193,6 @@ export function TaskDetail({
     general: string[];
   } | null>(null);
   const activeServerErrors = serverErrors && serverErrors.taskId === taskId ? serverErrors : null;
-  /** The variable grid alongside a form — operators need the raw values too (FR-W.7). */
-  const [showVariables, setShowVariables] = useState(false);
-
   // Only surface an error once the user has left the field, so a required field
   // is not flagged before it has been filled in for the first time (§14.3).
   const visibleFormErrors = useMemo(() => {
@@ -388,7 +379,7 @@ export function TaskDetail({
       >
         {(loaded) => {
           if (!loaded) return null;
-          const { task: current, comments, attachments } = loaded;
+          const { task: current, attachments } = loaded;
           return (
             <>
               <header className="tf-detail__header">
@@ -507,9 +498,8 @@ export function TaskDetail({
               {/*
                 W2.2: Flowable Work's task detail is four tabs — Task, People, Subtasks,
                 Documents — and ours stacked every section vertically, so the form a user
-                came to fill in sat above five things they did not. Comments and history
-                stay on the Task tab: they are the conversation *about* this task, not a
-                separate subject.
+                came to fill in sat above five things they did not. History stays on the
+                Task tab: it is the record *of* this task, not a separate subject.
               */}
               <Tabs
                 label={t("task.tabs.label")}
@@ -566,6 +556,21 @@ export function TaskDetail({
                             ? taskApi.attachmentContentUrl(stored.taskId, stored.id)
                             : undefined;
                         }}
+                        onDownloadFile={async (_field, value) => {
+                          const stored = parseStoredUpload(value);
+                          if (!stored) return;
+                          try {
+                            const blob = await taskApi.downloadAttachment(stored.taskId, stored.id);
+                            saveBlobDownload(blob, stored.name);
+                          } catch (cause) {
+                            const apiError = cause instanceof ApiError ? cause : undefined;
+                            push({
+                              tone: "error",
+                              message: apiError?.message ?? t("form.upload.downloadFailed"),
+                              reference: apiError?.correlationId,
+                            });
+                          }
+                        }}
                         onUploadFile={async (field, file) => {
                           const attachment = await taskApi.uploadAttachment(current.id, file, {
                             name: file.name,
@@ -602,118 +607,25 @@ export function TaskDetail({
                         />
                       </>
                     )}
-                    {usingForm && form ? (
-                      <div className="tf-detail__variables-toggle">
-                        <button
-                          type="button"
-                          className="tf-link-button"
-                          aria-expanded={showVariables}
-                          onClick={() => setShowVariables((open) => !open)}
-                        >
-                          {showVariables ? t("task.form.hideVariables") : t("task.form.showVariables")}
-                        </button>
-                        {showVariables ? (
-                          <VariableEditor
-                            variables={variables}
-                            onChange={setVariables}
-                            disabled={busy || !isAssignedToMe}
-                            lockedNames={lockedVariableNames}
-                          />
-                        ) : null}
-                      </div>
-                    ) : null}
+                    {/*
+                      No raw-variable grid beside a form. Where a task has a form, the
+                      form is the task: the grid showed the same answers again as engine
+                      types, under a toggle that invited a filler to edit them there.
+                      A task with no form still gets the grid above — that is the only
+                      way to work one.
+                    */}
                     {!isAssignedToMe ? (
                       <p className="tf-detail__note">{t("task.form.claimFirst")}</p>
                     ) : null}
                   </section>
 
-                  <section className="tf-detail__section">
-                    <h3 className="tf-detail__section-title">
-                      {comments.length
-                        ? t("task.section.commentsCount", { count: comments.length })
-                        : t("task.section.comments")}
-                    </h3>
-                    {comments.length === 0 ? (
-                      <p className="tf-muted">{t("task.comments.none")}</p>
-                    ) : (
-                      <ul className="tf-comments">
-                        {comments.map((entry) => (
-                          <li key={entry.id} className="tf-comments__item">
-                            <p className="tf-comments__meta">
-                              <strong>
-                            {entry.author ? (
-                              <UserChip userId={entry.author} />
-                            ) : (
-                              t("task.comments.unknownAuthor")
-                            )}
-                          </strong>{" "}
-                          ·{" "}
-                              {formatDateTime(entry.time, locale)}
-                            </p>
-                            <p className="tf-comments__message">{entry.message}</p>
-                          </li>
-                        ))}
-                      </ul>
-                    )}
-                    <div className="tf-comments__compose">
-                      <label className="tf-visually-hidden" htmlFor="tf-new-comment">
-                        {t("task.comments.add")}
-                      </label>
-                      <textarea
-                        id="tf-new-comment"
-                        className="tf-input tf-textarea"
-                        rows={2}
-                        placeholder={t("task.comments.placeholder")}
-                        value={comment}
-                        disabled={busy}
-                        onChange={(event) => setComment(event.target.value)}
-                      />
-                      <Button
-                        variant="secondary"
-                        disabled={busy || comment.trim() === ""}
-                        onClick={() =>
-                          runAction(t("task.comments.added"), async () => {
-                            await taskApi.addComment(current.id, comment.trim());
-                            setComment("");
-                            reload();
-                          })
-                        }
-                      >
-                        {t("task.comments.submit")}
-                      </Button>
-                    </div>
-                  </section>
-                  <section className="tf-detail__section">
-                    <h3 className="tf-detail__section-title">{t("task.section.history")}</h3>
-                    {/*
-                      The shape is checked, not assumed. An endpoint that answers with
-                      something unexpected must not take the whole panel down with it —
-                      which is exactly what reading `.data.length` off a non-page did.
-                    */}
-                    {!Array.isArray(detail.data?.log?.data) ? (
-                      <p className="tf-muted">{t("task.history.unreadable")}</p>
-                    ) : detail.data.log.data.length === 0 ? (
-                      <p className="tf-muted">{t("task.history.none")}</p>
-                    ) : (
-                      <ol className="tf-tasklog">
-                        {detail.data.log.data.map((entry) => (
-                          <li className="tf-tasklog__item" key={entry.logNumber}>
-                            <span className="tf-tasklog__type">
-                              {entry.type ?? t("task.history.event")}
-                            </span>
-                            <span className="tf-tasklog__when">
-                              {formatDateTime(entry.timeStamp, locale)}
-                            </span>
-                            {entry.userId ? (
-                              <span className="tf-tasklog__who">
-                                {t("task.history.by", { userId: entry.userId })}
-                              </span>
-                            ) : null}
-                          </li>
-                        ))}
-                      </ol>
-                    )}
-                  </section>
+                  {/*
+                    The Task tab is the form and nothing else now. It used to carry a
+                    comment thread, a variable grid and a task-log section under every
+                    form — none of which the process reads, and all of which pushed the
+                    fields a filler came for up the pane. A note a step wants, its form
+                    asks for (Remarks), and that one is a process variable that travels.
+                  */}
                   </>
                 ) : null}
 

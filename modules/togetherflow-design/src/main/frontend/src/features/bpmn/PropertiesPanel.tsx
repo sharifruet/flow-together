@@ -567,7 +567,17 @@ export function PropertiesPanel({
   }
 
   const business = element.businessObject;
-  const type = business.$type;
+  const type = business?.$type;
+  // bpmn-js's implicit canvas root has no business object. Rendering the panel
+  // against it throws (`type.replace is not a function`) and the app-level error
+  // boundary replaces the whole editor with "This screen stopped working".
+  if (typeof type !== "string" || !type) {
+    return (
+      <aside className="tf-properties" aria-label={t("properties.label")}>
+        <p className="tf-muted tf-properties__empty">{t("properties.selectAnElement")}</p>
+      </aside>
+    );
+  }
   const extras = fieldsFor(type);
 
   const set = (key: string, value: string) =>
@@ -995,6 +1005,7 @@ function isAsyncCapable(type: string): boolean {
 }
 
 export function labelForType(type: string): string {
+  if (typeof type !== "string" || !type) return "Element";
   const bare = type.replace(/^bpmn:/, "");
   return bare.replace(/([a-z])([A-Z])/g, "$1 $2");
 }
@@ -1437,16 +1448,16 @@ function FieldSection({ t, element, moddle, disabled, onChange }: SectionProps) 
                   </option>
                 ))}
               </SelectInput>
-              {/* A `string` field is the multi-line form, so it gets a multi-line control. */}
-              {row.valueKind === "string" ? (
+              {/* Mail HTML is an expression or a multi-line string; both need a textarea. */}
+              {row.valueKind === "string" || row.name === "html" || row.name === "text" ? (
                 <PropertyTextInput
                   label={t("properties.fields.value")}
                   value={row.value}
                   disabled={disabled}
                   rows={4}
                   onCommit={(value) => update(index, { value: value })}
-          multiline
-        />
+                  multiline
+                />
               ) : (
                 <PropertyTextInput
                   label={t("properties.fields.value")}

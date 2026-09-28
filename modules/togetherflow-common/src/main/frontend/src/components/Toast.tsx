@@ -81,7 +81,9 @@ export function ToastProvider({ children }: { children: ReactNode }) {
         {toasts.map((toast) => (
           <div key={toast.id} className={`tf-toast tf-toast--${toast.tone}`} role="status">
             <div className="tf-toast__body">
-              <p className="tf-toast__message">{toast.message}</p>
+            <p className="tf-toast__message">
+              {typeof toast.message === "string" ? toast.message : String(toast.message ?? "")}
+            </p>
               {toast.reference ? (
                 <p className="tf-toast__reference">
                   {t("toast.reference")} <code>{toast.reference}</code>

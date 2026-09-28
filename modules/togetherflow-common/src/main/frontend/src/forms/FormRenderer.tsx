@@ -23,7 +23,9 @@
 
 import { useEffect, useRef, useState, type ReactNode } from "react";
 import type { FormField, FormModelResponse, OptionFormField } from "../api/types";
+import { formatDate } from "../format";
 import { useI18n, useT, type TFunction } from "../i18n/I18nContext";
+import { isFieldRequired } from "./requiredWhen";
 import { isFieldVisible } from "./visibility";
 import {
   fieldConstraints,
@@ -65,6 +67,11 @@ export interface FormRendererProps {
    */
   fileUrl?: (field: FormField, value: unknown) => string | undefined;
   /**
+   * Authenticated download. A raw `href` to `/runtime/tasks/.../content` is a
+   * 401 in the browser: it does not send the SPA's Authorization header.
+   */
+  onDownloadFile?: (field: FormField, value: unknown) => void | Promise<void>;
+  /**
    * Resolves `people` and `functional-group` fields against the identity store
    * (FR-W.5). Absent where the deployment runs no IDM — the fields then take a typed
    * id, which is what the engine stores either way.
@@ -103,6 +110,7 @@ export function FormRenderer({
   onBlur,
   onUploadFile,
   fileUrl,
+  onDownloadFile,
   identityLookup,
   id,
   onSubmit,
@@ -119,6 +127,7 @@ export function FormRenderer({
     onBlur,
     onUploadFile,
     fileUrl,
+    onDownloadFile,
     identityLookup,
     domId,
   };
@@ -157,6 +166,7 @@ interface NodeContext {
   onBlur?: (fieldId: string) => void;
   onUploadFile?: (field: FormField, file: File) => Promise<string>;
   fileUrl?: (field: FormField, value: unknown) => string | undefined;
+  onDownloadFile?: (field: FormField, value: unknown) => void | Promise<void>;
   identityLookup?: IdentityLookup;
   domId: (fieldId: string) => string;
 }
@@ -343,6 +353,7 @@ function InputField({
   onBlur,
   onUploadFile,
   fileUrl,
+  onDownloadFile,
   identityLookup,
   domId,
 }: NodeProps) {
@@ -356,6 +367,13 @@ function InputField({
   const error = errors[field.id];
   const value = values[field.id];
   const limits = fieldConstraints(field);
+  /*
+   * Whether an answer is demanded can depend on another answer — remarks that are
+   * optional on approval and mandatory on rejection (requiredWhen.ts). The asterisk has
+   * to track that: a field the validator will refuse must look required at the moment it
+   * becomes so, not only after a submit is turned down.
+   */
+  const required = isFieldRequired(field, values);
   /*
    * A checkbox has nowhere to put a placeholder, so its placeholder is guidance and
    * shows as the hint. Resolved before `describedBy` is built — a hint that renders but
@@ -376,7 +394,7 @@ function InputField({
     disabled,
     "aria-invalid": error ? (true as const) : undefined,
     "aria-describedby": describedBy,
-    "aria-required": field.required || undefined,
+    "aria-required": required || undefined,
     onBlur: onBlur ? () => onBlur(field.id) : undefined,
   };
 
@@ -389,7 +407,12 @@ function InputField({
   } else if (isReadOnlyValue) {
     control =
       field.type === "upload" ? (
-        <ReadOnlyUpload id={inputId} value={value} href={fileUrl?.(field, value)} />
+        <ReadOnlyUpload
+          id={inputId}
+          value={value}
+          href={fileUrl?.(field, value)}
+          onDownload={onDownloadFile ? () => onDownloadFile(field, value) : undefined}
+        />
       ) : (
         <ReadOnlyValue id={inputId} value={displayValue(field, value, t)} />
       );
@@ -408,7 +431,7 @@ function InputField({
           />
           <span className="tf-check__label">
             {label}
-            <RequiredMark required={field.required} t={t} />
+            <RequiredMark required={required} t={t} />
           </span>
         </label>
         <FieldMessages hint={hint} hintId={hintId} error={error} errorId={errorId} />
@@ -427,12 +450,12 @@ function InputField({
           .filter(Boolean)
           .join(" ")}
         aria-describedby={describedBy}
-        aria-required={field.required || undefined}
+        aria-required={required || undefined}
         aria-invalid={error ? true : undefined}
       >
         <legend className="tf-radio-group__legend">
           {label}
-          <RequiredMark required={field.required} t={t} />
+          <RequiredMark required={required} t={t} />
         </legend>
         <div className="tf-radio-group__options">
           {(field.options ?? []).map((option, index) => {
@@ -493,6 +516,7 @@ function InputField({
         limits={limits}
         value={value}
         disabled={disabled}
+        required={required}
         describedBy={describedBy}
         onChange={onChange}
         onUploadFile={onUploadFile}
@@ -546,7 +570,7 @@ function InputField({
       <div className="tf-field__label-row">
         <label className="tf-field__label" htmlFor={inputId}>
           {label}
-          <RequiredMark required={field.required && !isReadOnlyValue} t={t} />
+          <RequiredMark required={required && !isReadOnlyValue} t={t} />
         </label>
         {limits.maxLength !== undefined && !isReadOnlyValue ? (
           <CharacterCounter length={String(value ?? "").length} max={limits.maxLength} t={t} />
@@ -641,10 +665,12 @@ function ReadOnlyUpload({
   id,
   value,
   href,
+  onDownload,
 }: {
   id: string;
   value: unknown;
   href: string | undefined;
+  onDownload?: () => void | Promise<void>;
 }) {
   const t = useT();
   const stored = parseStoredUpload(value);
@@ -653,14 +679,25 @@ function ReadOnlyUpload({
   if (empty) {
     return <ReadOnlyValue id={id} value="" />;
   }
-  if (!href) {
+  if (!href && !onDownload) {
     return <ReadOnlyValue id={id} value={t("form.upload.attached", { name: label })} />;
   }
   return (
     <output className="tf-form__readonly tf-form__readonly--file" id={id} tabIndex={-1}>
-      <a className="tf-form__download" href={href} target="_blank" rel="noopener noreferrer">
-        {t("form.upload.download", { name: label })}
-      </a>
+      {onDownload ? (
+        <button type="button" className="tf-form__download" onClick={() => void onDownload()}>
+          {t("form.upload.download", { name: label })}
+        </button>
+      ) : (
+        <a
+          className="tf-form__download"
+          href={href}
+          target="_blank"
+          rel="noopener noreferrer"
+        >
+          {t("form.upload.download", { name: label })}
+        </a>
+      )}
     </output>
   );
 }
@@ -697,7 +734,12 @@ function displayValue(field: FormField, value: unknown, t: TFunction): unknown {
   if (field.type === "boolean") {
     return value === true || value === "true" ? t("form.yes") : t("form.no");
   }
-  if (field.type === "date") return toDateInputValue(value ?? field.value);
+  // Shown as the house format (DD/MM/YYYY); the editable control keeps the ISO day the
+  // <input type="date"> spec requires.
+  if (field.type === "date") {
+    const day = toDateInputValue(value ?? field.value);
+    return day ? formatDate(day) : "";
+  }
   if (isOptionField(field) && value != null && value !== "") {
     const match = (field.options ?? []).find((option) => optionSelected(option, value));
     if (match) return match.name;
@@ -913,6 +955,7 @@ function UploadField({
   limits,
   value,
   disabled,
+  required,
   describedBy,
   onChange,
   onUploadFile,
@@ -922,6 +965,7 @@ function UploadField({
   limits: FieldConstraints;
   value: unknown;
   disabled: boolean;
+  required: boolean;
   describedBy: string | undefined;
   onChange: (fieldId: string, value: unknown) => void;
   onUploadFile: (field: FormField, file: File) => Promise<string>;
@@ -1013,7 +1057,7 @@ function UploadField({
           accept={limits.accept}
           disabled={disabled || busy}
           aria-describedby={describedBy}
-          aria-required={field.required || undefined}
+          aria-required={required || undefined}
           onChange={(event) => take(event.target.files?.[0])}
         />
         <span className="tf-upload__prompt" aria-hidden="true">

@@ -174,9 +174,17 @@ export function useBpmnModeler(xml: string | null): BpmnModelerState {
     /** The root stands in for "nothing selected", so the process is always editable. */
     const rootElement = (): BpmnElement | null => {
       const canvas = modeler.get("canvas") as
-        | { getRootElement: () => BpmnElement | undefined }
+        | {
+            getRootElement: () =>
+              | (BpmnElement & { isImplicit?: boolean })
+              | undefined;
+          }
         | undefined;
-      return canvas?.getRootElement() ?? null;
+      const root = canvas?.getRootElement();
+      // diagram-js invents an implicit root with no business object. Selecting it
+      // used to crash the properties panel and take the whole Design screen with it.
+      if (!root || root.isImplicit || !root.businessObject?.$type) return null;
+      return root;
     };
 
     const select = (next: BpmnElement | null) => {
@@ -185,7 +193,15 @@ export function useBpmnModeler(xml: string | null): BpmnModelerState {
     };
 
     modeler.on("selection.changed", (event: { newSelection: BpmnElement[] }) => {
-      select(event.newSelection.length === 1 ? event.newSelection[0] : rootElement());
+      const chosen = event.newSelection.length === 1 ? event.newSelection[0] : null;
+      // A label, implicit root, or shape with no business object must not reach the
+      // properties panel — `$type.replace` on one of those is how Deploy used to
+      // replace the whole Design chrome with the crash screen.
+      if (!chosen?.businessObject?.$type) {
+        select(rootElement());
+        return;
+      }
+      select(chosen);
     });
 
     modeler.on("element.changed", (event: { element?: BpmnElement }) => {
@@ -222,11 +238,13 @@ export function useBpmnModeler(xml: string | null): BpmnModelerState {
         // Start on the process rather than an empty panel: it is what a modeller most
         // often wants first (key, name, executability) and is otherwise unreachable.
         const canvas = modeler.get("canvas") as
-          | { getRootElement: () => BpmnElement | undefined }
+          | { getRootElement: () => (BpmnElement & { isImplicit?: boolean }) | undefined }
           | undefined;
-        const root = canvas?.getRootElement() ?? null;
-        selectionRef.current = root;
-        setSelection(root);
+        const root = canvas?.getRootElement();
+        const selected =
+          root && !root.isImplicit && root.businessObject?.$type ? root : null;
+        selectionRef.current = selected;
+        setSelection(selected);
         try {
           (modeler.get("canvas") as { zoom: (a: string, b: string) => void }).zoom(
             "fit-viewport",
@@ -399,17 +417,26 @@ export function useBpmnModeler(xml: string | null): BpmnModelerState {
       for (const id of markedRef.current) {
         // Guard on existence: an element carrying a problem may since have been deleted,
         // and removing a marker from a missing element throws.
-        if (registry.get(id)) {
-          canvas.removeMarker(id, "tf-problem--error");
-          canvas.removeMarker(id, "tf-problem--warning");
+        try {
+          if (registry.get(id)) {
+            canvas.removeMarker(id, "tf-problem--error");
+            canvas.removeMarker(id, "tf-problem--warning");
+          }
+        } catch {
+          /* a missing marker is not a modelling failure */
         }
       }
 
       const applied: string[] = [];
       for (const mark of marks) {
-        if (!registry.get(mark.elementId)) continue;
-        canvas.addMarker(mark.elementId, `tf-problem--${mark.severity}`);
-        applied.push(mark.elementId);
+        try {
+          if (!registry.get(mark.elementId)) continue;
+          canvas.addMarker(mark.elementId, `tf-problem--${mark.severity}`);
+          applied.push(mark.elementId);
+        } catch {
+          // A marker on an unmarkable id (implicit root, missing shape) is not
+          // worth taking the editor down.
+        }
       }
       markedRef.current = applied;
     },
