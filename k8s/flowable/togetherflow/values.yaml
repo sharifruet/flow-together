@@ -131,6 +131,12 @@ attachmentGateway:
       # Use a claim created out of band instead of one this chart owns.
       existingClaim: ""
   sharepoint:
+    # graph talks to Microsoft 365. local is a document library the gateway serves,
+    # so an upload can be checked at publicBaseUrl/sharepoint without an Azure tenant.
+    mode: graph
+    publicBaseUrl: ""
+    libraryPath: /var/lib/togetherflow/sharepoint
+    folderPath: TogetherFlow
     tenantId: ""
     clientId: ""
     siteId: ""

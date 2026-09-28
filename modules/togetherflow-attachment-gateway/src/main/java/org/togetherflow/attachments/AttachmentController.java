@@ -2,6 +2,7 @@ package org.togetherflow.attachments;
 
 import java.io.IOException;
 import java.io.InputStream;
+import java.util.LinkedHashMap;
 import java.util.Map;
 
 import org.slf4j.Logger;
@@ -22,10 +23,11 @@ import org.springframework.web.server.ResponseStatusException;
 /**
  * The gateway's own API (REQUIREMENTS.md §7.6).
  *
- * <p>Two endpoints and no more: take a file and give back a URL, and — for providers
- * whose URLs point here — serve that file back. Registering the attachment against the
- * task stays with the UI, which already talks to Flowable and holds the user's
- * credentials; doing it here would mean the gateway impersonating users.
+ * <p>Take a file and give back a URL, and — for providers whose URLs point here — serve
+ * that file back. Registering the attachment against the task stays with the UI, which
+ * already talks to Flowable and holds the user's credentials; doing it here would mean
+ * the gateway impersonating users. The Flowable application can also post here itself,
+ * which is how a file generated inside a process reaches the same library.
  */
 @RestController
 public class AttachmentController {
@@ -41,9 +43,16 @@ public class AttachmentController {
     }
 
     @PostMapping(value = "/attachments", consumes = MediaType.MULTIPART_FORM_DATA_VALUE)
-    public StoredAttachment upload(@RequestParam("taskId") String taskId,
+    public StoredAttachment upload(@RequestParam(value = "taskId", required = false) String taskId,
+            @RequestParam(value = "processInstanceId", required = false) String processInstanceId,
+            @RequestParam(value = "taskName", required = false) String taskName,
+            @RequestParam(value = "processName", required = false) String processName,
             @RequestParam("file") MultipartFile file) {
 
+        if (isBlank(taskId) && isBlank(processInstanceId)) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST,
+                    "An upload needs a taskId or a processInstanceId.");
+        }
         if (file.isEmpty()) {
             throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "The uploaded file is empty.");
         }
@@ -55,10 +64,13 @@ public class AttachmentController {
         }
 
         try (InputStream content = file.getInputStream()) {
-            StoredAttachment stored = store.store(taskId, file.getOriginalFilename(),
-                    file.getContentType(), content, file.getSize());
-            LOGGER.info("Stored attachment for task {} via {} ({} bytes)", taskId, store.provider(),
-                    stored.sizeBytes());
+            StoredAttachment stored = store instanceof LocalSharePointAttachmentStore local
+                    ? local.store(taskId, processInstanceId, taskName, processName, file.getOriginalFilename(),
+                            file.getContentType(), content, file.getSize())
+                    : store.store(taskId, processInstanceId, file.getOriginalFilename(),
+                            file.getContentType(), content, file.getSize());
+            LOGGER.info("Stored attachment for task {} process {} via {} ({} bytes)", taskId,
+                    processInstanceId, store.provider(), stored.sizeBytes());
             return stored;
         } catch (IOException | RuntimeException cause) {
             // The provider's own message may name internal paths or hosts, so it is
@@ -93,6 +105,18 @@ public class AttachmentController {
     /** Lets the Work app degrade gracefully when the gateway is down (§13.4). */
     @GetMapping("/attachments/health")
     public Map<String, String> health() {
-        return Map.of("provider", store.provider().name().toLowerCase());
+        LinkedHashMap<String, String> body = new LinkedHashMap<>();
+        body.put("provider", store.provider().name().toLowerCase());
+        if (store instanceof LocalSharePointAttachmentStore local) {
+            body.put("mode", "local");
+            body.put("library", local.libraryHome());
+        } else if (store.provider() == AttachmentProperties.Provider.SHAREPOINT) {
+            body.put("mode", "graph");
+        }
+        return body;
+    }
+
+    private static boolean isBlank(String value) {
+        return value == null || value.isBlank();
     }
 }

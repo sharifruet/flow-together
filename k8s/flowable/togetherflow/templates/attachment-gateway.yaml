@@ -10,6 +10,10 @@ of band, referenced optionally so a filesystem deployment does not need one to e
 {{- if .Values.attachmentGateway.enabled }}
 {{- $gw := .Values.attachmentGateway }}
 {{- $name := printf "%s-attachment-gateway" (include "togetherflow.fullname" .) }}
+{{- $sharePointMode := $gw.sharepoint.mode | default "graph" }}
+{{- $localSharePoint := and (eq $gw.provider "sharepoint") (eq $sharePointMode "local") }}
+{{- $storeOnDisk := and $gw.filesystem.persistence.enabled (or (eq $gw.provider "filesystem") $localSharePoint) }}
+{{- $mountPath := ternary $gw.sharepoint.libraryPath $gw.filesystem.basePath $localSharePoint }}
 apiVersion: apps/v1
 kind: Deployment
 metadata:
@@ -80,15 +84,15 @@ spec:
             capabilities:
               drop: ["ALL"]
           volumeMounts:
-            {{- if and (eq $gw.provider "filesystem") $gw.filesystem.persistence.enabled }}
+            {{- if $storeOnDisk }}
             - name: attachments
-              mountPath: {{ $gw.filesystem.basePath }}
+              mountPath: {{ $mountPath }}
             {{- end }}
             # The JVM needs a writable temp directory under a read-only root filesystem.
             - name: tmp
               mountPath: /tmp
       volumes:
-        {{- if and (eq $gw.provider "filesystem") $gw.filesystem.persistence.enabled }}
+        {{- if $storeOnDisk }}
         - name: attachments
           persistentVolumeClaim:
             claimName: {{ default (printf "%s-data" $name) $gw.filesystem.persistence.existingClaim }}
@@ -142,12 +146,19 @@ data:
   # Must be reachable by the browser — it is stored on the attachment as its URL.
   TOGETHERFLOW_ATTACHMENTS_FILESYSTEM_PUBLICBASEURL: {{ $gw.filesystem.publicBaseUrl | quote }}
   {{- else if eq $gw.provider "sharepoint" }}
+  TOGETHERFLOW_ATTACHMENTS_SHAREPOINT_MODE: {{ $sharePointMode | quote }}
+  TOGETHERFLOW_ATTACHMENTS_SHAREPOINT_FOLDERPATH: {{ $gw.sharepoint.folderPath | quote }}
+  {{- if eq $sharePointMode "local" }}
+  TOGETHERFLOW_ATTACHMENTS_SHAREPOINT_PUBLICBASEURL: {{ $gw.sharepoint.publicBaseUrl | quote }}
+  TOGETHERFLOW_ATTACHMENTS_SHAREPOINT_LIBRARYPATH: {{ $gw.sharepoint.libraryPath | quote }}
+  {{- else }}
   TOGETHERFLOW_ATTACHMENTS_SHAREPOINT_TENANTID: {{ $gw.sharepoint.tenantId | quote }}
   TOGETHERFLOW_ATTACHMENTS_SHAREPOINT_CLIENTID: {{ $gw.sharepoint.clientId | quote }}
   TOGETHERFLOW_ATTACHMENTS_SHAREPOINT_SITEID: {{ $gw.sharepoint.siteId | quote }}
   TOGETHERFLOW_ATTACHMENTS_SHAREPOINT_DRIVEID: {{ $gw.sharepoint.driveId | quote }}
   {{- end }}
-{{- if and (eq $gw.provider "filesystem") $gw.filesystem.persistence.enabled (not $gw.filesystem.persistence.existingClaim) }}
+  {{- end }}
+{{- if and $storeOnDisk (not $gw.filesystem.persistence.existingClaim) }}
 ---
 apiVersion: v1
 kind: PersistentVolumeClaim

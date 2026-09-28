@@ -19,19 +19,25 @@ spring:
 togetherflow:
   attachments:
     # db | filesystem | sharepoint
-    provider: filesystem
+    # sharepoint + mode local is a document library on this process, so a task upload
+    # can be opened at http://localhost:8091/sharepoint without an Azure tenant.
+    # mode graph sends the same uploads to Microsoft 365 (tenant, client, secret, drive).
+    provider: sharepoint
     max-file-size-bytes: 26214400
     filesystem:
       base-path: /var/lib/togetherflow/attachments
       # Must be reachable by the browser: it becomes the attachment's stored URL.
       public-base-url: http://localhost:8091
     sharepoint:
+      mode: local
+      public-base-url: http://localhost:8091
+      library-path: data/sharepoint
+      folder-path: TogetherFlow
       tenant-id: ""
       client-id: ""
       client-secret: ""
       site-id: ""
       drive-id: ""
-      folder-path: TogetherFlow
 
 logging:
   level:

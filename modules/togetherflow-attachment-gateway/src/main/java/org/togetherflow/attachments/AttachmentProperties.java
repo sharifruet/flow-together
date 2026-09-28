@@ -110,8 +110,23 @@ public class AttachmentProperties {
         /** Drive (document library) id within that site. */
         private String driveId = "";
 
+        /**
+         * {@code local} writes a document library this gateway serves, so an upload can be
+         * checked without an Azure tenant. {@code graph} uploads to Microsoft 365.
+         */
+        private Mode mode = Mode.GRAPH;
+
         /** Folder path within the drive; empty means the drive root. */
         private String folderPath = "";
+
+        /**
+         * Browser-reachable base URL of this gateway. Local mode stores it on each file
+         * as the SharePoint item link.
+         */
+        private String publicBaseUrl = "";
+
+        /** Directory the local document library is written under. */
+        private Path libraryPath;
 
         /** Graph endpoint, overridable for sovereign clouds. */
         private String graphBaseUrl = "https://graph.microsoft.com/v1.0";
@@ -158,12 +173,36 @@ public class AttachmentProperties {
             this.driveId = driveId;
         }
 
+        public Mode getMode() {
+            return mode;
+        }
+
+        public void setMode(Mode mode) {
+            this.mode = mode;
+        }
+
         public String getFolderPath() {
             return folderPath;
         }
 
         public void setFolderPath(String folderPath) {
             this.folderPath = folderPath;
+        }
+
+        public String getPublicBaseUrl() {
+            return publicBaseUrl;
+        }
+
+        public void setPublicBaseUrl(String publicBaseUrl) {
+            this.publicBaseUrl = publicBaseUrl;
+        }
+
+        public Path getLibraryPath() {
+            return libraryPath;
+        }
+
+        public void setLibraryPath(Path libraryPath) {
+            this.libraryPath = libraryPath;
         }
 
         public String getGraphBaseUrl() {
@@ -180,6 +219,11 @@ public class AttachmentProperties {
 
         public void setLoginBaseUrl(String loginBaseUrl) {
             this.loginBaseUrl = loginBaseUrl;
+        }
+
+        public enum Mode {
+            LOCAL,
+            GRAPH
         }
     }
 }
