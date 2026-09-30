@@ -15,6 +15,7 @@ package org.flowable.rest.conf.sharepoint;
 import java.io.ByteArrayOutputStream;
 import java.io.IOException;
 import java.net.URI;
+import java.net.URLEncoder;
 import java.net.http.HttpClient;
 import java.net.http.HttpRequest;
 import java.net.http.HttpResponse;
@@ -30,6 +31,7 @@ import org.flowable.common.engine.api.delegate.event.FlowableEntityEvent;
 import org.flowable.common.engine.api.delegate.event.FlowableEvent;
 import org.flowable.common.engine.api.delegate.event.FlowableEventListener;
 import org.flowable.common.engine.api.delegate.event.FlowableEventType;
+import org.flowable.common.engine.impl.identity.Authentication;
 import org.flowable.common.engine.impl.persistence.entity.ByteArrayEntity;
 import org.flowable.engine.history.HistoricProcessInstance;
 import org.flowable.engine.impl.cfg.ProcessEngineConfigurationImpl;
@@ -39,6 +41,7 @@ import org.flowable.engine.impl.util.CommandContextUtil;
 import org.flowable.engine.repository.ProcessDefinition;
 import org.flowable.task.api.Task;
 import org.flowable.task.api.history.HistoricTaskInstance;
+import org.flowable.variable.api.persistence.entity.VariableInstance;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -68,8 +71,17 @@ public class SharePointAttachmentPublisher implements FlowableEventListener {
 
     @Override
     public void onEvent(FlowableEvent event) {
+        if (!(event instanceof FlowableEntityEvent entityEvent)) {
+            return;
+        }
+        if (entityEvent.getEntity() instanceof VariableInstance variable && "caseNumber".equals(variable.getName())) {
+            if (event.getType() == FlowableEngineEventType.ENTITY_CREATED
+                    || event.getType() == FlowableEngineEventType.ENTITY_UPDATED) {
+                stampCaseNumber(variable);
+            }
+            return;
+        }
         if (event.getType() != FlowableEngineEventType.ENTITY_CREATED
-                || !(event instanceof FlowableEntityEvent entityEvent)
                 || !(entityEvent.getEntity() instanceof AttachmentEntity attachment)) {
             return;
         }
@@ -135,6 +147,8 @@ public class SharePointAttachmentPublisher implements FlowableEventListener {
         writeField(body, boundary, "processInstanceId", attachment.getProcessInstanceId());
         writeField(body, boundary, "taskName", taskName(attachment));
         writeField(body, boundary, "processName", processName(attachment));
+        writeField(body, boundary, "caseNumber", caseNumber(attachment));
+        writeField(body, boundary, "userName", userName(attachment));
         String filename = safeFilename(attachment.getName());
         String contentType = attachment.getType() != null && attachment.getType().contains("/")
                 && !attachment.getType().contains("\r") && !attachment.getType().contains("\n")
@@ -207,6 +221,121 @@ public class SharePointAttachmentPublisher implements FlowableEventListener {
         return "";
     }
 
+    /**
+     * The case number, such as {@code RES-010203-07102026}. It is the process variable
+     * when that has been assigned, and otherwise the process business key.
+     */
+    private static String caseNumber(AttachmentEntity attachment) {
+        if (isBlank(attachment.getProcessInstanceId())) {
+            return "";
+        }
+        try {
+            ProcessEngineConfigurationImpl engine = CommandContextUtil.getProcessEngineConfiguration();
+            if (engine == null) {
+                return "";
+            }
+            ExecutionEntity execution = engine.getExecutionEntityManager().findById(attachment.getProcessInstanceId());
+            if (execution != null) {
+                Object value = execution.getVariable("caseNumber");
+                if (value != null && !value.toString().isBlank()) {
+                    return value.toString().trim();
+                }
+                if (!isBlank(execution.getBusinessKey())) {
+                    return execution.getBusinessKey();
+                }
+            }
+            HistoricProcessInstance historic = engine.getHistoricProcessInstanceEntityManager()
+                    .findById(attachment.getProcessInstanceId());
+            if (historic != null && !isBlank(historic.getBusinessKey())) {
+                return historic.getBusinessKey();
+            }
+        } catch (RuntimeException ex) {
+            LOGGER.debug("Case number was not available for {}", attachment.getProcessInstanceId(), ex);
+        }
+        return "";
+    }
+
+    /**
+     * The sign-in id of the task's user. A file generated for a task names that task's
+     * assignee. A file uploaded onto a task that nobody is assigned to names the person
+     * who uploaded it.
+     */
+    private static String userName(AttachmentEntity attachment) {
+        String assignee = taskAssignee(attachment);
+        if (!isBlank(assignee)) {
+            return assignee;
+        }
+        String actor = Authentication.getAuthenticatedUserId();
+        return actor == null ? "" : actor;
+    }
+
+    private static String taskAssignee(AttachmentEntity attachment) {
+        if (isBlank(attachment.getTaskId())) {
+            return "";
+        }
+        try {
+            ProcessEngineConfigurationImpl engine = CommandContextUtil.getProcessEngineConfiguration();
+            if (engine == null) {
+                return "";
+            }
+            Task task = engine.getTaskServiceConfiguration().getTaskEntityManager().findById(attachment.getTaskId());
+            if (task != null && !isBlank(task.getAssignee())) {
+                return task.getAssignee();
+            }
+            HistoricTaskInstance historic = engine.getTaskServiceConfiguration().getHistoricTaskInstanceEntityManager()
+                    .findById(attachment.getTaskId());
+            if (historic != null && !isBlank(historic.getAssignee())) {
+                return historic.getAssignee();
+            }
+        } catch (RuntimeException ex) {
+            LOGGER.debug("Task assignee was not available for {}", attachment.getTaskId(), ex);
+        }
+        return "";
+    }
+
+    /**
+     * Writes the case number onto files already in the library. The employee often
+     * uploads before the process assigns {@code RES-…}, so the number arrives later.
+     * A failure here is logged and does not roll back the process: the file is already stored.
+     */
+    private void stampCaseNumber(VariableInstance variable) {
+        String processInstanceId = variable.getProcessInstanceId();
+        if (isBlank(processInstanceId)) {
+            return;
+        }
+        Object raw;
+        try {
+            raw = variable.getValue();
+        } catch (RuntimeException ex) {
+            LOGGER.debug("Case number value was not readable for {}", processInstanceId, ex);
+            return;
+        }
+        String caseNumber = raw == null ? "" : raw.toString().trim();
+        if (caseNumber.isEmpty()) {
+            return;
+        }
+        try {
+            String query = "caseNumber=" + URLEncoder.encode(caseNumber, StandardCharsets.UTF_8);
+            HttpRequest request = HttpRequest.newBuilder()
+                    .uri(URI.create(gatewayUrl + "/sharepoint/processes/" + processInstanceId + "/case?" + query))
+                    .timeout(Duration.ofSeconds(15))
+                    .POST(HttpRequest.BodyPublishers.noBody())
+                    .build();
+            HttpResponse<String> response = http.send(request,
+                    HttpResponse.BodyHandlers.ofString(StandardCharsets.UTF_8));
+            if (response.statusCode() / 100 != 2) {
+                LOGGER.warn("SharePoint did not record case number {} for process {} ({})", caseNumber,
+                        processInstanceId, response.statusCode());
+            }
+        } catch (IOException | InterruptedException | RuntimeException cause) {
+            if (cause instanceof InterruptedException) {
+                Thread.currentThread().interrupt();
+            }
+            LOGGER.warn("SharePoint did not record case number {} for process {}", caseNumber, processInstanceId,
+                    cause);
+        }
+    }
+
     /** The process definition name, such as "Resignation Process New", never the instance id. */
     private static String processName(AttachmentEntity attachment) {
         if (isBlank(attachment.getProcessInstanceId())) {
@@ -270,6 +399,6 @@ public class SharePointAttachmentPublisher implements FlowableEventListener {
 
     @Override
     public Collection<? extends FlowableEventType> getTypes() {
-        return List.of(FlowableEngineEventType.ENTITY_CREATED);
+        return List.of(FlowableEngineEventType.ENTITY_CREATED, FlowableEngineEventType.ENTITY_UPDATED);
     }
 }

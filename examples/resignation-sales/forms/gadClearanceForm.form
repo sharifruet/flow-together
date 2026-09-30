@@ -66,6 +66,15 @@
       "value": null
     },
     {
+      "id": "gadClearanceFile",
+      "name": "Motorcycle clearance",
+      "params": {
+        "accept": ".pdf,.doc,.docx,image/*",
+        "maxFileSize": 10485760
+      },
+      "type": "upload"
+    },
+    {
       "fieldType": "FormField",
       "id": "gadCleared",
       "layout": null,
@@ -93,5 +102,5 @@
   "key": "gadClearanceForm",
   "name": "GAD: Motorcycle clearance",
   "outcomes": [],
-  "version": 2
+  "version": 3
 }

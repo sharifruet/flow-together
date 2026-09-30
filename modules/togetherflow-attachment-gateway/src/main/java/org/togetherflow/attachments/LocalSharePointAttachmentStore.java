@@ -58,7 +58,7 @@ public class LocalSharePointAttachmentStore implements AttachmentStore {
     @Override
     public StoredAttachment store(String taskId, String processInstanceId, String fileName, String contentType,
             InputStream content, long sizeBytes) throws IOException {
-        return store(taskId, processInstanceId, null, null, fileName, contentType, content, sizeBytes);
+        return store(taskId, processInstanceId, null, null, null, null, fileName, contentType, content, sizeBytes);
     }
 
     /**
@@ -66,10 +66,13 @@ public class LocalSharePointAttachmentStore implements AttachmentStore {
      *
      * <p>The library shows those names. The ids stay in the metadata so a file can still
      * be traced, but they are not what a person reads in the Task and Process columns.
+     * {@code caseNumber} is the business case, such as {@code RES-010203-07102026}.
+     * {@code userName} is the sign-in id of the person who uploaded the file, or of the
+     * user whose task produced it.
      */
     public synchronized StoredAttachment store(String taskId, String processInstanceId, String taskName,
-            String processName, String fileName, String contentType, InputStream content, long sizeBytes)
-            throws IOException {
+            String processName, String caseNumber, String userName, String fileName, String contentType,
+            InputStream content, long sizeBytes) throws IOException {
 
         String id = UUID.randomUUID().toString().replace("-", "");
         Path target = binary(id);
@@ -78,21 +81,48 @@ public class LocalSharePointAttachmentStore implements AttachmentStore {
 
         String url = publicBaseUrl + "/sharepoint/items/" + id;
         SharePointDocument document = new SharePointDocument(id, text(taskId), text(processInstanceId),
-                text(taskName), text(processName), text(fileName), text(contentType), Files.size(target),
-                Instant.now().toString(), url,
+                text(taskName), text(processName), text(caseNumber), text(userName), text(fileName), text(contentType),
+                Files.size(target), Instant.now().toString(), url,
                 location(processName, taskName, processInstanceId, taskId, fileName));
         write(document);
         return new StoredAttachment(url, fileName, contentType, document.sizeBytes());
     }
 
-    /** Fills in names for a file that was stored before they were known. */
-    public synchronized SharePointDocument relabel(String id, String taskName, String processName) throws IOException {
+    /** Fills in names for a file that was stored before they were known. A null leaves that field as it is. */
+    public synchronized SharePointDocument relabel(String id, String taskName, String processName, String caseNumber,
+            String userName) throws IOException {
         SharePointDocument current = require(id);
+        String nextTask = taskName == null ? current.taskName() : taskName;
+        String nextProcess = processName == null ? current.processName() : processName;
+        String nextCase = caseNumber == null ? current.caseNumber() : caseNumber;
+        String nextUser = userName == null ? current.userName() : userName;
         SharePointDocument updated = new SharePointDocument(current.id(), current.taskId(), current.processInstanceId(),
-                text(taskName), text(processName), current.fileName(), current.contentType(), current.sizeBytes(),
-                current.storedAt(), current.webUrl(),
-                location(processName, taskName, current.processInstanceId(), current.taskId(), current.fileName()));
+                text(nextTask), text(nextProcess), text(nextCase), text(nextUser), current.fileName(),
+                current.contentType(), current.sizeBytes(), current.storedAt(), current.webUrl(),
+                location(nextProcess, nextTask, current.processInstanceId(), current.taskId(), current.fileName()));
         write(updated);
+        return updated;
+    }
+
+    /**
+     * Writes the case number onto every file of a process. The number is often assigned
+     * after the first upload, when the employee submits.
+     */
+    public synchronized int applyCaseNumber(String processInstanceId, String caseNumber) throws IOException {
+        if (processInstanceId == null || processInstanceId.isBlank() || caseNumber == null || caseNumber.isBlank()) {
+            return 0;
+        }
+        int updated = 0;
+        for (SharePointDocument document : list()) {
+            if (!processInstanceId.equals(document.processInstanceId())) {
+                continue;
+            }
+            if (caseNumber.equals(document.caseNumber())) {
+                continue;
+            }
+            relabel(document.id(), null, null, caseNumber, null);
+            updated++;
+        }
         return updated;
     }
 
@@ -130,6 +160,8 @@ public class LocalSharePointAttachmentStore implements AttachmentStore {
         properties.setProperty("processInstanceId", document.processInstanceId());
         properties.setProperty("taskName", document.taskName());
         properties.setProperty("processName", document.processName());
+        properties.setProperty("caseNumber", document.caseNumber());
+        properties.setProperty("userName", document.userName());
         properties.setProperty("fileName", document.fileName());
         properties.setProperty("contentType", document.contentType());
         properties.setProperty("sizeBytes", Long.toString(document.sizeBytes()));
@@ -155,6 +187,8 @@ public class LocalSharePointAttachmentStore implements AttachmentStore {
                 properties.getProperty("processInstanceId", ""),
                 properties.getProperty("taskName", ""),
                 properties.getProperty("processName", ""),
+                properties.getProperty("caseNumber", ""),
+                properties.getProperty("userName", ""),
                 properties.getProperty("fileName", ""),
                 properties.getProperty("contentType", ""),
                 Long.parseLong(properties.getProperty("sizeBytes", "0")),

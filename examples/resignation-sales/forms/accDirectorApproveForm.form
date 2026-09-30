@@ -115,6 +115,18 @@
       "value": null
     },
     {
+      "id": "hrmAcceptanceFile",
+      "name": "Acceptance document",
+      "readOnly": true,
+      "type": "upload"
+    },
+    {
+      "id": "settlementAmount",
+      "name": "Settlement amount",
+      "readOnly": true,
+      "type": "text"
+    },
+    {
       "fieldType": "OptionFormField",
       "hasEmptyValue": null,
       "id": "accDirectorApproved",
@@ -164,5 +176,5 @@
   "name": "ACC Director: Approve final settlement",
   "outcomes": [],
   "url": "http://localhost:8080/flowable-rest/form-api/form/model",
-  "version": 2
+  "version": 3
 }

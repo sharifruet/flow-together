@@ -66,6 +66,30 @@
       "value": null
     },
     {
+      "id": "simuIbClearanceFile",
+      "name": "SIMU / IB sales clearance",
+      "readOnly": true,
+      "type": "upload"
+    },
+    {
+      "id": "sbmClearanceFile",
+      "name": "SBM clearance",
+      "readOnly": true,
+      "type": "upload"
+    },
+    {
+      "id": "fcaClearanceFile",
+      "name": "FCA clearance",
+      "readOnly": true,
+      "type": "upload"
+    },
+    {
+      "id": "gadClearanceFile",
+      "name": "Motorcycle clearance",
+      "readOnly": true,
+      "type": "upload"
+    },
+    {
       "fieldType": "FormField",
       "id": "docsComplete",
       "layout": null,
@@ -93,5 +117,5 @@
   "key": "hrmReceiveDocsForm",
   "name": "HRM: Receive clearance pack",
   "outcomes": [],
-  "version": 2
+  "version": 3
 }

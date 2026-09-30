@@ -66,6 +66,15 @@
       "value": null
     },
     {
+      "id": "fcaClearanceFile",
+      "name": "FCA clearance",
+      "params": {
+        "accept": ".pdf,.doc,.docx,image/*",
+        "maxFileSize": 10485760
+      },
+      "type": "upload"
+    },
+    {
       "fieldType": "FormField",
       "id": "fcaCleared",
       "layout": null,
@@ -93,5 +102,5 @@
   "key": "fcaClearanceForm",
   "name": "FCA: Generate FCA clearance",
   "outcomes": [],
-  "version": 2
+  "version": 3
 }

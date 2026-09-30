@@ -47,6 +47,8 @@ public class AttachmentController {
             @RequestParam(value = "processInstanceId", required = false) String processInstanceId,
             @RequestParam(value = "taskName", required = false) String taskName,
             @RequestParam(value = "processName", required = false) String processName,
+            @RequestParam(value = "caseNumber", required = false) String caseNumber,
+            @RequestParam(value = "userName", required = false) String userName,
             @RequestParam("file") MultipartFile file) {
 
         if (isBlank(taskId) && isBlank(processInstanceId)) {
@@ -65,8 +67,8 @@ public class AttachmentController {
 
         try (InputStream content = file.getInputStream()) {
             StoredAttachment stored = store instanceof LocalSharePointAttachmentStore local
-                    ? local.store(taskId, processInstanceId, taskName, processName, file.getOriginalFilename(),
-                            file.getContentType(), content, file.getSize())
+                    ? local.store(taskId, processInstanceId, taskName, processName, caseNumber, userName,
+                            file.getOriginalFilename(), file.getContentType(), content, file.getSize())
                     : store.store(taskId, processInstanceId, file.getOriginalFilename(),
                             file.getContentType(), content, file.getSize());
             LOGGER.info("Stored attachment for task {} process {} via {} ({} bytes)", taskId,

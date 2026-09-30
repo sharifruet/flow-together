@@ -66,6 +66,12 @@
       "value": null
     },
     {
+      "id": "hrmAcceptanceFile",
+      "name": "Acceptance document",
+      "readOnly": true,
+      "type": "upload"
+    },
+    {
       "fieldType": "FormField",
       "id": "settlementAmount",
       "layout": null,
@@ -93,5 +99,5 @@
   "key": "accOfficerSettlementForm",
   "name": "ACC Officer: Prepare final settlement",
   "outcomes": [],
-  "version": 2
+  "version": 3
 }

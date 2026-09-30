@@ -27,6 +27,8 @@ import org.flowable.common.engine.api.delegate.event.FlowableEvent;
 import org.flowable.common.engine.api.delegate.event.FlowableEventType;
 import org.flowable.common.engine.impl.persistence.entity.ByteArrayEntityImpl;
 import org.flowable.engine.impl.persistence.entity.AttachmentEntityImpl;
+import org.flowable.variable.service.impl.persistence.entity.VariableInstanceEntityImpl;
+import org.flowable.variable.service.impl.types.StringType;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.Test;
 
@@ -58,6 +60,8 @@ class SharePointAttachmentPublisherTest {
             assertThat(body).contains("task-9");
             assertThat(body).contains("name=\"processInstanceId\"");
             assertThat(body).contains("proc-4");
+            assertThat(body).contains("name=\"caseNumber\"");
+            assertThat(body).contains("name=\"userName\"");
             assertThat(body).contains("hello-from-task");
             byte[] json = "{\"url\":\"http://localhost:8091/sharepoint/items/abc\",\"fileName\":\"note.txt\"}"
                     .getBytes(StandardCharsets.UTF_8);
@@ -106,6 +110,32 @@ class SharePointAttachmentPublisherTest {
     }
 
     @Test
+    void stampsALaterCaseNumberOntoTheProcessFiles() throws Exception {
+        AtomicInteger calls = new AtomicInteger();
+        server = HttpServer.create(new InetSocketAddress("127.0.0.1", 0), 0);
+        server.createContext("/sharepoint/processes/proc-4/case", exchange -> {
+            calls.incrementAndGet();
+            String query = exchange.getRequestURI().getRawQuery();
+            assertThat(query).contains("caseNumber=RES-010203-07102026");
+            byte[] json = "{\"updated\":1}".getBytes(StandardCharsets.UTF_8);
+            exchange.sendResponseHeaders(200, json.length);
+            try (OutputStream out = exchange.getResponseBody()) {
+                out.write(json);
+            }
+        });
+        server.start();
+
+        VariableInstanceEntityImpl variable = new VariableInstanceEntityImpl();
+        variable.setName("caseNumber");
+        variable.setProcessInstanceId("proc-4");
+        variable.setType(new StringType(4000));
+        variable.setValue("RES-010203-07102026");
+        publisher(true).onEvent(updated(variable));
+
+        assertThat(calls).hasValue(1);
+    }
+
+    @Test
     void readsTheUrlFieldTheGatewayReturns() {
         assertThat(SharePointAttachmentPublisher.urlFrom(
                 "{\"url\":\"http://localhost:8091/sharepoint/items/abc\",\"fileName\":\"n\"}"))
@@ -130,15 +160,23 @@ class SharePointAttachmentPublisherTest {
     }
 
     private static FlowableEvent created(AttachmentEntityImpl attachment) {
+        return entityEvent(FlowableEngineEventType.ENTITY_CREATED, attachment);
+    }
+
+    private static FlowableEvent updated(VariableInstanceEntityImpl variable) {
+        return entityEvent(FlowableEngineEventType.ENTITY_UPDATED, variable);
+    }
+
+    private static FlowableEvent entityEvent(FlowableEventType type, Object entity) {
         return new FlowableEntityEvent() {
             @Override
             public FlowableEventType getType() {
-                return FlowableEngineEventType.ENTITY_CREATED;
+                return type;
             }
 
             @Override
             public Object getEntity() {
-                return attachment;
+                return entity;
             }
         };
     }

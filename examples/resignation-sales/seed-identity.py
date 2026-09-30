@@ -20,6 +20,20 @@ def get(endpoint):
     return json.loads(urllib.request.urlopen(request).read())
 
 
+def put(endpoint, payload):
+    request = urllib.request.Request(
+        f"{base}{endpoint}",
+        data=json.dumps(payload).encode(),
+        headers={"Content-Type": "application/json", "Authorization": f"Basic {auth}"},
+        method="PUT",
+    )
+    try:
+        urllib.request.urlopen(request).read()
+    except urllib.error.HTTPError as error:
+        body = error.read().decode(errors="replace")[:200]
+        sys.exit(f"  {error.code} from {endpoint}: {body}")
+
+
 def post(endpoint, payload):
     request = urllib.request.Request(
         f"{base}{endpoint}",
@@ -31,8 +45,9 @@ def post(endpoint, payload):
         urllib.request.urlopen(request).read()
         return "created"
     except urllib.error.HTTPError as error:
-        # 409 is "already there". This never overwrites, so a real `hrm` group that happens
-        # to share an id is not quietly redefined. Anything else is a real failure.
+        # 409 is "already there". A group that already exists is left as it is.
+        # A user that already exists is updated below: email and password must match
+        # the sample file, or a second deploy would leave the old login in place.
         if error.code == 409:
             return "exists"
         if error.code == 401:
@@ -42,7 +57,7 @@ def post(endpoint, payload):
 
 
 data = json.load(open(path))
-created = exists = 0
+created = exists = updated = 0
 
 for group in data["groups"]:
     state = post("/idm-api/groups", {"id": group["id"], "name": group["name"], "type": group["type"]})
@@ -59,6 +74,12 @@ for member in data["users"]:
     })
     created += state == "created"
     exists += state == "exists"
+    if state == "exists":
+        put(f"/idm-api/users/{member['id']}", {
+            "email": member["email"],
+            "password": sample_password,
+        })
+        updated += 1
     for group in member["groups"]:
         post(f"/idm-api/groups/{group}/members", {"userId": member["id"]})
 
@@ -79,5 +100,5 @@ for member in data["users"]:
     if post(f"/idm-api/privileges/{privilege_id}/users", {"userId": member["id"]}) == "created":
         granted += 1
 
-print(f"  {created} created, {exists} already present")
+print(f"  {created} created, {exists} already present, {updated} password and email refreshed")
 print(f"  access-rest-api granted to {granted} user(s)")

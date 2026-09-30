@@ -115,6 +115,12 @@
       "value": null
     },
     {
+      "id": "hrmDraftAcceptanceFile",
+      "name": "Draft acceptance letter",
+      "readOnly": true,
+      "type": "upload"
+    },
+    {
       "fieldType": "OptionFormField",
       "hasEmptyValue": null,
       "id": "acceptanceApproved",
@@ -164,5 +170,5 @@
   "name": "Head of HR: Approve acceptance letter",
   "outcomes": [],
   "url": "http://localhost:8080/flowable-rest/form-api/form/model",
-  "version": 2
+  "version": 3
 }

@@ -3,11 +3,14 @@ package org.togetherflow.attachments;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.multipart;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.content;
+import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.header;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
 import static org.hamcrest.Matchers.containsString;
+import static org.hamcrest.Matchers.hasItem;
 import static org.hamcrest.Matchers.not;
 import static org.hamcrest.Matchers.startsWith;
 
@@ -59,7 +62,9 @@ class SharePointLibraryControllerTest {
                         .param("taskId", taskId)
                         .param("processInstanceId", processId)
                         .param("taskName", "Employee (MPE)")
-                        .param("processName", "Resignation Process New"))
+                        .param("processName", "Resignation Process New")
+                        .param("caseNumber", "RES-010203-07102026")
+                        .param("userName", "rakib.hasan"))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.fileName").value("invoice.pdf"))
                 .andExpect(jsonPath("$.url").value(startsWith("http://localhost:8091/sharepoint/items/")))
@@ -70,28 +75,34 @@ class SharePointLibraryControllerTest {
 
         mvc.perform(get("/sharepoint/items"))
                 .andExpect(status().isOk())
-                .andExpect(jsonPath("$[0].fileName").value("invoice.pdf"))
-                .andExpect(jsonPath("$[0].taskId").value(taskId))
-                .andExpect(jsonPath("$[0].processInstanceId").value(processId))
-                .andExpect(jsonPath("$[0].taskName").value("Employee (MPE)"))
-                .andExpect(jsonPath("$[0].processName").value("Resignation Process New"))
-                .andExpect(jsonPath("$[0].location").value(
-                        "TogetherFlow/Resignation Process New/Employee (MPE)/invoice.pdf"));
+                .andExpect(jsonPath("$[?(@.fileName == 'invoice.pdf')].taskId", hasItem(taskId)))
+                .andExpect(jsonPath("$[?(@.fileName == 'invoice.pdf')].processInstanceId", hasItem(processId)))
+                .andExpect(jsonPath("$[?(@.fileName == 'invoice.pdf')].taskName", hasItem("Employee (MPE)")))
+                .andExpect(jsonPath("$[?(@.fileName == 'invoice.pdf')].processName", hasItem("Resignation Process New")))
+                .andExpect(jsonPath("$[?(@.fileName == 'invoice.pdf')].caseNumber", hasItem("RES-010203-07102026")))
+                .andExpect(jsonPath("$[?(@.fileName == 'invoice.pdf')].userName", hasItem("rakib.hasan")))
+                .andExpect(jsonPath("$[?(@.fileName == 'invoice.pdf')].location",
+                        hasItem("TogetherFlow/Resignation Process New/Employee (MPE)/invoice.pdf")));
 
         mvc.perform(get("/sharepoint"))
                 .andExpect(status().isOk())
                 .andExpect(content().string(containsString("invoice.pdf")))
                 .andExpect(content().string(containsString("Employee (MPE)")))
                 .andExpect(content().string(containsString("Resignation Process New")))
+                .andExpect(content().string(containsString("RES-010203-07102026")))
+                .andExpect(content().string(containsString("rakib.hasan")))
                 .andExpect(content().string(containsString(
-                        "<th>Name</th><th>Task</th><th>Process</th><th>Location</th><th>Size</th>")))
+                        "<th>Name</th><th>Case Number</th><th>User</th><th>Task</th><th>Process</th><th>Location</th><th>Size</th>")))
                 .andExpect(content().string(not(containsString(taskId))))
                 .andExpect(content().string(not(containsString(processId))));
 
         mvc.perform(get("/sharepoint/items/{id}", id))
                 .andExpect(status().isOk())
+                .andExpect(content().string(not(containsString("<img class=\"preview\""))))
                 .andExpect(content().string(containsString("Employee (MPE)")))
                 .andExpect(content().string(containsString("Resignation Process New")))
+                .andExpect(content().string(containsString("RES-010203-07102026")))
+                .andExpect(content().string(containsString("rakib.hasan")))
                 .andExpect(content().string(not(containsString(taskId))))
                 .andExpect(content().string(not(containsString(processId))));
 
@@ -104,6 +115,69 @@ class SharePointLibraryControllerTest {
                 .andExpect(jsonPath("$.provider").value("sharepoint"))
                 .andExpect(jsonPath("$.mode").value("local"))
                 .andExpect(jsonPath("$.library").value("http://localhost:8091/sharepoint"));
+    }
+
+    @Test
+    void anImageCanBeViewedInsteadOfOnlyDownloaded() throws Exception {
+        byte[] pixels = new byte[] { (byte) 0x89, 0x50, 0x4e, 0x47 };
+        MockMultipartFile file = new MockMultipartFile("file", "clearance.png", "image/png", pixels);
+        MvcResult stored = mvc.perform(multipart("/attachments").file(file).param("taskId", "gad-task"))
+                .andExpect(status().isOk())
+                .andReturn();
+        String url = com.jayway.jsonpath.JsonPath.read(stored.getResponse().getContentAsString(), "$.url");
+        String id = url.substring(url.lastIndexOf('/') + 1);
+
+        mvc.perform(get("/sharepoint"))
+                .andExpect(status().isOk())
+                .andExpect(content().string(not(containsString(">View</a>"))));
+
+        mvc.perform(get("/sharepoint/items/{id}", id))
+                .andExpect(status().isOk())
+                .andExpect(content().string(containsString("<img class=\"preview\"")))
+                .andExpect(content().string(containsString(">Download</a>")))
+                .andExpect(content().string(not(containsString(">View</a>"))));
+
+        mvc.perform(get("/sharepoint/items/{id}/content", id).param("inline", "true"))
+                .andExpect(status().isOk())
+                .andExpect(header().string("Content-Type", containsString("image/png")))
+                .andExpect(header().string("Content-Disposition", containsString("inline")))
+                .andExpect(content().bytes(pixels));
+
+        MockMultipartFile photo = new MockMultipartFile("file", "bike.jpg", "application/octet-stream",
+                new byte[] { (byte) 0xff, (byte) 0xd8 });
+        MvcResult photoStored = mvc.perform(multipart("/attachments").file(photo).param("taskId", "gad-task"))
+                .andExpect(status().isOk())
+                .andReturn();
+        String photoUrl = com.jayway.jsonpath.JsonPath.read(photoStored.getResponse().getContentAsString(), "$.url");
+        String photoId = photoUrl.substring(photoUrl.lastIndexOf('/') + 1);
+        mvc.perform(get("/sharepoint/items/{id}", photoId))
+                .andExpect(status().isOk())
+                .andExpect(content().string(containsString("<img class=\"preview\"")))
+                .andExpect(content().string(not(containsString(">View</a>"))));
+    }
+
+    @Test
+    void stampsTheCaseNumberOntoFilesUploadedBeforeItExisted() throws Exception {
+        MockMultipartFile file = new MockMultipartFile("file", "letter.pdf", "application/pdf",
+                "pdf".getBytes(StandardCharsets.UTF_8));
+        String processId = "aa32709b-bb31-11f1-9dc5-c8d9d2d2af8a";
+        mvc.perform(multipart("/attachments").file(file)
+                        .param("taskId", "task-early")
+                        .param("processInstanceId", processId)
+                        .param("taskName", "Employee (MPE)")
+                        .param("processName", "Resignation Process New")
+                        .param("userName", "rakib.hasan"))
+                .andExpect(status().isOk());
+
+        mvc.perform(post("/sharepoint/processes/{processInstanceId}/case", processId)
+                        .param("caseNumber", "RES-010203-07102026"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.updated").value(1));
+
+        mvc.perform(get("/sharepoint"))
+                .andExpect(status().isOk())
+                .andExpect(content().string(containsString("RES-010203-07102026")))
+                .andExpect(content().string(containsString("rakib.hasan")));
     }
 
     @Test

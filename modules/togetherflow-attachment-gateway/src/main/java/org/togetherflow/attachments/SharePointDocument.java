@@ -10,6 +10,8 @@ public record SharePointDocument(
         String processInstanceId,
         String taskName,
         String processName,
+        String caseNumber,
+        String userName,
         String fileName,
         String contentType,
         long sizeBytes,

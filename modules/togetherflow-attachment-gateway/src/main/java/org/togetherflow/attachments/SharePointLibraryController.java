@@ -6,7 +6,9 @@ import java.time.Instant;
 import java.time.ZoneId;
 import java.time.format.DateTimeFormatter;
 import java.time.format.DateTimeParseException;
+import java.util.LinkedHashMap;
 import java.util.List;
+import java.util.Map;
 
 import org.springframework.core.io.InputStreamResource;
 import org.springframework.http.HttpHeaders;
@@ -77,13 +79,31 @@ public class SharePointLibraryController {
     @PostMapping("/sharepoint/items/{id}/label")
     public SharePointDocument label(@PathVariable String id,
             @RequestParam(value = "taskName", required = false) String taskName,
-            @RequestParam(value = "processName", required = false) String processName) {
+            @RequestParam(value = "processName", required = false) String processName,
+            @RequestParam(value = "caseNumber", required = false) String caseNumber,
+            @RequestParam(value = "userName", required = false) String userName) {
         try {
-            return localStore().relabel(id, taskName, processName);
+            return localStore().relabel(id, taskName, processName, caseNumber, userName);
         } catch (IllegalArgumentException invalid) {
             throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Not a valid attachment id.");
         } catch (IOException missing) {
             throw new ResponseStatusException(HttpStatus.NOT_FOUND, "No such SharePoint item.");
+        }
+    }
+
+    /**
+     * Stamps a case number onto every file of a process. The number is assigned when the
+     * employee submits, which is after the first file may already be in the library.
+     */
+    @PostMapping("/sharepoint/processes/{processInstanceId}/case")
+    public Map<String, Integer> applyCase(@PathVariable String processInstanceId,
+            @RequestParam("caseNumber") String caseNumber) {
+        try {
+            LinkedHashMap<String, Integer> body = new LinkedHashMap<>();
+            body.put("updated", localStore().applyCaseNumber(processInstanceId, caseNumber));
+            return body;
+        } catch (IOException cause) {
+            throw new ResponseStatusException(HttpStatus.BAD_GATEWAY, "The SharePoint library could not be updated.");
         }
     }
 
@@ -100,8 +120,11 @@ public class SharePointLibraryController {
                       <p class="muted">Modified {{MODIFIED}}</p>
                     </div>
                   </div>
+                  {{PREVIEW}}
                   <dl>
                     <dt>Name</dt><dd>{{NAME}}</dd>
+                    <dt>Case number</dt><dd>{{CASE}}</dd>
+                    <dt>User</dt><dd>{{USER}}</dd>
                     <dt>Task</dt><dd>{{TASK}}</dd>
                     <dt>Process</dt><dd>{{PROCESS}}</dd>
                     <dt>Location</dt><dd>{{LOCATION}}</dd>
@@ -109,9 +132,12 @@ public class SharePointLibraryController {
                   </dl>
                   <a class="button" href="/sharepoint/items/{{ID}}/content">Download</a>
                 </div>
-                """.replace("{{ICON}}", icon(document.fileName()))
+                """.replace("{{PREVIEW}}", preview(document))
+                .replace("{{ICON}}", icon(document.fileName()))
                 .replace("{{NAME}}", esc(document.fileName()))
                 .replace("{{MODIFIED}}", esc(modified(document.storedAt())))
+                .replace("{{CASE}}", label(document.caseNumber()))
+                .replace("{{USER}}", label(document.userName()))
                 .replace("{{TASK}}", label(document.taskName()))
                 .replace("{{PROCESS}}", label(document.processName()))
                 .replace("{{LOCATION}}", locationCell(document.location()))
@@ -121,7 +147,8 @@ public class SharePointLibraryController {
     }
 
     @GetMapping("/sharepoint/items/{id}/content")
-    public ResponseEntity<InputStreamResource> content(@PathVariable String id) {
+    public ResponseEntity<InputStreamResource> content(@PathVariable String id,
+            @RequestParam(value = "inline", defaultValue = "false") boolean inline) {
         SharePointDocument document = document(id);
         try {
             InputStream content = store.read(id);
@@ -129,10 +156,14 @@ public class SharePointLibraryController {
             if (filename.isBlank()) {
                 filename = "download";
             }
+            boolean show = inline && isImage(document);
+            MediaType type = show ? imageType(document) : MediaType.APPLICATION_OCTET_STREAM;
+            String disposition = show ? "inline" : "attachment";
             return ResponseEntity.ok()
-                    .header(HttpHeaders.CONTENT_DISPOSITION, "attachment; filename=\"" + filename + "\"")
+                    .header(HttpHeaders.CONTENT_DISPOSITION, disposition + "; filename=\"" + filename + "\"")
                     .header("X-Content-Type-Options", "nosniff")
-                    .contentType(MediaType.APPLICATION_OCTET_STREAM)
+                    .header("Content-Security-Policy", "default-src 'none'")
+                    .contentType(type)
                     .body(new InputStreamResource(content));
         } catch (IllegalArgumentException invalid) {
             throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Not a valid attachment id.");
@@ -162,15 +193,18 @@ public class SharePointLibraryController {
     private static String page(List<SharePointDocument> documents) {
         StringBuilder rows = new StringBuilder();
         if (documents.isEmpty()) {
-            rows.append("<tr class=\"empty-row\"><td colspan=\"5\">This library is empty. "
+            rows.append("<tr class=\"empty-row\"><td colspan=\"7\">This library is empty. "
                     + "Upload a file on a Flowable task and it will show up here.</td></tr>");
         }
         for (SharePointDocument document : documents) {
-            rows.append("<tr><td class=\"name\"><a href=\"/sharepoint/items/").append(esc(document.id())).append("\">")
+            rows.append("<tr><td class=\"name\"><div class=\"name-row\"><a class=\"filelink\" href=\"/sharepoint/items/")
+                    .append(esc(document.id())).append("\">")
                     .append(icon(document.fileName()))
                     .append("<span class=\"file\"><span class=\"filename\">").append(esc(document.fileName()))
                     .append("</span><span class=\"muted\">Modified ").append(esc(modified(document.storedAt())))
-                    .append("</span></span></a></td><td>").append(label(document.taskName()))
+                    .append("</span></span></a></div></td><td>").append(label(document.caseNumber()))
+                    .append("</td><td>").append(label(document.userName()))
+                    .append("</td><td>").append(label(document.taskName()))
                     .append("</td><td>").append(label(document.processName()))
                     .append("</td><td class=\"location\">").append(locationCell(document.location()))
                     .append("</td><td class=\"size\">").append(esc(size(document.sizeBytes())))
@@ -184,7 +218,7 @@ public class SharePointLibraryController {
                 </div>
                 <div class="list">
                   <table>
-                    <thead><tr><th>Name</th><th>Task</th><th>Process</th><th>Location</th><th>Size</th></tr></thead>
+                    <thead><tr><th>Name</th><th>Case Number</th><th>User</th><th>Task</th><th>Process</th><th>Location</th><th>Size</th></tr></thead>
                     <tbody id="library-body">{{ROWS}}</tbody>
                   </table>
                 </div>
@@ -329,8 +363,8 @@ public class SharePointLibraryController {
                   border-radius: 2px;
                   overflow: auto;
                 }
-                table { width: 100%; border-collapse: collapse; min-width: 760px; }
-                th, td { padding: 0 12px; text-align: left; vertical-align: middle; }
+                table { width: 100%; border-collapse: collapse; min-width: 1100px; table-layout: fixed; }
+                th, td { padding: 8px 12px; text-align: left; vertical-align: middle; }
                 th {
                   height: 42px;
                   background: var(--header);
@@ -341,16 +375,19 @@ public class SharePointLibraryController {
                   position: sticky;
                   top: 0;
                 }
-                td { height: 48px; border-bottom: 1px solid var(--line); }
+                td { border-bottom: 1px solid var(--line); overflow: hidden; }
                 tbody tr:hover { background: var(--hover); }
                 tbody tr:last-child td { border-bottom: 0; }
-                th:nth-child(1), td:nth-child(1) { width: 32%; padding-left: 16px; }
-                th:nth-child(4), td:nth-child(4) { width: 26%; }
-                th:nth-child(5), td.size { width: 88px; text-align: right; padding-right: 16px; color: var(--muted); }
-                .name a { display: flex; align-items: center; gap: 12px; min-height: 48px; color: var(--ink); }
-                .name a:hover .filename { color: var(--teal-dark); text-decoration: underline; }
+                th:nth-child(1), td:nth-child(1) { width: 28%; padding-left: 16px; }
+                th:nth-child(2), td:nth-child(2) { width: 16%; }
+                th:nth-child(6), td:nth-child(6) { width: 18%; }
+                th:nth-child(7), td.size { width: 72px; text-align: right; padding-right: 16px; color: var(--muted); }
+                .name-row { display: flex; align-items: center; gap: 12px; min-width: 0; }
+                .name .filelink { display: flex; align-items: center; gap: 12px; min-width: 0; flex: 1; color: var(--ink); }
+                .name .filelink:hover .filename { color: var(--teal-dark); text-decoration: underline; }
                 .file { display: flex; flex-direction: column; min-width: 0; }
-                .filename { font-weight: 600; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+                .filename, .file .muted { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+                .filename { font-weight: 600; }
                 .muted { color: var(--muted); font-size: 12px; font-weight: 400; }
                 .icon {
                   flex: none;
@@ -384,9 +421,10 @@ public class SharePointLibraryController {
                 .back:hover { text-decoration: underline; }
                 .detail-head { display: flex; align-items: center; gap: 16px; margin: 16px 0 8px; }
                 .detail-head .icon { width: 48px; height: 48px; font-size: 12px; }
-                dl { display: grid; grid-template-columns: 120px 1fr; gap: 10px 16px; margin: 20px 0 24px; }
+                dl { display: grid; grid-template-columns: 140px 1fr; gap: 10px 16px; margin: 20px 0 24px; }
                 dt { color: var(--muted); }
                 dd { margin: 0; }
+                .preview { display: block; max-width: min(100%, 960px); height: auto; margin: 8px 0 20px; border: 1px solid var(--line); background: var(--canvas); }
                 .button {
                   display: inline-flex;
                   align-items: center;
@@ -401,13 +439,51 @@ public class SharePointLibraryController {
                 """;
     }
 
+    private static String preview(SharePointDocument document) {
+        if (!isImage(document)) {
+            return "";
+        }
+        return "<img class=\"preview\" src=\"/sharepoint/items/" + esc(document.id())
+                + "/content?inline=true\" alt=\"" + esc(document.fileName()) + "\">";
+    }
+
+    private static boolean isImage(SharePointDocument document) {
+        String type = document.contentType();
+        if (type != null && type.toLowerCase().startsWith("image/")) {
+            return true;
+        }
+        return switch (extension(document.fileName())) {
+            case "png", "jpg", "jpeg", "gif", "webp", "bmp", "tif", "tiff", "ico", "avif", "heic", "heif", "svg" -> true;
+            default -> false;
+        };
+    }
+
+    private static MediaType imageType(SharePointDocument document) {
+        String type = document.contentType() == null ? "" : document.contentType().toLowerCase();
+        if (type.startsWith("image/") && !type.contains("html") && !type.contains("xml") && !type.contains("svg")) {
+            return MediaType.parseMediaType(type);
+        }
+        return switch (extension(document.fileName())) {
+            case "png" -> MediaType.IMAGE_PNG;
+            case "gif" -> MediaType.IMAGE_GIF;
+            case "webp" -> MediaType.parseMediaType("image/webp");
+            case "bmp" -> MediaType.parseMediaType("image/bmp");
+            case "svg" -> MediaType.parseMediaType("image/svg+xml");
+            case "tif", "tiff" -> MediaType.parseMediaType("image/tiff");
+            case "ico" -> MediaType.parseMediaType("image/x-icon");
+            case "avif" -> MediaType.parseMediaType("image/avif");
+            case "heic", "heif" -> MediaType.parseMediaType("image/heic");
+            default -> MediaType.IMAGE_JPEG;
+        };
+    }
+
     private static String icon(String fileName) {
         String ext = extension(fileName);
         String kind = switch (ext) {
             case "pdf" -> "pdf";
             case "doc", "docx" -> "word";
             case "xls", "xlsx", "csv" -> "excel";
-            case "png", "jpg", "jpeg", "gif", "webp" -> "image";
+            case "png", "jpg", "jpeg", "gif", "webp", "bmp", "tif", "tiff", "ico", "avif", "heic", "heif", "svg" -> "image";
             case "txt" -> "text";
             default -> "file";
         };
