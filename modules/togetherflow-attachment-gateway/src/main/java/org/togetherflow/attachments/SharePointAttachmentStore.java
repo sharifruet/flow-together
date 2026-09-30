@@ -69,9 +69,15 @@ public class SharePointAttachmentStore implements AttachmentStore {
     @Override
     public StoredAttachment store(String taskId, String fileName, String contentType, InputStream content,
             long sizeBytes) throws IOException {
+        return store(taskId, null, fileName, contentType, content, sizeBytes);
+    }
+
+    @Override
+    public StoredAttachment store(String taskId, String processInstanceId, String fileName, String contentType,
+            InputStream content, long sizeBytes) throws IOException {
 
         byte[] bytes = content.readAllBytes();
-        String path = uploadPath(taskId, fileName);
+        String path = uploadPath(processInstanceId, taskId, fileName);
 
         Map<String, Object> item;
         try {
@@ -140,18 +146,27 @@ public class SharePointAttachmentStore implements AttachmentStore {
         return URLEncoder.encode(segment, StandardCharsets.UTF_8).replace("+", "%20");
     }
 
+    /** {@link #uploadPath(String, String, String)} with no process id. */
+    String uploadPath(String taskId, String fileName) {
+        return uploadPath(null, taskId, fileName);
+    }
+
     /**
      * Where the file lands inside the drive.
      *
-     * <p>Grouped by task so a document library stays navigable, and every segment is
-     * sanitised: a name containing {@code /} or {@code ..} must not be able to write
-     * outside the configured folder.
+     * <p>Grouped by process, then task, so a document library stays navigable when every
+     * process in the engine writes here. A missing process id keeps the historical
+     * {@code folder/task/file} layout. Every segment is sanitised: a name containing
+     * {@code /} or {@code ..} must not be able to write outside the configured folder.
      */
-    String uploadPath(String taskId, String fileName) {
+    String uploadPath(String processInstanceId, String taskId, String fileName) {
         String folder = config.getFolderPath() == null ? "" : config.getFolderPath().replaceAll("^/+|/+$", "");
         StringBuilder path = new StringBuilder("/");
         if (!folder.isEmpty()) {
             path.append(folder).append('/');
+        }
+        if (processInstanceId != null && !processInstanceId.isBlank()) {
+            path.append(safeSegment(processInstanceId)).append('/');
         }
         return path.append(safeSegment(taskId)).append('/').append(safeSegment(fileName)).toString();
     }

@@ -291,15 +291,17 @@ export const flowableModdleDescriptor = {
        * HTTP task's URL and method, a mail task's recipients, a DMN task's
        * `decisionTableReferenceKey` are all fields, not attributes.
        *
-       * `stringValue` and `expression` are attributes; `string` is a child element, used
-       * for values that would be awkward inside an attribute (multi-line bodies, XML).
+       * `stringValue` is an attribute for short constants. `expression` and `string` are
+       * child elements: the engine writes both as CDATA children, and a mail HTML body
+       * cannot live in an attribute. Declaring `expression` as an attribute made Design
+       * drop `<flowable:expression>` on open, then Save published an empty mail body.
        */
       name: "Field",
       superClass: ["Element"],
       properties: [
         { name: "name", isAttr: true, type: "String" },
         { name: "stringValue", isAttr: true, type: "String" },
-        { name: "expression", isAttr: true, type: "String" },
+        { name: "expression", type: "String" },
         { name: "string", type: "String" },
       ],
     },

@@ -73,6 +73,31 @@ It starts in a few seconds at **http://localhost:8080/flowable-rest**; sign in a
 **`rest-admin` / `test`**. The war already contains six demo processes, so the screens are
 not empty before you deploy anything.
 
+Task files stay in the engine database with that war. To publish every upload, and every
+file a process generates, to SharePoint, build the attachment gateway and start the war
+with the `sharepoint` profile. The gateway is not part of `-Pdistro`, so it has its own
+build. Start it first: with the profile on, an upload fails if nothing is listening on
+8091.
+
+```bash
+./mvnw -Ptogetherflow -pl modules/togetherflow-attachment-gateway package -DskipTests
+
+# terminal 1 — local document library
+java -jar modules/togetherflow-attachment-gateway/target/togetherflow-attachment-gateway-8.1.0-SNAPSHOT.jar
+
+# terminal 2 — the same war, now publishing task files to that library
+java -jar modules/flowable-app-rest/target/flowable-rest.war --spring.profiles.active=sharepoint
+```
+
+The engine is still **http://localhost:8080/flowable-rest**. The library is
+**http://localhost:8091/sharepoint**. Upload a file on any task and reload the library;
+the row shows the task name and the process name.
+
+That library is local, so no Azure tenant is required. The same gateway writes to a
+Microsoft 365 document library when started with `mode=graph` and an app registration.
+Those flags are in
+[modules/togetherflow-attachment-gateway/README.md](modules/togetherflow-attachment-gateway/README.md).
+
 On the *first* run against an empty database the admin user is created a moment after the
 `Started FlowableRestApplication` line, so a request fired immediately can still come back
 401. Give it a second and try again.
@@ -229,8 +254,8 @@ k8s/                            Helm chart and plain manifests
 
 Three optional backend modules, none part of a default install:
 
-- `togetherflow-attachment-gateway` — attachment storage when the engine's own database is
-  not where the bytes should live.
+- `togetherflow-attachment-gateway` — SharePoint for task files (a local library, or
+  Microsoft 365). How to run it is under [The backend](#1-the-backend).
 - `togetherflow-event-recorder` — a jar for the application hosting the event registry,
   giving Control a log of inbound events the engine does not itself keep.
 - `togetherflow-workspace` — workspaces and design-time permissions for Design. Absent,

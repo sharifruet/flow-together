@@ -20,6 +20,17 @@ public interface AttachmentStore {
             throws IOException;
 
     /**
+     * Stores a file and remembers which process it belongs to.
+     *
+     * <p>The process id is how a document library stays navigable when many processes
+     * upload into it. Providers that have nowhere to put that id ignore it.
+     */
+    default StoredAttachment store(String taskId, String processInstanceId, String fileName, String contentType,
+            InputStream content, long sizeBytes) throws IOException {
+        return store(taskId, fileName, contentType, content, sizeBytes);
+    }
+
+    /**
      * Reads a stored file back, for providers whose URLs point at this gateway.
      *
      * <p>SharePoint returns a URL the viewer opens directly against Microsoft 365, so it

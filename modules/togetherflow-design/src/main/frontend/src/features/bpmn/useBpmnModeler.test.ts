@@ -104,6 +104,15 @@ describe("useBpmnModeler selection", () => {
     act(() => emit("selection.changed", { newSelection: [task, ROOT] }));
     expect(view.result.current.selection?.id).toBe("Process_1");
   });
+
+  it("ignores a selection with no business object, which Deploy used to crash on", async () => {
+    const view = await mountModeler();
+    await waitFor(() => expect(view.result.current.ready).toBe(true));
+
+    const implicit = { id: "__implicitroot_1", type: "bpmn:Process", isImplicit: true };
+    act(() => emit("selection.changed", { newSelection: [implicit] }));
+    expect(view.result.current.selection?.id).toBe("Process_1");
+  });
 });
 
 describe("useBpmnModeler revision", () => {

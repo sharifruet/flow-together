@@ -59,6 +59,7 @@ function stubApi(overrides: Record<string, unknown> = {}): StubTaskApi {
     unclaim: vi.fn().mockResolvedValue(undefined),
     addComment: vi.fn().mockResolvedValue({ id: "c", message: "m" }),
     attachmentContentUrl: () => "/x",
+    downloadAttachment: vi.fn().mockResolvedValue(new Blob(["x"])),
     ...overrides,
   } as unknown as StubTaskApi;
 }
@@ -253,12 +254,19 @@ describe("TaskDetail — form rendering", () => {
     expect(screen.getByText(/Form engine is not initialized/)).toBeInTheDocument();
   });
 
-  it("keeps the variable grid reachable beside a form (FR-W.7)", async () => {
+  /**
+   * The form is the task. The grid beside it showed the same answers over again as
+   * engine types, behind a toggle that invited the person filling the form in to edit
+   * them there instead — two places to answer one question. A task with *no* form still
+   * gets the grid, which is covered above.
+   */
+  it("offers no raw-variable grid beside a form", async () => {
     renderDetail(stubApi());
     await screen.findByLabelText(/^Comment/);
-    expect(screen.queryByText("legacy")).not.toBeInTheDocument();
-    await userEvent.click(screen.getByRole("button", { name: /show variables/i }));
-    expect(await screen.findByDisplayValue("legacy")).toBeInTheDocument();
+
+    expect(screen.queryByRole("button", { name: /show variables/i })).not.toBeInTheDocument();
+    expect(screen.queryByDisplayValue("legacy")).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: /add variable/i })).not.toBeInTheDocument();
   });
 
   it("disables the form for a task the user has not claimed", async () => {

@@ -16,6 +16,7 @@ import org.flowable.rest.app.properties.RestAppProperties;
 import org.flowable.rest.conf.BootstrapConfiguration;
 import org.flowable.rest.conf.DevelopmentConfiguration;
 import org.flowable.rest.conf.SecurityConfiguration;
+import org.flowable.rest.conf.sharepoint.SharePointSyncConfiguration;
 import org.springframework.boot.SpringApplication;
 import org.springframework.boot.autoconfigure.SpringBootApplication;
 import org.springframework.boot.context.properties.EnableConfigurationProperties;
@@ -34,7 +35,8 @@ import org.springframework.web.servlet.config.annotation.WebMvcConfigurer;
 @Import({
     BootstrapConfiguration.class,
     SecurityConfiguration.class,
-    DevelopmentConfiguration.class
+    DevelopmentConfiguration.class,
+    SharePointSyncConfiguration.class
 })
 @SpringBootApplication(proxyBeanMethods = false)
 public class FlowableRestApplication {

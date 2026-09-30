@@ -63,6 +63,12 @@ class SharePointAttachmentStoreTest {
         assertThat(storeWith("Docs").uploadPath("../evil", "a.pdf")).isEqualTo("/Docs/evil/a.pdf");
     }
 
+    @Test
+    void groupsAFileUnderItsProcessThenItsTask() {
+        assertThat(storeWith("TogetherFlow").uploadPath("proc-9", "task-1", "invoice.pdf"))
+                .isEqualTo("/TogetherFlow/proc-9/task-1/invoice.pdf");
+    }
+
     /**
      * Graph's {@code root:<path>:} addressing needs the separators literal. Encoding the
      * whole path as one URI variable turns them into {@code %2F}, which is a different

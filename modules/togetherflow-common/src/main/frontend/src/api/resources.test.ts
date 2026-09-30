@@ -21,7 +21,7 @@ const call = (fetchImpl: ReturnType<typeof vi.fn>, n = 0) =>
 
 describe("TaskApi.saveVariables", () => {
   it("does not PUT the collection — the engine has no such method", async () => {
-    const { api, fetchImpl } = setup((url, init) => {
+    const { api, fetchImpl } = setup((_url, init) => {
       if ((init.method ?? "GET") === "GET") {
         return [{ name: "initiator", type: "string", value: "mpe", scope: "global" }];
       }
@@ -46,7 +46,7 @@ describe("TaskApi.saveVariables", () => {
   });
 
   it("POSTs names that are not yet on the task, keeping one scope per request", async () => {
-    const { api, fetchImpl } = setup((url, init) => {
+    const { api, fetchImpl } = setup((_url, init) => {
       if ((init.method ?? "GET") === "GET") return [];
       return JSON.parse(init.body as string);
     });
@@ -65,7 +65,7 @@ describe("TaskApi.saveVariables", () => {
   });
 
   it("updates existing names and creates new ones in the same save", async () => {
-    const { api, fetchImpl } = setup((url, init) => {
+    const { api, fetchImpl } = setup((_url, init) => {
       if ((init.method ?? "GET") === "GET") {
         return [{ name: "initiator", type: "string", value: "mpe", scope: "global" }];
       }
@@ -82,5 +82,26 @@ describe("TaskApi.saveVariables", () => {
 
     const methods = fetchImpl.mock.calls.map(([, init]) => (init as RequestInit).method ?? "GET");
     expect(methods).toEqual(["GET", "PUT", "POST"]);
+  });
+});
+
+describe("TaskApi.downloadAttachment", () => {
+  it("fetches content as a blob so the session header is sent", async () => {
+    const fetchImpl = vi.fn().mockResolvedValue(
+      new Response(new Blob(["pdf"]), { status: 200, headers: { "Content-Type": "application/pdf" } }),
+    );
+    const api = new TaskApi(
+      new ApiClient({
+        baseUrl: "/process-api",
+        fetchImpl: fetchImpl as unknown as typeof fetch,
+        getAuthHeaders: () => ({ Authorization: "Basic abc" }),
+      }),
+    );
+
+    await api.downloadAttachment("task-9", "att-1");
+    const [url, init] = fetchImpl.mock.calls[0] as [string, RequestInit];
+    expect(url).toMatch(/\/tasks\/task-9\/attachments\/att-1\/content$/);
+    expect((init.headers as Record<string, string>).Authorization).toBe("Basic abc");
+    expect((init.headers as Record<string, string>).Accept).toBe("*/*");
   });
 });

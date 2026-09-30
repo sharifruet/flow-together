@@ -27,6 +27,7 @@ function renderForm(
     onSubmit?: () => void;
     onUploadFile?: (field: FormField, file: File) => Promise<string>;
     fileUrl?: (field: FormField, value: unknown) => string | undefined;
+    onDownloadFile?: (field: FormField, value: unknown) => void | Promise<void>;
   } = {},
 ) {
   const onChange = options.onChange ?? vi.fn();
@@ -42,6 +43,7 @@ function renderForm(
       onSubmit={options.onSubmit}
       onUploadFile={options.onUploadFile}
       fileUrl={options.fileUrl}
+      onDownloadFile={options.onDownloadFile}
     />,
   );
   return { ...result, onChange };
@@ -105,6 +107,29 @@ describe("structure", () => {
     expect(screen.queryByLabelText(/^Why/)).not.toBeInTheDocument();
   });
 
+  /**
+   * How the resignation forms carry an approver's remarks to the next approver: a
+   * read-only field whose visibility rule points at itself, so the row is there when the
+   * step before wrote something and absent when it did not.
+   */
+  it("hides a read-only field whose condition points at its own empty value", () => {
+    const previous: FormField = {
+      id: "previousRemarks",
+      name: "Previous remarks",
+      type: "multi-line-text",
+      readOnly: true,
+      params: { tfVisibleWhen: { field: "previousRemarks", operator: "isSet" } },
+    };
+
+    const blank = renderForm([previous], { values: { previousRemarks: "" } });
+    expect(screen.queryByText("Previous remarks")).not.toBeInTheDocument();
+    blank.unmount();
+
+    renderForm([previous], { values: { previousRemarks: "ASE: please verify clearance" } });
+    expect(screen.getByText("Previous remarks")).toBeInTheDocument();
+    expect(screen.getByText("ASE: please verify clearance")).toBeInTheDocument();
+  });
+
   it("refuses to turn a non-http hyperlink into a link", () => {
     renderForm([
       {
@@ -126,6 +151,29 @@ describe("labelling", () => {
     const input = screen.getByLabelText(/^Name/);
     expect(input).toHaveAttribute("aria-required", "true");
     // The asterisk is decorative; the word carries the meaning.
+    expect(screen.getByText("required", { exact: false })).toBeInTheDocument();
+  });
+
+  /**
+   * The resignation approvals: remarks are optional when approving and mandatory when
+   * rejecting (requiredWhen.ts). The mark has to follow the answer, because a field the
+   * validator is about to refuse must look required before the submit, not after it.
+   */
+  it("marks a conditionally required field only once the condition holds", () => {
+    const remarks: FormField = {
+      id: "remarks",
+      name: "Remarks",
+      type: "multi-line-text",
+      params: { tfRequiredWhen: { field: "approved", operator: "equals", value: "false" } },
+    };
+
+    const approved = renderForm([remarks], { values: { approved: "true", remarks: "" } });
+    expect(screen.getByLabelText(/^Remarks/)).not.toHaveAttribute("aria-required");
+    expect(screen.queryByText("required", { exact: false })).not.toBeInTheDocument();
+    approved.unmount();
+
+    renderForm([remarks], { values: { approved: "false", remarks: "" } });
+    expect(screen.getByLabelText(/^Remarks/)).toHaveAttribute("aria-required", "true");
     expect(screen.getByText("required", { exact: false })).toBeInTheDocument();
   });
 
@@ -220,6 +268,32 @@ describe("read-only and computed values", () => {
     const described = box.getAttribute("aria-describedby");
     expect(described).toBeTruthy();
     expect(document.getElementById(described!)).toHaveTextContent("Required to proceed.");
+  });
+
+  /**
+   * DD/MM/YYYY, the house format (format.ts). An approver reading "Proposed last working
+   * day" against a month-first date is how a resignation gets approved for the wrong day.
+   * The editable control keeps the ISO day the `<input type="date">` spec requires.
+   */
+  it("shows a read-only date day-first, and keeps the control's value ISO", () => {
+    const field: FormField = { id: "lastWorkingDay", name: "Last working day", type: "date" };
+
+    const readOnly = renderForm([{ ...field, readOnly: true }], {
+      values: { lastWorkingDay: "2026-10-31" },
+    });
+    expect(screen.getByText("31/10/2026")).toBeInTheDocument();
+    readOnly.unmount();
+
+    renderForm([field], { values: { lastWorkingDay: "2026-10-31" } });
+    expect(screen.getByLabelText(/^Last working day/)).toHaveValue("2026-10-31");
+  });
+
+  it("leaves a read-only date blank rather than dashed when there is no answer", () => {
+    renderForm([{ id: "lastWorkingDay", name: "Last working day", type: "date", readOnly: true }], {
+      values: { lastWorkingDay: "" },
+    });
+    expect(screen.getByText("Not answered")).toBeInTheDocument();
+    expect(screen.queryByText("—")).not.toBeInTheDocument();
   });
 
   it("says so when a read-only field has no answer at all", () => {
@@ -408,19 +482,24 @@ describe("upload", () => {
     expect(onChange).toHaveBeenLastCalledWith("doc", undefined);
   });
 
-  it("offers a download, not a replace control, when the field is read-only", () => {
+  it("offers a download, not a replace control, when the field is read-only", async () => {
     const stored = JSON.stringify({ id: "att-1", taskId: "task-9", name: "letter.pdf" });
+    const onDownloadFile = vi.fn();
     renderForm(
       [{ id: "doc", name: "Resignation letter", type: "upload", readOnly: true }],
       {
         values: { doc: stored },
         fileUrl: () => "/runtime/tasks/task-9/attachments/att-1/content",
+        onDownloadFile,
       },
     );
-    const link = screen.getByRole("link", { name: /download letter\.pdf/i });
-    expect(link).toHaveAttribute("href", "/runtime/tasks/task-9/attachments/att-1/content");
+    const download = screen.getByRole("button", { name: /download letter\.pdf/i });
+    expect(download).not.toHaveAttribute("href");
+    expect(screen.queryByRole("link")).not.toBeInTheDocument();
     expect(screen.queryByRole("button", { name: /remove/i })).not.toBeInTheDocument();
     expect(document.querySelector('input[type="file"]')).toBeNull();
+    await userEvent.click(download);
+    expect(onDownloadFile).toHaveBeenCalled();
   });
 });
 

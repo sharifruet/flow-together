@@ -57,6 +57,7 @@ export * from "./hooks/useDebouncedValue";
 export * from "./forms/FormRenderer";
 export * from "./forms/formModel";
 export * from "./forms/visibility";
+export * from "./forms/requiredWhen";
 export * from "./forms/serverErrors";
 export * from "./format";
 export * from "./routing";

@@ -55,6 +55,32 @@ class AttachmentGatewayConfigurationTest {
     }
 
     @Test
+    void buildsALocalSharePointLibraryWithoutAzureCredentials() {
+        AttachmentProperties properties = new AttachmentProperties();
+        properties.setProvider(AttachmentProperties.Provider.SHAREPOINT);
+        properties.getSharepoint().setMode(AttachmentProperties.SharePoint.Mode.LOCAL);
+        properties.getSharepoint().setLibraryPath(Path.of("data/sharepoint"));
+        properties.getSharepoint().setPublicBaseUrl("http://localhost:8091");
+
+        AttachmentStore store = configuration.attachmentStore(properties, NO_HTTP);
+
+        assertThat(store).isInstanceOf(LocalSharePointAttachmentStore.class);
+        assertThat(store.provider()).isEqualTo(AttachmentProperties.Provider.SHAREPOINT);
+    }
+
+    @Test
+    void namesTheMissingLocalSharePointSetting() {
+        AttachmentProperties properties = new AttachmentProperties();
+        properties.setProvider(AttachmentProperties.Provider.SHAREPOINT);
+        properties.getSharepoint().setMode(AttachmentProperties.SharePoint.Mode.LOCAL);
+        properties.getSharepoint().setPublicBaseUrl("http://localhost:8091");
+
+        assertThatThrownBy(() -> configuration.attachmentStore(properties, NO_HTTP))
+                .isInstanceOf(IllegalStateException.class)
+                .hasMessageContaining("sharepoint.library-path");
+    }
+
+    @Test
     void buildsTheSharePointStoreWhenFullyConfigured() {
         AttachmentStore store = configuration.attachmentStore(sharePointProperties(), NO_HTTP);
 

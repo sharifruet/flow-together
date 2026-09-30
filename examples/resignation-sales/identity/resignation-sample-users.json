@@ -5,7 +5,7 @@
     "file and the models have to move together.",
     "",
     "The people are invented. Passwords are not in this file: deploy.sh gives everybody one",
-    "value, from SAMPLE_PASSWORD (default 'demo')."
+    "value, from SAMPLE_PASSWORD (default 'test')."
   ],
   "groups": [
     {
@@ -109,7 +109,7 @@
       "id": "rakib.hasan",
       "firstName": "Rakib",
       "lastName": "Hasan",
-      "email": "rakib.hasan@bpl.net",
+      "email": "srrony700@gmail.com",
       "groups": [
         "sales-field"
       ],
@@ -119,7 +119,7 @@
       "id": "nusrat.jahan",
       "firstName": "Nusrat",
       "lastName": "Jahan",
-      "email": "nusrat.jahan@bpl.net",
+      "email": "srrony700@gmail.com",
       "groups": [
         "sales-field"
       ],
@@ -129,7 +129,7 @@
       "id": "imran.kabir",
       "firstName": "Imran",
       "lastName": "Kabir",
-      "email": "imran.kabir@bpl.net",
+      "email": "srrony700@gmail.com",
       "groups": [
         "sales-ase"
       ]
@@ -138,7 +138,7 @@
       "id": "shakil.ahmed",
       "firstName": "Shakil",
       "lastName": "Ahmed",
-      "email": "shakil.ahmed@bpl.net",
+      "email": "srrony700@gmail.com",
       "groups": [
         "sales-rse"
       ]
@@ -147,7 +147,7 @@
       "id": "tanvir.alam",
       "firstName": "Tanvir",
       "lastName": "Alam",
-      "email": "tanvir.alam@bpl.net",
+      "email": "srrony700@gmail.com",
       "groups": [
         "sales-zsi"
       ]
@@ -156,7 +156,7 @@
       "id": "mahmud.hossain",
       "firstName": "Mahmud",
       "lastName": "Hossain",
-      "email": "mahmud.hossain@bpl.net",
+      "email": "srrony700@gmail.com",
       "groups": [
         "sales-sm"
       ]
@@ -165,7 +165,7 @@
       "id": "farhana.akter",
       "firstName": "Farhana",
       "lastName": "Akter",
-      "email": "farhana.akter@bpl.net",
+      "email": "srrony700@gmail.com",
       "groups": [
         "sales-gm"
       ]
@@ -174,7 +174,7 @@
       "id": "sabbir.rahman",
       "firstName": "Sabbir",
       "lastName": "Rahman",
-      "email": "sabbir.rahman@bpl.net",
+      "email": "srrony700@gmail.com",
       "groups": [
         "sales-ssr"
       ]
@@ -183,7 +183,7 @@
       "id": "kamrul.islam",
       "firstName": "Kamrul",
       "lastName": "Islam",
-      "email": "kamrul.islam@bpl.net",
+      "email": "srrony700@gmail.com",
       "groups": [
         "director-mkt"
       ]
@@ -192,7 +192,7 @@
       "id": "nazmul.haque",
       "firstName": "Nazmul",
       "lastName": "Haque",
-      "email": "nazmul.haque@bpl.net",
+      "email": "srrony700@gmail.com",
       "groups": [
         "sales-simu"
       ]
@@ -201,7 +201,7 @@
       "id": "rumana.parvin",
       "firstName": "Rumana",
       "lastName": "Parvin",
-      "email": "rumana.parvin@bpl.net",
+      "email": "srrony700@gmail.com",
       "groups": [
         "sales-ib"
       ]
@@ -210,7 +210,7 @@
       "id": "jahid.hasan",
       "firstName": "Jahid",
       "lastName": "Hasan",
-      "email": "jahid.hasan@bpl.net",
+      "email": "srrony700@gmail.com",
       "groups": [
         "sbm"
       ]
@@ -219,7 +219,7 @@
       "id": "moinul.chowdhury",
       "firstName": "Moinul",
       "lastName": "Chowdhury",
-      "email": "moinul.chowdhury@bpl.net",
+      "email": "srrony700@gmail.com",
       "groups": [
         "gad"
       ]
@@ -228,7 +228,7 @@
       "id": "arif.mahmud",
       "firstName": "Arif",
       "lastName": "Mahmud",
-      "email": "arif.mahmud@bpl.net",
+      "email": "srrony700@gmail.com",
       "groups": [
         "fca"
       ]
@@ -237,7 +237,7 @@
       "id": "shirin.akhter",
       "firstName": "Shirin",
       "lastName": "Akhter",
-      "email": "shirin.akhter@bpl.net",
+      "email": "srrony700@gmail.com",
       "groups": [
         "hrm"
       ]
@@ -246,17 +246,17 @@
       "id": "ismail.jamil",
       "firstName": "Ismail",
       "lastName": "Jamil",
-      "email": "ismail.jamil@bpl.net",
+      "email": "srrony700@gmail.com",
       "groups": [
         "hrm"
       ],
-      "note": "The spreadsheet writes 'HRM (ISJ)' for steps 12 and 15. ISJ is read as a person's initials; this is that person. Both HRM users see those tasks - they are candidate-group tasks, not assigned ones."
+      "note": "Drafts the acceptance letter. Each HRM step has its own assignee, so this login does not also receive the clearance pack."
     },
     {
       "id": "rezaul.karim",
       "firstName": "Rezaul",
       "lastName": "Karim",
-      "email": "rezaul.karim@bpl.net",
+      "email": "srrony700@gmail.com",
       "groups": [
         "head-of-hr"
       ]
@@ -265,7 +265,7 @@
       "id": "pritam.saha",
       "firstName": "Pritam",
       "lastName": "Saha",
-      "email": "pritam.saha@bpl.net",
+      "email": "srrony700@gmail.com",
       "groups": [
         "acc-officer"
       ]
@@ -274,7 +274,7 @@
       "id": "tanjila.rahman",
       "firstName": "Tanjila",
       "lastName": "Rahman",
-      "email": "tanjila.rahman@bpl.net",
+      "email": "srrony700@gmail.com",
       "groups": [
         "acc-officer"
       ],
@@ -284,7 +284,7 @@
       "id": "habibur.rahman",
       "firstName": "Habibur",
       "lastName": "Rahman",
-      "email": "habibur.rahman@bpl.net",
+      "email": "srrony700@gmail.com",
       "groups": [
         "acc-manager"
       ]
@@ -293,7 +293,7 @@
       "id": "shamima.nasrin",
       "firstName": "Shamima",
       "lastName": "Nasrin",
-      "email": "shamima.nasrin@bpl.net",
+      "email": "srrony700@gmail.com",
       "groups": [
         "acc-director"
       ]
@@ -302,11 +302,51 @@
       "id": "reception.desk",
       "firstName": "Reception",
       "lastName": "Desk",
-      "email": "reception@bpl.net",
+      "email": "srrony700@gmail.com",
       "groups": [
         "reception"
       ],
       "note": "The 'Reception Box' of step 8.2, where the signed acceptance letter is left for collection. A destination rather than an approver, so it holds no task - but it is notified, and a notified recipient that nobody can be is not a recipient."
+    },
+    {
+      "id": "lata.khan",
+      "firstName": "Lata",
+      "lastName": "Khan",
+      "email": "srrony700@gmail.com",
+      "groups": [
+        "hrm"
+      ],
+      "note": "Circulates the acceptance letter."
+    },
+    {
+      "id": "nabila.islam",
+      "firstName": "Nabila",
+      "lastName": "Islam",
+      "email": "srrony700@gmail.com",
+      "groups": [
+        "hrm"
+      ],
+      "note": "Updates the EBS final settlement status."
+    },
+    {
+      "id": "sohel.rana",
+      "firstName": "Sohel",
+      "lastName": "Rana",
+      "email": "srrony700@gmail.com",
+      "groups": [
+        "hrm"
+      ],
+      "note": "Preserves the employee file after settlement."
+    },
+    {
+      "id": "laila.chowdhury",
+      "firstName": "Laila",
+      "lastName": "Chowdhury",
+      "email": "srrony700@gmail.com",
+      "groups": [
+        "head-of-hr"
+      ],
+      "note": "Signs the final settlement. Rezaul Karim approves the acceptance letter."
     }
   ]
 }

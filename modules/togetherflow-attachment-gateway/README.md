@@ -27,7 +27,7 @@ stored URL and Microsoft 365 handles the viewer's own auth.
 |---|---|---|
 | `db` (default) | Bytes in the engine's own database | **No** |
 | `filesystem` | Bytes in a directory tree; the gateway serves downloads | Yes |
-| `sharepoint` | Uploaded to a document library via Microsoft Graph | Yes |
+| `sharepoint` | Document library. `mode: local` is served by this gateway (no Azure tenant). `mode: graph` uploads via Microsoft Graph | Yes |
 
 Switching provider is one property. Attachments created under a previous provider keep
 resolving, because Flowable stores either a `url` or a `contentId` per row and the two
@@ -35,17 +35,58 @@ coexist — there is no data migration.
 
 ## Running it
 
+The jar's default is a **local SharePoint library**. No Azure tenant is required.
+
 ```bash
 ./mvnw -Ptogetherflow -pl modules/togetherflow-attachment-gateway package
 
+java -jar modules/togetherflow-attachment-gateway/target/togetherflow-attachment-gateway-*.jar
+```
+
+Open [http://localhost:8091/sharepoint](http://localhost:8091/sharepoint). That page is the
+document library. Files are grouped as `TogetherFlow / {process} / {task} / {file}`.
+
+Start the Flowable REST app with the `sharepoint` profile so every task file is published
+there, including a file a process generates with `TaskService.createAttachment`:
+
+```bash
+java -jar modules/flowable-app-rest/target/flowable-rest.war --spring.profiles.active=sharepoint
+```
+
+Upload a file on any task (the task page, or an upload field on the task form). Reload
+the library. The file is listed with that task and process, and the task page links the
+attachment at the library item.
+
+To write the same uploads to Microsoft 365 instead, switch the gateway to Graph and fill
+in the app registration:
+
+```bash
+java -jar modules/togetherflow-attachment-gateway/target/togetherflow-attachment-gateway-*.jar \
+  --togetherflow.attachments.sharepoint.mode=graph \
+  --togetherflow.attachments.sharepoint.tenant-id=... \
+  --togetherflow.attachments.sharepoint.client-id=... \
+  --togetherflow.attachments.sharepoint.client-secret=... \
+  --togetherflow.attachments.sharepoint.drive-id=... \
+  --togetherflow.attachments.sharepoint.folder-path=TogetherFlow
+```
+
+The app needs Microsoft Graph application permission `Sites.Selected` or
+`Sites.ReadWrite.All` on that drive. The library page then names the drive and folder;
+the file itself opens in SharePoint.
+
+Filesystem storage is still available:
+
+```bash
 java -jar modules/togetherflow-attachment-gateway/target/togetherflow-attachment-gateway-*.jar \
   --togetherflow.attachments.provider=filesystem \
   --togetherflow.attachments.filesystem.base-path=/var/lib/togetherflow/attachments \
   --togetherflow.attachments.filesystem.public-base-url=https://files.example.com
 ```
 
-Then point the Work app at it — `TF_ATTACHMENT_GATEWAY=https://files.example.com` — and
-its attachment widget switches to the gateway path with no code change.
+`TF_ATTACHMENT_GATEWAY` on the Work app is the other way in: the browser posts to the
+gateway and registers the returned URL. With the `sharepoint` profile you do not need
+that variable — Flowable itself publishes the file, which is what covers files the
+process generates as well as files a person uploads. Setting both does not upload twice.
 
 ## Container
 
@@ -62,8 +103,9 @@ declared as a volume — bytes written into a container layer are lost on restar
 
 A Kubernetes manifest is at
 [`k8s/resources/togetherflow-attachment-gateway.yaml`](../../k8s/resources/togetherflow-attachment-gateway.yaml).
-Note its `replicas: 1`: the filesystem provider shares a volume across replicas, so
-scaling out needs `ReadWriteMany`. The SharePoint provider has no such constraint.
+Note its `replicas: 1`: the filesystem provider, and local SharePoint mode, share a
+volume across replicas, so scaling out needs `ReadWriteMany`. Graph mode has no such
+constraint.
 
 ## Configuration
 
@@ -76,6 +118,10 @@ togetherflow:
       base-path: /var/lib/togetherflow/attachments
       public-base-url: https://files.example.com   # must be reachable by the browser
     sharepoint:
+      # local serves /sharepoint on this gateway. graph uploads to Microsoft 365.
+      mode: local
+      public-base-url: http://localhost:8091
+      library-path: data/sharepoint
       tenant-id: ...
       client-id: ...
       client-secret: ...
@@ -91,8 +137,10 @@ possible moment.
 
 | Endpoint | Purpose |
 |---|---|
-| `POST /attachments` (multipart: `taskId`, `file`) | Stores a file, returns `{url, fileName, contentType, sizeBytes}` |
-| `GET /attachments/{id}` | Serves a stored file (filesystem provider only) |
+| `POST /attachments` (multipart: `taskId`, `processInstanceId`, `file`) | Stores a file, returns `{url, fileName, contentType, sizeBytes}` |
+| `GET /attachments/{id}` | Serves a stored file (filesystem provider, and the local SharePoint library) |
+| `GET /sharepoint` | The document library. Local mode lists every task file; graph mode names the drive |
+| `GET /sharepoint/items` | JSON listing of the local library |
 | `GET /attachments/health` | Reports the active provider, so Work can degrade gracefully (§13.4) |
 
 Registering the attachment against the task stays with the UI, which already talks to
@@ -118,9 +166,14 @@ The filesystem provider is verified end to end against a running engine: upload 
 on disk → registered with Flowable as an `externalUrl` attachment → fetched back through
 the gateway.
 
-**The SharePoint provider is not.** Exercising it needs an Azure AD tenant, an app
-registration and a SharePoint site, none of which exist in this environment. Treat the
-first run against a real tenant as the actual acceptance test.
+**Local SharePoint** (`mode: local`) is the same check without Azure: upload → listed at
+`/sharepoint` under the process and task → opened from the item page. That is the library
+to use when confirming that a task upload landed.
+
+**Graph SharePoint** (`mode: graph`) has not been exercised against a real tenant — that
+needs an Azure AD app registration and a SharePoint site. Treat the first run against a
+real tenant as the actual acceptance test. The request shapes are covered by a contract
+suite against a stubbed Graph.
 
 What it *is* covered by is a contract-level suite against a stubbed Graph
 (`SharePointAttachmentStoreGraphTest`), which pins the token grant, the upload URL, the

@@ -28,7 +28,7 @@ import {
 } from "@togetherflow/common";
 import { useConflictPrompt } from "../editors/ConflictPrompt";
 import { EditorMenuBar } from "../editors/EditorMenuBar";
-import { canDeploy, issuesFromServer, type ValidationIssue } from "../bpmn/validateBpmn";
+import { canDeploy, issuesFromServer, usableIssues, type ValidationIssue } from "../bpmn/validateBpmn";
 import { problemMarkers, validateCmmn } from "./validateCmmn";
 import {
   attributeGroupsFor,
@@ -484,16 +484,21 @@ export function CmmnEditor({
   const startDeploy = useCallback(async () => {
     setChecking(true);
     try {
-      const found = await runChecks();
-      setIssues(found && found.length > 0 ? found : null);
-      if (found && !canDeploy(found)) {
+      const found = usableIssues(await runChecks());
+      setIssues(found.length > 0 ? found : null);
+      if (!canDeploy(found)) {
         push({ tone: "error", message: t("cmmn.fixBeforeDeploy") });
         return;
       }
+      setConfirmDeploy(true);
+    } catch (cause) {
+      push({
+        tone: "error",
+        message: cause instanceof Error ? cause.message : t("cmmn.fixBeforeDeploy"),
+      });
     } finally {
       setChecking(false);
     }
-    setConfirmDeploy(true);
   }, [push, runChecks, t]);
 
   /**
@@ -713,7 +718,7 @@ export function CmmnEditor({
                 <span className={`tf-issues__source tf-issues__source--${issue.source ?? "browser"}`}>
                   {t(`cmmn.checks.source.${issue.source ?? "browser"}`)}
                 </span>
-                <span>{issue.message}</span>
+                <span>{typeof issue.message === "string" ? issue.message : String(issue.message ?? "")}</span>
                 {issue.elementId ? (
                   <button
                     type="button"

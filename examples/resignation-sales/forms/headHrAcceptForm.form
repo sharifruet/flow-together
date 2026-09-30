@@ -1,0 +1,174 @@
+{
+  "fields": [
+    {
+      "fieldType": "FormField",
+      "id": "submissionHeading",
+      "layout": null,
+      "name": "Resignation details",
+      "overrideId": false,
+      "placeholder": null,
+      "readOnly": false,
+      "required": false,
+      "type": "headline",
+      "value": null
+    },
+    {
+      "fieldType": "FormField",
+      "id": "initiator",
+      "layout": null,
+      "name": "Started by",
+      "overrideId": false,
+      "placeholder": null,
+      "readOnly": true,
+      "required": false,
+      "type": "text",
+      "value": null
+    },
+    {
+      "fieldType": "FormField",
+      "id": "employeeId",
+      "layout": null,
+      "name": "Employee ID",
+      "overrideId": false,
+      "placeholder": null,
+      "readOnly": true,
+      "required": false,
+      "type": "text",
+      "value": null
+    },
+    {
+      "fieldType": "FormField",
+      "id": "employeeName",
+      "layout": null,
+      "name": "Employee name",
+      "overrideId": false,
+      "placeholder": null,
+      "readOnly": true,
+      "required": false,
+      "type": "text",
+      "value": null
+    },
+    {
+      "fieldType": "FormField",
+      "id": "resignationReason",
+      "layout": null,
+      "name": "Reason for resignation",
+      "overrideId": false,
+      "placeholder": null,
+      "readOnly": true,
+      "required": false,
+      "type": "multi-line-text",
+      "value": null
+    },
+    {
+      "fieldType": "FormField",
+      "id": "lastWorkingDay",
+      "layout": null,
+      "name": "Proposed last working day",
+      "overrideId": false,
+      "placeholder": null,
+      "readOnly": true,
+      "required": false,
+      "type": "date",
+      "value": null
+    },
+    {
+      "fieldType": "FormField",
+      "id": "resignationLetterAttached",
+      "layout": null,
+      "name": "Resignation letter attached?",
+      "overrideId": false,
+      "placeholder": null,
+      "readOnly": true,
+      "required": false,
+      "type": "boolean",
+      "value": null
+    },
+    {
+      "fieldType": "FormField",
+      "id": "resignationLetter",
+      "layout": null,
+      "name": "Resignation letter",
+      "overrideId": false,
+      "placeholder": null,
+      "readOnly": true,
+      "required": false,
+      "type": "upload",
+      "value": null
+    },
+    {
+      "fieldType": "FormField",
+      "id": "previousRemarks",
+      "layout": null,
+      "name": "Previous remarks",
+      "overrideId": false,
+      "params": {
+        "tfVisibleWhen": {
+          "field": "previousRemarks",
+          "operator": "isSet"
+        }
+      },
+      "placeholder": null,
+      "readOnly": true,
+      "required": false,
+      "type": "multi-line-text",
+      "value": null
+    },
+    {
+      "id": "hrmDraftAcceptanceFile",
+      "name": "Draft acceptance letter",
+      "readOnly": true,
+      "type": "upload"
+    },
+    {
+      "fieldType": "OptionFormField",
+      "hasEmptyValue": null,
+      "id": "acceptanceApproved",
+      "layout": null,
+      "name": "Approve acceptance?",
+      "optionType": null,
+      "options": [
+        {
+          "id": "true",
+          "name": "Yes"
+        },
+        {
+          "id": "false",
+          "name": "No"
+        }
+      ],
+      "optionsExpression": null,
+      "overrideId": false,
+      "placeholder": null,
+      "readOnly": false,
+      "required": true,
+      "type": "radio-buttons",
+      "value": null
+    },
+    {
+      "fieldType": "FormField",
+      "id": "headHrAcceptanceRemarks",
+      "layout": null,
+      "name": "Remarks",
+      "overrideId": false,
+      "params": {
+        "tfRequiredWhen": {
+          "field": "acceptanceApproved",
+          "operator": "equals",
+          "value": "false"
+        }
+      },
+      "placeholder": null,
+      "readOnly": false,
+      "required": false,
+      "type": "multi-line-text",
+      "value": null
+    }
+  ],
+  "id": "74dde729-b7fb-11f1-8a55-c8d9d2d2af8a",
+  "key": "headHrAcceptForm",
+  "name": "Head of HR: Approve acceptance letter",
+  "outcomes": [],
+  "url": "http://localhost:8080/flowable-rest/form-api/form/model",
+  "version": 3
+}

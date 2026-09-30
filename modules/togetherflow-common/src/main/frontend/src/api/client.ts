@@ -132,7 +132,7 @@ export interface RequestOptions {
    * JSON would come back parsed and no longer be the text that was stored. Callers
    * fetching raw content pass "text" to keep it verbatim.
    */
-  responseType?: "json" | "text";
+  responseType?: "json" | "text" | "blob";
   /**
    * Content type for the request body. Left unset, a body is serialised as JSON, which is
    * right for every REST resource that takes a JSON document. Set it to send the body
@@ -262,7 +262,7 @@ export class ApiClient {
     attempt: number,
   ): Promise<T> {
     const headers: Record<string, string> = {
-      Accept: "application/json",
+      Accept: options.responseType === "blob" ? "*/*" : "application/json",
       // Ties a browser-side failure to the same request in backend logs (§13.2).
       "X-Correlation-Id": correlationId,
       ...(this.options.getAuthHeaders?.() ?? {}),
@@ -338,6 +338,9 @@ export class ApiClient {
     if (options.responseType === "text") {
       const text = await response.text();
       return (text === "" ? undefined : text) as T;
+    }
+    if (options.responseType === "blob") {
+      return (await response.blob()) as T;
     }
     return (await safeParse(response)) as T;
   }

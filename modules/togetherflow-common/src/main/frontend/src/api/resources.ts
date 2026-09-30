@@ -485,6 +485,18 @@ export class TaskApi {
       `/runtime/tasks/${encodeURIComponent(taskId)}/attachments/${encodeURIComponent(attachmentId)}/content`,
     );
   }
+
+  /**
+   * Fetches attachment bytes with the session. A plain navigation to
+   * {@link attachmentContentUrl} is a 401: the browser does not send the
+   * Authorization header the SPA holds.
+   */
+  downloadAttachment(taskId: string, attachmentId: string): Promise<Blob> {
+    return this.client.request(
+      `/runtime/tasks/${encodeURIComponent(taskId)}/attachments/${encodeURIComponent(attachmentId)}/content`,
+      { responseType: "blob" },
+    );
+  }
 }
 
 /**

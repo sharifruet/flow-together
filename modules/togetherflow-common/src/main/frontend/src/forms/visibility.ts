@@ -33,32 +33,44 @@ export interface VisibilityRule {
 export const VISIBILITY_PARAM = "tfVisibleWhen";
 
 export function getVisibilityRule(field: FormField): VisibilityRule | undefined {
-  const raw = field.params?.[VISIBILITY_PARAM];
+  return readRule(field, VISIBILITY_PARAM);
+}
+
+export function withVisibilityRule(field: FormField, rule: VisibilityRule | undefined): FormField {
+  return writeRule(field, VISIBILITY_PARAM, rule);
+}
+
+/**
+ * Reads a rule out of one params entry, whatever the entry is called.
+ *
+ * Shared with `tfRequiredWhen` (requiredWhen.ts), which answers a different question
+ * about the same kind of condition — the parsing and the evaluation are the part the
+ * two have in common, and a second copy of either would be a second thing to get wrong.
+ */
+export function readRule(field: FormField, param: string): VisibilityRule | undefined {
+  const raw = field.params?.[param];
   if (!raw || typeof raw !== "object") return undefined;
   const rule = raw as Partial<VisibilityRule>;
   if (!rule.field || !rule.operator) return undefined;
   return { field: rule.field, operator: rule.operator, value: rule.value };
 }
 
-export function withVisibilityRule(field: FormField, rule: VisibilityRule | undefined): FormField {
+/** Writes or clears one params entry, dropping `params` entirely once it is empty. */
+export function writeRule(
+  field: FormField,
+  param: string,
+  rule: VisibilityRule | undefined,
+): FormField {
   const params = { ...(field.params ?? {}) };
-  if (rule) params[VISIBILITY_PARAM] = rule;
-  else delete params[VISIBILITY_PARAM];
+  if (rule) params[param] = rule;
+  else delete params[param];
   const next = { ...field, params } as FormField;
   if (Object.keys(params).length === 0) delete (next as { params?: unknown }).params;
   return next;
 }
 
-/**
- * Whether a field should be shown for the current answers.
- *
- * A rule pointing at a field that does not exist shows the field rather than hiding it:
- * a typo in a condition must not silently remove an input someone needs to fill in.
- */
-export function isFieldVisible(field: FormField, values: FormValues): boolean {
-  const rule = getVisibilityRule(field);
-  if (!rule) return true;
-
+/** Whether the current answers satisfy a rule. */
+export function matchesRule(rule: VisibilityRule, values: FormValues): boolean {
   const other = values[rule.field];
   const isBlank = other === undefined || other === null || other === "" || other === false;
 
@@ -74,6 +86,18 @@ export function isFieldVisible(field: FormField, values: FormValues): boolean {
     default:
       return true;
   }
+}
+
+/**
+ * Whether a field should be shown for the current answers.
+ *
+ * A rule pointing at a field that does not exist shows the field rather than hiding it:
+ * a typo in a condition must not silently remove an input someone needs to fill in.
+ */
+export function isFieldVisible(field: FormField, values: FormValues): boolean {
+  const rule = getVisibilityRule(field);
+  if (!rule) return true;
+  return matchesRule(rule, values);
 }
 
 /** Ids of every field currently hidden, so validation can skip them. */

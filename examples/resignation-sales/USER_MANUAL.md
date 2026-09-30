@@ -388,17 +388,17 @@ the resigning employee as a person.
 
 ## Signing in
 
-The twenty-two sample people exist in two places that have to agree: the workflow engine, which
+The sample people exist in two places that have to agree: the workflow engine, which
 decides whose queue a task lands in, and the identity provider, which decides who can sign in at
 all.
 
 - Your sign-in name is your engine id — `imran.kabir`, `shirin.akhter`, `pritam.saha`. Not an
   email address.
-- All sample accounts share one password, `demo`. They exist so a walkthrough has somebody to
+- All sample accounts share one password, `test`, and the email `srrony700@gmail.com`. They exist so a walkthrough has somebody to
   be, and are not intended for anything else.
 - The sample people are not created until somebody asks. An administrator runs
-  [`deploy.sh`](deploy.sh), which posts them to the IDM API and never overwrites an account
-  that already exists.
+  [`deploy.sh`](deploy.sh), which posts them to the IDM API. An account that already exists
+  keeps its id and gets this email and password.
 - If you can sign in but your task list is empty, you are almost certainly in the right identity
   provider and the wrong group — check [Who does what](#who-does-what).
 

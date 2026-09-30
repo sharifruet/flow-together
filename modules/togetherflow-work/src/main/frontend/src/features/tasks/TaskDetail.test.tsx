@@ -43,6 +43,7 @@ function stubApi(overrides: ApiOverrides = {}) {
     deleteAttachment: vi.fn().mockResolvedValue(undefined),
     attachmentContentUrl: (taskId: string, id: string) =>
       `/process-api/runtime/tasks/${taskId}/attachments/${id}/content`,
+    downloadAttachment: vi.fn().mockResolvedValue(new Blob(["x"])),
     complete: vi.fn().mockResolvedValue(undefined),
     claim: vi.fn().mockResolvedValue(undefined),
     unclaim: vi.fn().mockResolvedValue(undefined),
@@ -180,11 +181,19 @@ describe("TaskDetail", () => {
     expect(screen.getByText("corr-9")).toBeInTheDocument();
   });
 
-  it("keeps working when comments cannot be loaded", async () => {
-    const api = stubApi({ listComments: vi.fn().mockRejectedValue(new Error("boom")) });
+  /**
+   * The Task tab carried a comment thread under every form. A note the process never
+   * reads is not part of the work — where a step wants one, its form asks for it — so
+   * the thread is gone, and the panel does not spend a request fetching it either.
+   */
+  it("shows no comment thread, and does not ask the engine for one", async () => {
+    const api = stubApi();
     renderDetail(api);
 
     expect(await screen.findByRole("heading", { name: "Approve invoice" })).toBeInTheDocument();
-    expect(screen.getByText(/no comments yet/i)).toBeInTheDocument();
+    expect(screen.queryByText(/comments/i)).not.toBeInTheDocument();
+    expect(screen.queryByText(/no comments yet/i)).not.toBeInTheDocument();
+    expect(screen.queryByPlaceholderText(/add a comment/i)).not.toBeInTheDocument();
+    expect(api.listComments).not.toHaveBeenCalled();
   });
 });

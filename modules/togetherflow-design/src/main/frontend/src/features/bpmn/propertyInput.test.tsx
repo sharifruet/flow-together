@@ -171,6 +171,24 @@ describe("reference-field suggestions", () => {
   });
 });
 
+describe("a canvas root with no business object", () => {
+  it("does not throw, which is how Design used to die after opening this process", () => {
+    const implicit = {
+      id: "__implicitroot_0",
+      type: "",
+      businessObject: undefined as unknown as BpmnElement["businessObject"],
+    };
+    expect(() =>
+      render(
+        <I18nProvider catalogues={designMessages}>
+          <PropertiesPanel element={implicit} onChange={vi.fn()} />
+        </I18nProvider>,
+      ),
+    ).not.toThrow();
+    expect(screen.getByText(/select an element/i)).toBeInTheDocument();
+  });
+});
+
 describe("widening the search as you type", () => {
   it("reports the kind a field searches, and nothing for the rest", () => {
     expect(searchKindFor("assignee")).toBe("users");

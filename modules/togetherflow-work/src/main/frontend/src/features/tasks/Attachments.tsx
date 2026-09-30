@@ -14,6 +14,7 @@ import {
   ConfirmDialog,
   TextInput,
   formatDateTime,
+  saveBlobDownload,
   useI18n,
   useToast,
   type AttachmentResponse,
@@ -117,18 +118,38 @@ export function Attachments({
                 {attachment.externalUrl ? "🔗" : "📎"}
               </span>
               <div className="tf-attachments__body">
-                <a
-                  className="tf-attachments__name"
-                  href={
-                    attachment.externalUrl ||
-                    taskApi.attachmentContentUrl(taskId, attachment.id)
-                  }
-                  target="_blank"
-                  // Untrusted outbound links must not get a handle on this window.
-                  rel="noopener noreferrer"
-                >
-                  {attachment.name}
-                </a>
+                {attachment.externalUrl ? (
+                  <a
+                    className="tf-attachments__name"
+                    href={attachment.externalUrl}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                  >
+                    {attachment.name}
+                  </a>
+                ) : (
+                  <button
+                    type="button"
+                    className="tf-attachments__name"
+                    onClick={() => {
+                      void (async () => {
+                        try {
+                          const blob = await taskApi.downloadAttachment(taskId, attachment.id);
+                          saveBlobDownload(blob, attachment.name ?? "download");
+                        } catch (cause) {
+                          const apiError = cause instanceof ApiError ? cause : undefined;
+                          push({
+                            tone: "error",
+                            message: apiError?.message ?? t("form.upload.downloadFailed"),
+                            reference: apiError?.correlationId,
+                          });
+                        }
+                      })();
+                    }}
+                  >
+                    {attachment.name}
+                  </button>
+                )}
                 <span className="tf-attachments__meta">
                   {attachment.userId ? `${attachment.userId} · ` : ""}
                   {formatDateTime(attachment.time ?? undefined, locale)}

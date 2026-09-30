@@ -18,7 +18,7 @@ set -euo pipefail
 BASE="${BASE:-http://localhost:8080/flowable-rest}"
 FL_USER="${FL_USER:-rest-admin}"
 FL_PASS="${FL_PASS:-test}"
-PASSWORD="${SAMPLE_PASSWORD:-demo}"
+PASSWORD="${SAMPLE_PASSWORD:-test}"
 HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 
 WITH_IDENTITY=1
@@ -119,7 +119,7 @@ post_models "cmmn-api/cmmn-repository" "resignation-case"      "$HERE"/case/*.cm
 post_models "app-api/app-repository"   "resignation-app"       "$HERE"/app/*.app
 
 if [[ $WITH_IDENTITY -eq 1 ]]; then
-  echo "Creating groups and users (existing ones are left alone)"
+  echo "Creating groups and users (existing accounts get this email and password)"
   if ! PYTHON="$(find_python)"; then
     echo "  No Python 3 found, so the twenty-two people were not created." >&2
     echo "  Install Python 3, or re-run with --no-identity to deploy the models alone." >&2

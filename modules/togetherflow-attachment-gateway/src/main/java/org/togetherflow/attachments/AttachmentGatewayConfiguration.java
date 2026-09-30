@@ -38,6 +38,20 @@ public class AttachmentGatewayConfiguration {
             }
             case SHAREPOINT -> {
                 AttachmentProperties.SharePoint sp = properties.getSharepoint();
+                if (sp.getMode() == AttachmentProperties.SharePoint.Mode.LOCAL) {
+                    if (sp.getLibraryPath() == null) {
+                        throw new IllegalStateException(
+                                "togetherflow.attachments.provider=sharepoint with mode=local requires "
+                                        + "togetherflow.attachments.sharepoint.library-path");
+                    }
+                    if (sp.getPublicBaseUrl() == null || sp.getPublicBaseUrl().isBlank()) {
+                        throw new IllegalStateException(
+                                "togetherflow.attachments.provider=sharepoint with mode=local requires "
+                                        + "togetherflow.attachments.sharepoint.public-base-url");
+                    }
+                    yield new LocalSharePointAttachmentStore(sp.getLibraryPath(), sp.getPublicBaseUrl(),
+                            sp.getFolderPath());
+                }
                 require(sp.getTenantId(), "sharepoint.tenant-id");
                 require(sp.getClientId(), "sharepoint.client-id");
                 require(sp.getClientSecret(), "sharepoint.client-secret");

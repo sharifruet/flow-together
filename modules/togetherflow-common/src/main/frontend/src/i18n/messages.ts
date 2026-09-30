@@ -204,6 +204,7 @@ export const commonEn = {
     "Files can't be attached before the work is started — start it first, then attach from the task.",
   "form.upload.attached": "Attached {name}",
   "form.upload.download": "Download {name}",
+  "form.upload.downloadFailed": "The file could not be downloaded.",
   "form.required": "This field is required.",
   "form.requiredHint": "required",
   "form.optional": "optional",
